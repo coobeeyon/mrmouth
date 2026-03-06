@@ -1,0 +1,253 @@
+# Mr Mouth — Spec
+
+## Overview
+
+Mr Mouth is a Rust CLI tool that runs Claude Code as an autonomous coding agent inside Docker containers. It replaces the current bash harness (`scripts/`) with a single binary distributed via `cargo install` or GitHub releases.
+
+You run `mrmouth` from inside any git repo. It builds a Docker image, launches a container with the repo mounted or cloned, runs Claude Code with a structured prompt, streams formatted output, and pulls changes when the agent exits. Config lives in the target repo under `.mrmouth/`.
+
+## Subcommands
+
+### `mrmouth run`
+
+Run one agent session. This is the core command — everything else builds on it.
+
+**What it does:**
+
+1. Load config from `.mrmouth/config.toml` (optional — sensible defaults if absent)
+2. Preflight: verify clean working tree, Docker available, credentials set
+3. Build Docker image from `.mrmouth/Dockerfile` (or built-in default Dockerfile)
+4. Sync litebrite state (`lb sync`) if `lb` is available on the host
+5. Start container:
+   - Mount SSH agent socket
+   - Pass credentials via env vars (from `.env` or environment)
+   - Mount persistent volume for Claude Code memory (`~/.claude`)
+   - Clone repo inside container (default) or bind-mount local checkout
+   - Mount the runner entrypoint script
+6. Run Claude Code with `--dangerously-skip-permissions --output-format stream-json`
+7. Stream container stdout, format JSONL for terminal display (colorized, collapsed)
+8. Log raw JSONL to `logs/run-YYYYMMDD-HHMMSS.jsonl`
+9. After container exits: pull changes from remote, update `logs/latest.jsonl` symlink
+
+**Flags:**
+
+- `--raw` — output raw JSONL instead of formatted stream
+- `--model <model>` — override the Claude model (default: from config or `opus`)
+- `--timeout <minutes>` — kill container after N minutes
+- `--local` — bind-mount current directory instead of cloning (see Local/Bootstrap Mode below)
+
+### `mrmouth loop`
+
+Run the agent repeatedly until work is done.
+
+**What it does:**
+
+1. Execute `mrmouth run`
+2. After each run, call Claude (via API, using a lightweight model like Sonnet) to decide whether open work remains. The decider reads the SPEC.md and litebrite task state.
+3. Optionally generate a summary of each run log (using Haiku)
+4. If the decider says "continue", loop back to step 1
+5. Stop when the decider says "done" or max iterations reached
+
+**Flags:**
+
+- `--delay <seconds>` — wait between runs (default: 0)
+- `--max-runs <n>` — stop after N runs regardless of decider
+- `--no-summary` — skip AI summary generation
+
+### `mrmouth epic <epic-id>`
+
+Work through a litebrite epic's tasks sequentially.
+
+**What it does:**
+
+1. Create a feature branch for the epic (if not already on one)
+2. Run agent sessions focused on the epic, one task at a time
+3. After each run, check if open tasks remain in the epic
+4. Stop when all tasks are closed or after N consecutive failures
+
+**Flags:**
+
+- `--timeout <minutes>` — per-task timeout (default: 15)
+- `--max-failures <n>` — consecutive failures before aborting (default: 3)
+
+### `mrmouth init`
+
+Scaffold `.mrmouth/` config in the current repo.
+
+**What it does:**
+
+1. Create `.mrmouth/config.toml` with documented defaults
+2. Create `.mrmouth/Dockerfile` with the default agent image definition
+3. Create `.mrmouth/prompt.md` with the default agent prompt (optional, for customization)
+4. Append `.mrmouth/` entries to `.gitignore` (logs, .env)
+5. Print next-steps instructions
+
+This is intentionally minimal — it creates config files, not scripts. The scripts live inside the `mrmouth` binary.
+
+### `mrmouth summary [log-file]`
+
+Generate an AI summary of a run log.
+
+**What it does:**
+
+1. Read the specified log file (or `logs/latest.jsonl`)
+2. Call Claude (Haiku) to produce a concise markdown summary
+3. Write summary to `logs/summaries/<log-name>.md`
+4. Print summary to stdout
+
+## Config Format
+
+Config file: `.mrmouth/config.toml`
+
+```toml
+# Model for agent runs (default: opus)
+model = "opus"
+
+# Docker image name (default: mrmouth-runner)
+image = "mrmouth-runner"
+
+# Dockerfile path relative to repo root (default: .mrmouth/Dockerfile)
+dockerfile = ".mrmouth/Dockerfile"
+
+# Branch to work on (default: current branch)
+# branch = "main"
+
+# Persistent Docker volume name for Claude memory (default: mrmouth-claude-home)
+volume = "mrmouth-claude-home"
+
+# Log directory relative to repo root (default: logs)
+log_dir = "logs"
+
+# Credentials env file (default: .env)
+env_file = ".env"
+
+[loop]
+# Delay between runs in seconds
+delay = 0
+# Maximum number of runs (0 = unlimited)
+max_runs = 0
+# Model for the decider (default: sonnet)
+decider_model = "sonnet"
+# Model for run summaries (default: haiku)
+summary_model = "haiku"
+
+[epic]
+# Per-task timeout in minutes
+timeout = 15
+# Consecutive failures before aborting
+max_failures = 3
+```
+
+All fields are optional — `mrmouth run` works with zero config.
+
+## Docker Image
+
+The default Dockerfile (generated by `mrmouth init` or built-in):
+
+- Base: `node:22` (required for Claude Code npm package)
+- System deps: `openssh-client`, `sudo`, `unzip`
+- GitHub SSH known hosts
+- litebrite (`lb`) CLI — installed from cargo
+- Claude Code — installed via `npm install -g @anthropic-ai/claude-code`
+- Non-root `runner` user matching host UID/GID
+- Git config for agent commits
+
+The agent can self-modify this Dockerfile. After the container exits, `mrmouth` extracts the updated Dockerfile back to `.mrmouth/Dockerfile` so changes persist.
+
+## Agent Prompt
+
+The agent prompt is embedded in the binary but can be overridden by placing a `prompt.md` in `.mrmouth/`. The default prompt instructs the agent to:
+
+1. Read task state and SPEC.md
+2. Pick ONE task, claim it
+3. Do the work, commit frequently
+4. Close the task, sync litebrite, push
+5. Exit immediately — one task per session
+
+## Container Lifecycle
+
+1. Host builds Docker image from `.mrmouth/Dockerfile`
+2. Container starts with repo cloned fresh (or bind-mounted)
+3. litebrite initialized, Claude Code runs with structured prompt
+4. Agent reads spec, claims a task, implements, commits, pushes
+5. Container exits
+6. Host pulls changes and syncs litebrite
+
+Persistent state: A Docker volume persists `~/.claude` across runs, so Claude Code retains memory about the project.
+
+## Local/Bootstrap Mode
+
+`mrmouth run --local` bind-mounts the current directory into the container instead of cloning. This changes several behaviors:
+
+**What's different in local mode:**
+
+- The current directory is mounted at `/home/runner/workspace` — the agent works directly on your files
+- No `git clone` inside the container (the runner script detects an existing `.git` and skips cloning)
+- No `git pull` after the container exits (changes are already on disk)
+- No remote is required — the repo can have no `origin` configured, or not be a git repo at all
+- Preflight skips the clean-working-tree check (the whole point is to work on local state)
+- The agent still runs inside Docker — same sandboxing, same `--dangerously-skip-permissions`
+
+**Bootstrap workflow:**
+
+Local mode enables bootstrapping a brand new project:
+
+1. `mkdir my-project && cd my-project`
+2. `mrmouth run --local` — agent runs in an empty directory, can `git init`, write SPEC.md, create initial structure
+3. Set up a remote: `git remote add origin ...` and `git push -u origin main`
+4. `mrmouth run` — now uses the normal clone-based flow
+
+This also works for adopting mrmouth in an existing repo that doesn't have `.mrmouth/` config yet — local mode doesn't require config to exist.
+
+**Implementation notes:**
+
+- `Config::find_repo_root()` must handle the case where there's no `.git` directory. In local mode, fall back to the current working directory.
+- `run.rs` must not call `git_remote_url()` when `--local` is set — there may be no remote.
+- Preflight must skip the dirty-tree check when `--local` is set.
+- The runner entrypoint script already handles this: it checks `[ ! -d "$work_dir/.git" ]` before cloning.
+
+## Stream Formatter
+
+The stream formatter parses Claude Code's `stream-json` JSONL output and renders it for terminal reading:
+
+- Colorized labels: `[init]`, `[think]`, `[text]`, `[Bash]`, `[Read]`, `[Edit]`, etc.
+- Large code blocks in tool results collapsed to `(N lines omitted)`
+- Noisy tool results (file reads, task list ops) suppressed
+- Cost and turn count displayed at end of run
+
+This is ported from the current TypeScript implementation (`scripts/stream-fmt.ts`) to Rust, compiled into the binary. No runtime dependency on bun/node.
+
+## Distribution
+
+- **cargo install**: `cargo install mrmouth` (once published to crates.io)
+- **GitHub releases**: prebuilt binaries for Linux and macOS (x86_64, aarch64)
+- **From source**: `cargo build --release`
+
+The binary is self-contained — no runtime dependencies beyond Docker and SSH.
+
+## Project Layout
+
+```
+mrmouth/                    # Rust project root (inside this repo)
+  Cargo.toml
+  src/
+    main.rs                 # CLI entry point (clap)
+    config.rs               # Config loading from .mrmouth/config.toml
+    docker.rs               # Docker build/run orchestration
+    run.rs                  # mrmouth run implementation
+    loop.rs                 # mrmouth loop implementation
+    epic.rs                 # mrmouth epic implementation
+    init.rs                 # mrmouth init implementation
+    summary.rs              # mrmouth summary implementation
+    stream_fmt.rs           # JSONL stream formatter
+    prompt.rs               # Embedded agent prompt
+```
+
+## Constraints
+
+- Rust stable toolchain
+- Shells out to `docker` CLI (no Docker API library needed)
+- Shells out to `claude` CLI for decider/summary (or uses Anthropic API directly)
+- Shells out to `lb` for litebrite operations (optional — degrades gracefully)
+- Must work on Linux and macOS
+- The Dockerfile must be installable in the repo's runner image so the tool can build itself into the CI pipeline
