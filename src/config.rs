@@ -114,11 +114,6 @@ impl Config {
             Err(e) => Err(e),
         }
     }
-
-    /// Resolve the config directory path.
-    pub fn config_dir(repo_root: &Path) -> PathBuf {
-        repo_root.join(CONFIG_DIR)
-    }
 }
 
 #[derive(Debug)]

@@ -205,7 +205,6 @@ impl DockerBuilder {
 
         Ok(ContainerHandle {
             child,
-            name: args.name.clone(),
             watchdog_cancelled: cancelled,
         })
     }
@@ -233,7 +232,6 @@ pub struct ContainerArgs {
 
 pub struct ContainerHandle {
     pub child: Child,
-    pub name: String,
     watchdog_cancelled: Arc<AtomicBool>,
 }
 
