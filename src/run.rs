@@ -156,6 +156,15 @@ fn preflight(repo_root: &Path, local: bool) -> Result<(), RunError> {
         _ => return Err(RunError::Preflight("Docker is not available. Is Docker running?".into())),
     }
 
+    // Check for credentials
+    let has_api_key = std::env::var("ANTHROPIC_API_KEY").is_ok();
+    let has_oauth = std::env::var("CLAUDE_CODE_OAUTH_TOKEN").is_ok();
+    if !has_api_key && !has_oauth {
+        return Err(RunError::Preflight(
+            "No credentials found. Set ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN in your environment.".into(),
+        ));
+    }
+
     // Check for clean working tree (skip in local mode — the whole point is to work on local state)
     if !local {
         let diff_status = Command::new("git")

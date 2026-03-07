@@ -1,5 +1,6 @@
+use std::io::Write;
 use std::path::Path;
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 use crate::config::Config;
 
@@ -56,20 +57,28 @@ pub fn execute(config: &Config, repo_root: &Path, log_file: &str) -> Result<(), 
     );
 
     eprintln!("Generating summary...");
-    let status = Command::new("claude")
+    let mut child = Command::new("claude")
         .args([
             "-p",
             "--model",
             &config.loop_config.summary_model,
             "--allowedTools",
-            "Read, Write",
+            "Read,Write",
         ])
-        .arg(&prompt)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
         .current_dir(repo_root)
-        .stdout(std::process::Stdio::inherit())
-        .stderr(std::process::Stdio::inherit())
-        .status()
+        .spawn()
         .map_err(|e| SummaryError(format!("failed to run claude CLI: {e}")))?;
+
+    if let Some(mut stdin) = child.stdin.take() {
+        let _ = stdin.write_all(prompt.as_bytes());
+    }
+
+    let status = child
+        .wait()
+        .map_err(|e| SummaryError(format!("failed to wait for claude CLI: {e}")))?;
 
     if !status.success() {
         return Err(SummaryError(format!(
