@@ -1,7 +1,6 @@
 mod config;
 mod docker;
 mod epic;
-mod init;
 mod litebrite;
 mod loop_cmd;
 mod prompt;
@@ -69,9 +68,6 @@ enum Commands {
         max_failures: u32,
     },
 
-    /// Scaffold .mrmouth/ config in the current repo
-    Init,
-
     /// Generate an AI summary of a run log
     Summary {
         /// Path to log file (default: logs/latest.jsonl)
@@ -81,15 +77,6 @@ enum Commands {
 
 fn main() {
     let cli = Cli::parse();
-
-    // Init doesn't need config (it creates it)
-    if matches!(cli.command, Commands::Init) {
-        if let Err(e) = init::execute() {
-            eprintln!("error: {e}");
-            std::process::exit(1);
-        }
-        return;
-    }
 
     let is_local = matches!(cli.command, Commands::Run { local: true, .. });
     let repo_root = if is_local {
@@ -156,7 +143,6 @@ fn main() {
                 std::process::exit(1);
             }
         }
-        Commands::Init => unreachable!(),
         Commands::Summary { log_file } => {
             let log_file = log_file.unwrap_or_else(|| {
                 format!("{}/latest.jsonl", config.log_dir)
