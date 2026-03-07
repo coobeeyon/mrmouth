@@ -12,7 +12,6 @@ pub struct Config {
     pub dockerfile: String,
     pub volume: String,
     pub log_dir: String,
-    pub env_file: String,
     pub branch: Option<String>,
     #[serde(rename = "loop")]
     pub loop_config: LoopConfig,
@@ -43,7 +42,6 @@ impl Default for Config {
             dockerfile: ".mrmouth/Dockerfile".into(),
             volume: "mrmouth-claude-home".into(),
             log_dir: "logs".into(),
-            env_file: ".env".into(),
             branch: None,
             loop_config: LoopConfig::default(),
             epic: EpicConfig::default(),
@@ -188,7 +186,6 @@ image = "my-image"
 dockerfile = "custom/Dockerfile"
 volume = "my-vol"
 log_dir = "my-logs"
-env_file = ".env.prod"
 branch = "dev"
 
 [loop]
@@ -210,7 +207,6 @@ max_failures = 5
         assert_eq!(config.dockerfile, "custom/Dockerfile");
         assert_eq!(config.volume, "my-vol");
         assert_eq!(config.log_dir, "my-logs");
-        assert_eq!(config.env_file, ".env.prod");
         assert_eq!(config.branch.as_deref(), Some("dev"));
         assert_eq!(config.loop_config.delay, 5);
         assert_eq!(config.loop_config.max_runs, 10);

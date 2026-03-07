@@ -28,8 +28,8 @@ Optional:
 cd my-project
 mrmouth init
 
-# Add your API key
-echo 'ANTHROPIC_API_KEY=sk-...' > .env
+# Set your API key
+export ANTHROPIC_API_KEY=sk-...
 
 # Run one agent session
 mrmouth run
@@ -98,7 +98,6 @@ image = "mrmouth-runner"
 dockerfile = ".mrmouth/Dockerfile"
 volume = "mrmouth-claude-home"
 log_dir = "logs"
-env_file = ".env"
 
 [loop]
 delay = 0

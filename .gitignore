@@ -1,6 +1,5 @@
 /target
 logs/
-.env
 *.log
 *.jsonl
 !tests/*.jsonl

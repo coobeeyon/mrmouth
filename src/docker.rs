@@ -141,14 +141,14 @@ impl DockerBuilder {
         cmd.arg("run");
         cmd.args(["--name", &args.name]);
 
-        // Env file
-        if args.env_file.exists() {
-            cmd.args(["--env-file", &args.env_file.to_string_lossy()]);
-        }
-
         // Env vars
         cmd.args(["-e", &format!("REPO_URL={}", args.repo_url)]);
         cmd.args(["-e", &format!("BRANCH={}", args.branch)]);
+        for var in ["ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN"] {
+            if let Ok(val) = std::env::var(var) {
+                cmd.args(["-e", &format!("{var}={val}")]);
+            }
+        }
 
         // SSH agent
         if let Ok(sock) = std::env::var("SSH_AUTH_SOCK") {
@@ -221,7 +221,6 @@ impl DockerBuilder {
 
 pub struct ContainerArgs {
     pub name: String,
-    pub env_file: std::path::PathBuf,
     pub repo_url: String,
     pub branch: String,
     pub runner_script: std::path::PathBuf,

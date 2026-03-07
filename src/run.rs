@@ -19,7 +19,7 @@ pub struct RunOptions {
 
 pub fn execute(config: &Config, repo_root: &Path, opts: RunOptions) -> Result<(), RunError> {
     // 1. Preflight checks
-    preflight(repo_root, &config.env_file, opts.local)?;
+    preflight(repo_root, opts.local)?;
 
     // 2. Resolve repo URL and branch (repo URL not needed in local mode)
     let repo_url = if opts.local {
@@ -65,10 +65,8 @@ pub fn execute(config: &Config, repo_root: &Path, opts: RunOptions) -> Result<()
     DockerBuilder::remove_container(&container_name);
 
     // 8. Start container
-    let env_file_path = repo_root.join(&config.env_file);
     let container_args = ContainerArgs {
         name: container_name.clone(),
-        env_file: env_file_path,
         repo_url,
         branch: branch.clone(),
         runner_script: runner_script.path().to_path_buf(),
@@ -150,7 +148,7 @@ pub fn execute(config: &Config, repo_root: &Path, opts: RunOptions) -> Result<()
     Ok(())
 }
 
-fn preflight(repo_root: &Path, env_file: &str, local: bool) -> Result<(), RunError> {
+fn preflight(repo_root: &Path, local: bool) -> Result<(), RunError> {
     // Check for Docker
     let docker_check = Command::new("docker").arg("info").stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status();
     match docker_check {
@@ -174,12 +172,6 @@ fn preflight(repo_root: &Path, env_file: &str, local: bool) -> Result<(), RunErr
                 "Working tree has uncommitted changes. Commit or stash first.".into(),
             ));
         }
-    }
-
-    // Check env file exists (warn, don't fail)
-    let env_path = repo_root.join(env_file);
-    if !env_path.exists() {
-        eprintln!("warning: env file {} not found — container may lack credentials", env_path.display());
     }
 
     Ok(())

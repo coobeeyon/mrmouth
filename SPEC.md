@@ -20,7 +20,7 @@ Run one agent session. This is the core command — everything else builds on it
 4. Sync litebrite state (`lb sync`) if `lb` is available on the host
 5. Start container:
    - Mount SSH agent socket
-   - Pass credentials via env vars (from `.env` or environment)
+   - Pass credentials via env vars (`ANTHROPIC_API_KEY` / `CLAUDE_CODE_OAUTH_TOKEN`)
    - Mount persistent volume for Claude Code memory (`~/.claude`)
    - Clone repo inside container (default) or bind-mount local checkout
    - Mount the runner entrypoint script
@@ -79,7 +79,7 @@ Scaffold `.mrmouth/` config in the current repo.
 1. Create `.mrmouth/config.toml` with documented defaults
 2. Create `.mrmouth/Dockerfile` with the default agent image definition
 3. Create `.mrmouth/prompt.md` with the default agent prompt (optional, for customization)
-4. Append `.mrmouth/` entries to `.gitignore` (logs, .env)
+4. Append `.mrmouth/` entries to `.gitignore` (logs)
 5. Print next-steps instructions
 
 This is intentionally minimal — it creates config files, not scripts. The scripts live inside the `mrmouth` binary.
@@ -117,9 +117,6 @@ volume = "mrmouth-claude-home"
 
 # Log directory relative to repo root (default: logs)
 log_dir = "logs"
-
-# Credentials env file (default: .env)
-env_file = ".env"
 
 [loop]
 # Delay between runs in seconds

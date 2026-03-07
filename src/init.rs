@@ -24,9 +24,6 @@ const DEFAULT_CONFIG: &str = r#"# Mr Mouth configuration
 # Log directory relative to repo root (default: logs)
 # log_dir = "logs"
 
-# Credentials env file (default: .env)
-# env_file = ".env"
-
 # Branch to work on (default: current branch)
 # branch = "main"
 
@@ -44,7 +41,6 @@ const DEFAULT_CONFIG: &str = r#"# Mr Mouth configuration
 const GITIGNORE_ENTRIES: &[&str] = &[
     "# Mr Mouth",
     "logs/",
-    ".env",
 ];
 
 pub fn execute() -> Result<(), InitError> {
@@ -84,8 +80,8 @@ fn execute_in(repo_root: &Path) -> Result<(), InitError> {
     eprintln!("  .mrmouth/prompt.md     — agent prompt (customize for your project)");
     eprintln!();
     eprintln!("Next steps:");
-    eprintln!("  1. Add your API key to .env:  echo 'ANTHROPIC_API_KEY=sk-...' > .env");
-    eprintln!("  2. Run an agent session:      mrmouth run");
+    eprintln!("  1. Set your API key:     export ANTHROPIC_API_KEY=sk-...");
+    eprintln!("  2. Run an agent session: mrmouth run");
     eprintln!();
 
     Ok(())
@@ -181,7 +177,6 @@ mod tests {
         // Check gitignore was created with entries
         let gitignore = fs::read_to_string(tmp.path().join(".gitignore")).unwrap();
         assert!(gitignore.contains("logs/"));
-        assert!(gitignore.contains(".env"));
     }
 
     #[test]
@@ -215,14 +210,13 @@ mod tests {
         let gitignore = fs::read_to_string(tmp.path().join(".gitignore")).unwrap();
         assert!(gitignore.starts_with("node_modules/\n"));
         assert!(gitignore.contains("logs/"));
-        assert!(gitignore.contains(".env"));
     }
 
     #[test]
     fn init_does_not_duplicate_gitignore_entries() {
         let tmp = tempfile::tempdir().unwrap();
         setup_repo(tmp.path());
-        fs::write(tmp.path().join(".gitignore"), "logs/\n.env\n").unwrap();
+        fs::write(tmp.path().join(".gitignore"), "logs/\n").unwrap();
 
         let result = execute_in(tmp.path());
 
@@ -230,6 +224,5 @@ mod tests {
         let gitignore = fs::read_to_string(tmp.path().join(".gitignore")).unwrap();
         // Should only have one occurrence of each
         assert_eq!(gitignore.matches("logs/").count(), 1);
-        assert_eq!(gitignore.matches(".env").count(), 1);
     }
 }
