@@ -256,10 +256,8 @@ impl ContainerHandle {
         // Spawn a thread to drain stderr
         let stderr_handle = std::thread::spawn(move || {
             let reader = BufReader::new(stderr);
-            for line in reader.lines() {
-                if let Ok(line) = line {
-                    eprintln!("{line}");
-                }
+            for line in reader.lines().map_while(Result::ok) {
+                eprintln!("{line}");
             }
         });
 

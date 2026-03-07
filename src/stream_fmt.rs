@@ -35,8 +35,8 @@ fn collapse_code_blocks(s: &str) -> String {
             if block_len > 10 {
                 out.push(format!("({block_len} lines omitted)"));
             } else {
-                for j in block_start..=i {
-                    out.push(lines[j].to_string());
+                for line in &lines[block_start..=i] {
+                    out.push(line.to_string());
                 }
             }
             in_block = false;
@@ -47,8 +47,8 @@ fn collapse_code_blocks(s: &str) -> String {
         }
     }
     if in_block {
-        for j in block_start..lines.len() {
-            out.push(lines[j].to_string());
+        for line in &lines[block_start..] {
+            out.push(line.to_string());
         }
     }
 

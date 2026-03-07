@@ -72,7 +72,7 @@ fn execute_in(repo_root: &Path) -> Result<(), InitError> {
     write_if_missing(&prompt_path, DEFAULT_PROMPT, "prompt.md")?;
 
     // Update .gitignore
-    update_gitignore(&repo_root)?;
+    update_gitignore(repo_root)?;
 
     // Print next steps
     eprintln!();
