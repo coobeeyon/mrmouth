@@ -56,7 +56,7 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions) -> Result<(
         let decision = std::thread::scope(|s| {
             if !opts.no_summary {
                 let log_file = format!("{}/latest.jsonl", config.log_dir);
-                s.spawn(|| {
+                s.spawn(move || {
                     if let Err(e) = summary::execute(config, repo_root, &log_file) {
                         eprintln!("Summary generation failed: {e}");
                     }
