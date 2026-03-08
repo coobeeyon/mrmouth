@@ -128,7 +128,7 @@ fn should_continue(repo_root: &Path, decider_model: &str) -> Result<Decision, Lo
             "-p",
             "--no-session-persistence",
             "--model", decider_model,
-            "--allowedTools", "Read,Bash(git *)",
+            "--allowedTools", "Read,Bash(git *),Bash(lb *)",
             "--output-format", "json",
             "--json-schema", schema,
         ])
