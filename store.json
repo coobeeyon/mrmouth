@@ -19,6 +19,16 @@
       "priority": 2,
       "created_at": "2026-03-08T20:58:54.952121479Z",
       "updated_at": "2026-03-08T20:58:54.952121479Z"
+    },
+    "lb-y354": {
+      "id": "lb-y354",
+      "title": "Add unit tests for run.rs helper functions",
+      "description": "run.rs has testable helper functions (preflight checks, git_remote_url, configure_file_remote, git_current_branch, write_runner_script) that lack tests. Add unit tests for these.",
+      "item_type": "task",
+      "status": "open",
+      "priority": 3,
+      "created_at": "2026-03-08T20:58:56.504066401Z",
+      "updated_at": "2026-03-08T20:58:56.504066401Z"
     }
   },
   "deps": []
