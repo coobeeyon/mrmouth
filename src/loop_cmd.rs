@@ -1,5 +1,6 @@
+use std::io::Write;
 use std::path::Path;
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 use crate::config::Config;
 use crate::litebrite;
@@ -108,19 +109,29 @@ fn should_continue(repo_root: &Path, decider_model: &str) -> Result<Decision, Lo
         and what remains to do, and you can compare this to the SPEC.md (which may have changed) \
         in order to make your decision. Use the return field \"continue\" to communicate your decision.";
 
-    let output = Command::new("claude")
+    let mut child = Command::new("claude")
         .args([
             "-p",
+            "--no-session-persistence",
             "--model", decider_model,
-            "--allowedTools", "Read, Bash(git *)",
+            "--allowedTools", "Read,Bash(git *)",
             "--output-format", "json",
             "--json-schema", schema,
         ])
-        .arg(prompt)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::inherit())
         .current_dir(repo_root)
-        .stderr(std::process::Stdio::inherit())
-        .output()
+        .spawn()
         .map_err(|e| LoopError::Decider(format!("failed to run claude CLI: {e}")))?;
+
+    if let Some(mut stdin) = child.stdin.take() {
+        let _ = stdin.write_all(prompt.as_bytes());
+    }
+
+    let output = child
+        .wait_with_output()
+        .map_err(|e| LoopError::Decider(format!("failed to wait for claude CLI: {e}")))?;
 
     if !output.status.success() {
         return Err(LoopError::Decider(format!(

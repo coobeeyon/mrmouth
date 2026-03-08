@@ -60,6 +60,7 @@ pub fn execute(config: &Config, repo_root: &Path, log_file: &str) -> Result<(), 
     let mut child = Command::new("claude")
         .args([
             "-p",
+            "--no-session-persistence",
             "--model",
             &config.loop_config.summary_model,
             "--allowedTools",
