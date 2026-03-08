@@ -49,7 +49,7 @@ mrmouth run [--raw] [--model <model>] [--timeout <minutes>] [--local]
 Run the agent repeatedly until work is done.
 
 ```bash
-mrmouth loop [--delay <seconds>] [--max-runs <n>] [--no-summary]
+mrmouth loop [--delay <seconds>] [--max-runs <n>] [--no-summary] [--model <model>]
 ```
 
 After each run, an AI decider checks whether open work remains. The loop stops when the decider says done or max iterations are reached.
@@ -59,7 +59,7 @@ After each run, an AI decider checks whether open work remains. The loop stops w
 Work through a litebrite epic's tasks sequentially.
 
 ```bash
-mrmouth epic <epic-id> [--timeout <minutes>] [--max-failures <n>]
+mrmouth epic <epic-id> [--timeout <minutes>] [--max-failures <n>] [--model <model>]
 ```
 
 Creates a feature branch and works through each child task. Aborts after N consecutive failures.
