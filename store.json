@@ -60,6 +60,16 @@
       "created_at": "2026-03-08T21:02:10.433788241Z",
       "updated_at": "2026-03-08T21:02:30.562957936Z"
     },
+    "lb-oskn": {
+      "id": "lb-oskn",
+      "title": "Fix Dockerfile cross-platform support for ARM/aarch64",
+      "description": "The DEFAULT_DOCKERFILE hardcodes x86_64-unknown-linux-musl for the litebrite build stage. This fails on ARM machines (Apple Silicon Macs). Should detect architecture dynamically.",
+      "item_type": "task",
+      "status": "open",
+      "priority": 1,
+      "created_at": "2026-03-08T21:48:32.914164419Z",
+      "updated_at": "2026-03-08T21:48:32.914164419Z"
+    },
     "lb-si5j": {
       "id": "lb-si5j",
       "title": "Add GitHub Actions release workflow",
