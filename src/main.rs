@@ -59,13 +59,13 @@ enum Commands {
         /// The litebrite epic ID
         epic_id: String,
 
-        /// Per-task timeout in minutes
-        #[arg(long, default_value_t = 15)]
-        timeout: u32,
+        /// Per-task timeout in minutes (default: from config or 15)
+        #[arg(long)]
+        timeout: Option<u32>,
 
-        /// Consecutive failures before aborting
-        #[arg(long, default_value_t = 3)]
-        max_failures: u32,
+        /// Consecutive failures before aborting (default: from config or 3)
+        #[arg(long)]
+        max_failures: Option<u32>,
     },
 
     /// Generate an AI summary of a run log
@@ -137,8 +137,8 @@ fn main() {
         Commands::Epic { epic_id, timeout, max_failures } => {
             let opts = epic::EpicOptions {
                 epic_id,
-                timeout: if timeout != 15 { timeout } else { config.epic.timeout },
-                max_failures: if max_failures != 3 { max_failures } else { config.epic.max_failures },
+                timeout: timeout.unwrap_or(config.epic.timeout),
+                max_failures: max_failures.unwrap_or(config.epic.max_failures),
                 model: config.model.clone(),
             };
             if let Err(e) = epic::execute(&config, &repo_root, opts) {
