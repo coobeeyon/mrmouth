@@ -5,11 +5,10 @@
       "title": "Fix runner script missing lb sync after init",
       "description": "The runner entrypoint script in run.rs initializes litebrite (lb init, lb setup claude) but never calls lb sync to pull the latest task state. The agent starts with stale state. Add lb sync after lb setup claude in the runner script.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 1,
-      "claimed_by": "agent-runner",
       "created_at": "2026-03-08T20:58:53.343680768Z",
-      "updated_at": "2026-03-08T20:59:05.779969189Z"
+      "updated_at": "2026-03-08T20:59:19.782759607Z"
     },
     "lb-3hsl": {
       "id": "lb-3hsl",
