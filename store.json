@@ -55,11 +55,10 @@
       "title": "Fix loop decider allowed tools to include lb commands",
       "description": "The decider prompt says to check litebrite state but only allows Read and Bash(git *). Needs Bash(lb *) too.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 2,
-      "claimed_by": "agent-runner",
       "created_at": "2026-03-08T21:49:43.709600051Z",
-      "updated_at": "2026-03-08T21:49:46.259349229Z"
+      "updated_at": "2026-03-08T21:50:00.988079113Z"
     },
     "lb-ljfl": {
       "id": "lb-ljfl",
