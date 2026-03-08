@@ -149,6 +149,7 @@ impl DockerBuilder {
         let mut cmd = Command::new("docker");
         cmd.arg("run");
         cmd.arg("--rm");
+        cmd.arg("--init");
         cmd.args(["--name", &args.name]);
 
         // Env vars
