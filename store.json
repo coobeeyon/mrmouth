@@ -37,8 +37,9 @@
       "item_type": "task",
       "status": "open",
       "priority": 3,
+      "claimed_by": "agent-runner",
       "created_at": "2026-03-08T20:58:56.504066401Z",
-      "updated_at": "2026-03-08T20:58:56.504066401Z"
+      "updated_at": "2026-03-08T21:00:16.855927835Z"
     }
   },
   "deps": []
