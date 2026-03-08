@@ -1,5 +1,15 @@
 {
   "items": {
+    "lb-1brq": {
+      "id": "lb-1brq",
+      "title": "Fix Epic CLI args not distinguishing explicit vs default values",
+      "description": "Epic command uses default_value_t for timeout/max_failures then checks if value \\!= default to decide whether to use config. This means passing --timeout 15 explicitly is treated as 'use config'. Fix by using Option<u32> instead.",
+      "item_type": "task",
+      "status": "open",
+      "priority": 1,
+      "created_at": "2026-03-08T21:01:20.055101475Z",
+      "updated_at": "2026-03-08T21:01:20.055101475Z"
+    },
     "lb-34j5": {
       "id": "lb-34j5",
       "title": "Fix runner script missing lb sync after init",
