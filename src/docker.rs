@@ -169,6 +169,11 @@ impl DockerBuilder {
             cmd.args(["-v", &format!("{}:/home/runner/workspace", cwd.to_string_lossy())]);
         }
 
+        // File-remote mode: mount host repo as a git remote the container can clone from and push to
+        if let Some(ref path) = args.file_remote_path {
+            cmd.args(["-v", &format!("{}:/host-repo", path.to_string_lossy())]);
+        }
+
         cmd.arg(&self.image_name);
         cmd.arg("/run.sh");
 
@@ -226,6 +231,7 @@ pub struct ContainerArgs {
     pub runner_script: std::path::PathBuf,
     pub volume: String,
     pub local: bool,
+    pub file_remote_path: Option<std::path::PathBuf>,
     pub timeout_secs: Option<u64>,
 }
 

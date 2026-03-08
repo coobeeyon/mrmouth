@@ -21,11 +21,20 @@ pub fn execute(config: &Config, repo_root: &Path, opts: RunOptions) -> Result<()
     // 1. Preflight checks
     preflight(repo_root, opts.local)?;
 
-    // 2. Resolve repo URL and branch (repo URL not needed in local mode)
-    let repo_url = if opts.local {
-        git_remote_url(repo_root).unwrap_or_default()
+    // 2. Resolve repo URL and branch
+    let (repo_url, file_remote_path) = if opts.local {
+        (git_remote_url(repo_root).unwrap_or_default(), None)
     } else {
-        git_remote_url(repo_root)?
+        match git_remote_url(repo_root) {
+            Some(url) => (url, None),
+            None => {
+                // No remote configured — mount the host repo into the container and
+                // use it as a file:// remote. The container clones from it, the agent
+                // commits and pushes back, and updateInstead keeps the host tree in sync.
+                configure_file_remote(repo_root)?;
+                ("file:///host-repo".to_string(), Some(repo_root.to_path_buf()))
+            }
+        }
     };
     let branch = config
         .branch
@@ -72,6 +81,7 @@ pub fn execute(config: &Config, repo_root: &Path, opts: RunOptions) -> Result<()
         runner_script: runner_script.path().to_path_buf(),
         volume: config.volume.clone(),
         local: opts.local,
+        file_remote_path: file_remote_path.clone(),
         timeout_secs: opts.timeout.map(|m| m as u64 * 60),
     };
 
@@ -124,8 +134,8 @@ pub fn execute(config: &Config, repo_root: &Path, opts: RunOptions) -> Result<()
     // 12. Clean up container
     DockerBuilder::remove_container(&container_name);
 
-    // 13. Pull changes (unless local mode)
-    if !opts.local {
+    // 13. Pull changes (unless local mode or file-remote — updateInstead already synced the tree)
+    if !opts.local && file_remote_path.is_none() {
         eprintln!("Pulling code changes from remote...");
         let pull_status = Command::new("git")
             .args(["-C", &repo_root.to_string_lossy(), "pull", "--ff-only"])
@@ -186,17 +196,30 @@ fn preflight(repo_root: &Path, local: bool) -> Result<(), RunError> {
     Ok(())
 }
 
-fn git_remote_url(repo_root: &Path) -> Result<String, RunError> {
+/// Returns the `origin` remote URL, or `None` if no remote is configured.
+fn git_remote_url(repo_root: &Path) -> Option<String> {
     let output = Command::new("git")
         .args(["-C", &repo_root.to_string_lossy(), "remote", "get-url", "origin"])
         .output()
-        .map_err(|e| RunError::Io("getting git remote URL".into(), e))?;
-
-    if !output.status.success() {
-        return Err(RunError::Preflight("No git remote 'origin' found".into()));
+        .ok()?;
+    if output.status.success() {
+        Some(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    } else {
+        None
     }
+}
 
-    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+/// Configure the host repo to accept pushes to its checked-out branch by
+/// updating the working tree in place (git's "updateInstead" policy).
+fn configure_file_remote(repo_root: &Path) -> Result<(), RunError> {
+    let status = Command::new("git")
+        .args(["-C", &repo_root.to_string_lossy(), "config", "receive.denyCurrentBranch", "updateInstead"])
+        .status()
+        .map_err(|e| RunError::Io("configuring git receive policy".into(), e))?;
+    if !status.success() {
+        return Err(RunError::Preflight("failed to set receive.denyCurrentBranch = updateInstead".into()));
+    }
+    Ok(())
 }
 
 fn git_current_branch(repo_root: &Path) -> Result<String, RunError> {

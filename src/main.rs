@@ -78,8 +78,11 @@ enum Commands {
 fn main() {
     let cli = Cli::parse();
 
-    let is_local = matches!(cli.command, Commands::Run { local: true, .. });
-    let repo_root = if is_local {
+    let use_cwd_fallback = matches!(
+        cli.command,
+        Commands::Run { local: true, .. } | Commands::Loop { .. } | Commands::Summary { .. }
+    );
+    let repo_root = if use_cwd_fallback {
         match Config::find_repo_root_or_cwd() {
             Ok(root) => root,
             Err(e) => {

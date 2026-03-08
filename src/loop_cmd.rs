@@ -15,6 +15,20 @@ pub struct LoopOptions {
 }
 
 pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions) -> Result<(), LoopError> {
+    // Cold-start: no git repo yet — init one and run in local (bind-mount) mode
+    let bootstrap_mode = !repo_root.join(".git").exists();
+    if bootstrap_mode {
+        eprintln!("No git repository found in {}. Running git init...", repo_root.display());
+        let status = Command::new("git")
+            .arg("init")
+            .current_dir(repo_root)
+            .status()
+            .map_err(|e| LoopError::Bootstrap(format!("failed to run git init: {e}")))?;
+        if !status.success() {
+            return Err(LoopError::Bootstrap("git init failed".into()));
+        }
+    }
+
     let max_label = if opts.max_runs == 0 {
         "unlimited".to_string()
     } else {
@@ -159,12 +173,14 @@ fn should_continue(repo_root: &Path, decider_model: &str) -> Result<Decision, Lo
 
 #[derive(Debug)]
 pub enum LoopError {
+    Bootstrap(String),
     Decider(String),
 }
 
 impl std::fmt::Display for LoopError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::Bootstrap(msg) => write!(f, "bootstrap error: {msg}"),
             Self::Decider(msg) => write!(f, "decider error: {msg}"),
         }
     }
