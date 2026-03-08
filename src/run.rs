@@ -271,6 +271,7 @@ if [ -d "$work_dir/.git" ]; then
   echo "Initializing litebrite..."
   lb init
   lb setup claude 2>/dev/null || true
+  lb sync 2>/dev/null || true
 fi
 
 # --- Restore .claude.json from persisted backup if missing ---
