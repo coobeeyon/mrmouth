@@ -35,11 +35,10 @@
       "title": "Add --init flag to docker run to reap zombie processes",
       "description": "Docker containers without --init don't have a proper init process (PID 1). If the agent spawns background processes that die, they become zombies. The --init flag adds tini as PID 1 to properly reap them.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 2,
-      "claimed_by": "agent-runner",
       "created_at": "2026-03-08T21:02:10.433788241Z",
-      "updated_at": "2026-03-08T21:02:13.685083452Z"
+      "updated_at": "2026-03-08T21:02:30.562957936Z"
     },
     "lb-si5j": {
       "id": "lb-si5j",
