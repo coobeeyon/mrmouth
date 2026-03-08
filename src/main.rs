@@ -52,6 +52,10 @@ enum Commands {
         /// Skip AI summary generation
         #[arg(long)]
         no_summary: bool,
+
+        /// Override the Claude model (default: from config or opus)
+        #[arg(long)]
+        model: Option<String>,
     },
 
     /// Work through a litebrite epic's tasks sequentially
@@ -66,6 +70,10 @@ enum Commands {
         /// Consecutive failures before aborting (default: from config or 3)
         #[arg(long)]
         max_failures: Option<u32>,
+
+        /// Override the Claude model (default: from config or opus)
+        #[arg(long)]
+        model: Option<String>,
     },
 
     /// Generate an AI summary of a run log
@@ -122,24 +130,24 @@ fn main() {
                 std::process::exit(1);
             }
         }
-        Commands::Loop { delay, max_runs, no_summary } => {
+        Commands::Loop { delay, max_runs, no_summary, model } => {
             let opts = loop_cmd::LoopOptions {
                 delay: if delay > 0 { delay } else { config.loop_config.delay },
                 max_runs: max_runs.unwrap_or(config.loop_config.max_runs),
                 no_summary,
-                model: config.model.clone(),
+                model: model.unwrap_or_else(|| config.model.clone()),
             };
             if let Err(e) = loop_cmd::execute(&config, &repo_root, opts) {
                 eprintln!("error: {e}");
                 std::process::exit(1);
             }
         }
-        Commands::Epic { epic_id, timeout, max_failures } => {
+        Commands::Epic { epic_id, timeout, max_failures, model } => {
             let opts = epic::EpicOptions {
                 epic_id,
                 timeout: timeout.unwrap_or(config.epic.timeout),
                 max_failures: max_failures.unwrap_or(config.epic.max_failures),
-                model: config.model.clone(),
+                model: model.unwrap_or_else(|| config.model.clone()),
             };
             if let Err(e) = epic::execute(&config, &repo_root, opts) {
                 eprintln!("error: {e}");
