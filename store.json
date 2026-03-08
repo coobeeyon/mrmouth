@@ -15,11 +15,10 @@
       "title": "Add --rm flag to docker run for automatic container cleanup",
       "description": "The docker run command in docker.rs doesn't use --rm. While there's manual cleanup via remove_container(), adding --rm would provide automatic cleanup if the host process crashes or is killed before cleanup runs.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 2,
-      "claimed_by": "agent-runner",
       "created_at": "2026-03-08T20:59:00.887231581Z",
-      "updated_at": "2026-03-08T20:59:26.643407351Z"
+      "updated_at": "2026-03-08T20:59:43.845061038Z"
     },
     "lb-si5j": {
       "id": "lb-si5j",
