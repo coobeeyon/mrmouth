@@ -292,7 +292,7 @@ impl Formatter {
                     self.dim(),
                     self.reset(),
                     self.dim(),
-                    collapsed,
+                    indent(&collapsed),
                     self.reset()
                 ));
             }
@@ -434,7 +434,7 @@ mod tests {
         let line = r#"{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"some output"}]}}"#;
         let out = fmt(line).unwrap();
         assert!(out.contains("[result]"));
-        assert!(out.contains("some output"));
+        assert!(out.contains("\tsome output"));
     }
 
     #[test]
