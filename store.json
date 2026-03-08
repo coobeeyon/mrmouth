@@ -30,6 +30,16 @@
       "created_at": "2026-03-08T20:59:00.887231581Z",
       "updated_at": "2026-03-08T20:59:43.845061038Z"
     },
+    "lb-ljfl": {
+      "id": "lb-ljfl",
+      "title": "Add --init flag to docker run to reap zombie processes",
+      "description": "Docker containers without --init don't have a proper init process (PID 1). If the agent spawns background processes that die, they become zombies. The --init flag adds tini as PID 1 to properly reap them.",
+      "item_type": "task",
+      "status": "open",
+      "priority": 2,
+      "created_at": "2026-03-08T21:02:10.433788241Z",
+      "updated_at": "2026-03-08T21:02:10.433788241Z"
+    },
     "lb-si5j": {
       "id": "lb-si5j",
       "title": "Add GitHub Actions release workflow",
