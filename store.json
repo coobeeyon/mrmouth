@@ -35,11 +35,10 @@
       "title": "Add unit tests for run.rs helper functions",
       "description": "run.rs has testable helper functions (preflight checks, git_remote_url, configure_file_remote, git_current_branch, write_runner_script) that lack tests. Add unit tests for these.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 3,
-      "claimed_by": "agent-runner",
       "created_at": "2026-03-08T20:58:56.504066401Z",
-      "updated_at": "2026-03-08T21:00:16.855927835Z"
+      "updated_at": "2026-03-08T21:00:53.740269267Z"
     }
   },
   "deps": []
