@@ -16,20 +16,29 @@ FROM node:22
 
 # Layer 1: System deps (changes ~never)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    unzip openssh-client sudo \
+    unzip openssh-client sudo curl \
   && rm -rf /var/lib/apt/lists/*
 
-# Layer 2: GitHub SSH known host (changes ~never)
+# Layer 2: GitHub CLI (changes occasionally)
+RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+      | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg && \
+    chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg && \
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+      | tee /etc/apt/sources.list.d/github-cli.list > /dev/null && \
+    apt-get update && apt-get install -y --no-install-recommends gh && \
+    rm -rf /var/lib/apt/lists/*
+
+# Layer 3: GitHub SSH known host (changes ~never)
 RUN mkdir -p /root/.ssh && \
     ssh-keyscan github.com >> /root/.ssh/known_hosts
 
-# Layer 3: Copy lb binary from builder
+# Layer 4: Copy lb binary from builder
 COPY --from=lb-builder /usr/local/cargo/bin/lb /usr/local/bin/lb
 
-# Layer 4: Claude Code (changes occasionally)
+# Layer 5: Claude Code (changes occasionally)
 RUN npm install -g @anthropic-ai/claude-code
 
-# Layer 5: Non-root user matching host UID (for SSH agent socket access)
+# Layer 6: Non-root user matching host UID (for SSH agent socket access)
 ARG HOST_UID=1000
 ARG HOST_GID=1000
 RUN userdel -r node 2>/dev/null || true && \
@@ -144,7 +153,7 @@ impl DockerBuilder {
         // Env vars
         cmd.args(["-e", &format!("REPO_URL={}", args.repo_url)]);
         cmd.args(["-e", &format!("BRANCH={}", args.branch)]);
-        for var in ["ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN"] {
+        for var in ["ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"] {
             if let Ok(val) = std::env::var(var) {
                 cmd.args(["-e", &format!("{var}={val}")]);
             }
