@@ -148,6 +148,7 @@ impl DockerBuilder {
     pub fn run(&self, args: &ContainerArgs) -> Result<ContainerHandle, DockerError> {
         let mut cmd = Command::new("docker");
         cmd.arg("run");
+        cmd.arg("--rm");
         cmd.args(["--name", &args.name]);
 
         // Env vars
