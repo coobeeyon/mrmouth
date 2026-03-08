@@ -336,3 +336,70 @@ impl std::fmt::Display for RunError {
 }
 
 impl std::error::Error for RunError {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Read as _;
+
+    #[test]
+    fn runner_script_contains_model() {
+        let dir = tempfile::tempdir().unwrap();
+        let tmp = write_runner_script(dir.path(), "sonnet", None).unwrap();
+        let mut content = String::new();
+        File::open(tmp.path()).unwrap().read_to_string(&mut content).unwrap();
+        assert!(content.contains("--model sonnet"));
+    }
+
+    #[test]
+    fn runner_script_contains_lb_sync() {
+        let dir = tempfile::tempdir().unwrap();
+        let tmp = write_runner_script(dir.path(), "opus", None).unwrap();
+        let mut content = String::new();
+        File::open(tmp.path()).unwrap().read_to_string(&mut content).unwrap();
+        // Verify lb sync is called after init (not just at the end)
+        let init_pos = content.find("lb init").unwrap();
+        let sync_pos = content.find("lb sync 2>/dev/null || true").unwrap();
+        assert!(sync_pos > init_pos, "lb sync should come after lb init");
+    }
+
+    #[test]
+    fn runner_script_uses_prompt_override() {
+        let dir = tempfile::tempdir().unwrap();
+        let tmp = write_runner_script(dir.path(), "opus", Some("custom prompt here")).unwrap();
+        let mut content = String::new();
+        File::open(tmp.path()).unwrap().read_to_string(&mut content).unwrap();
+        assert!(content.contains("custom prompt here"));
+    }
+
+    #[test]
+    fn runner_script_escapes_single_quotes_in_prompt() {
+        let dir = tempfile::tempdir().unwrap();
+        let tmp = write_runner_script(dir.path(), "opus", Some("don't break")).unwrap();
+        let mut content = String::new();
+        File::open(tmp.path()).unwrap().read_to_string(&mut content).unwrap();
+        // Single quotes should be escaped for shell embedding
+        assert!(content.contains(r"don'\''t break"));
+    }
+
+    #[test]
+    fn runner_script_is_executable() {
+        let dir = tempfile::tempdir().unwrap();
+        let tmp = write_runner_script(dir.path(), "opus", None).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let perms = std::fs::metadata(tmp.path()).unwrap().permissions();
+            assert_eq!(perms.mode() & 0o755, 0o755);
+        }
+    }
+
+    #[test]
+    fn runner_script_has_shebang() {
+        let dir = tempfile::tempdir().unwrap();
+        let tmp = write_runner_script(dir.path(), "opus", None).unwrap();
+        let mut content = String::new();
+        File::open(tmp.path()).unwrap().read_to_string(&mut content).unwrap();
+        assert!(content.starts_with("#!/usr/bin/env bash"));
+    }
+}

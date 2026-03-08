@@ -249,3 +249,45 @@ impl std::fmt::Display for EpicError {
 }
 
 impl std::error::Error for EpicError {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn slug_basic() {
+        assert_eq!(make_slug("Add user authentication"), "add-user-authentication");
+    }
+
+    #[test]
+    fn slug_special_chars() {
+        assert_eq!(make_slug("Fix bug #123 (critical)"), "fix-bug-123-critical");
+    }
+
+    #[test]
+    fn slug_leading_trailing_dashes() {
+        assert_eq!(make_slug("  --hello world--  "), "hello-world");
+    }
+
+    #[test]
+    fn slug_consecutive_dashes() {
+        assert_eq!(make_slug("foo---bar___baz"), "foo-bar-baz");
+    }
+
+    #[test]
+    fn slug_truncates_long_titles() {
+        let long_title = "a".repeat(100);
+        let slug = make_slug(&long_title);
+        assert!(slug.len() <= 50);
+    }
+
+    #[test]
+    fn slug_empty_input() {
+        assert_eq!(make_slug(""), "");
+    }
+
+    #[test]
+    fn slug_all_special_chars() {
+        assert_eq!(make_slug("!@#$%^&*()"), "");
+    }
+}
