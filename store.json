@@ -95,11 +95,10 @@
       "title": "Update loop_cmd: Decision enum, decider schema, branch management",
       "description": "Decision enum: add Ship variant. Decider JSON schema: change from {continue:bool} to {action: continue|ship|stop, reason}. Update should_continue to parse action field. execute(): capture parent_branch before feature branch creation; bootstrap mode stays on main (no branch created); otherwise call shipper::generate_branch_name + create_and_push_branch; track current_branch as mutable; pass branch: Some(current_branch) to RunOptions; run reviewer after litebrite::sync (serial, before decider); handle Ship decision by calling shipper::execute and updating current_branch. Add BranchCreation variant to LoopError. Add git_current_branch helper.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 2,
-      "claimed_by": "agent-runner",
       "created_at": "2026-03-09T15:50:45.692248176Z",
-      "updated_at": "2026-03-09T15:54:14.335787164Z"
+      "updated_at": "2026-03-09T15:55:07.934259211Z"
     },
     "lb-ljfl": {
       "id": "lb-ljfl",
