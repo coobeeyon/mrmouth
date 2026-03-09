@@ -29,6 +29,32 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions) -> Result<(
         if !status.success() {
             return Err(LoopError::Bootstrap("git init failed".into()));
         }
+        // Commit any existing files (e.g. SPEC.md) so the repo has at least one commit
+        // and the file:// remote clone inside the container can succeed.
+        let add_status = Command::new("git")
+            .args(["add", "-A"])
+            .current_dir(repo_root)
+            .status()
+            .map_err(|e| LoopError::Bootstrap(format!("failed to stage files: {e}")))?;
+        if add_status.success() {
+            // Only commit if there's something staged
+            let has_staged = Command::new("git")
+                .args(["diff", "--cached", "--quiet"])
+                .current_dir(repo_root)
+                .status()
+                .map(|s| !s.success())
+                .unwrap_or(false);
+            if has_staged {
+                let commit_status = Command::new("git")
+                    .args(["commit", "-m", "Initial commit"])
+                    .current_dir(repo_root)
+                    .status()
+                    .map_err(|e| LoopError::Bootstrap(format!("failed to commit initial files: {e}")))?;
+                if !commit_status.success() {
+                    return Err(LoopError::Bootstrap("initial commit failed".into()));
+                }
+            }
+        }
     }
 
     // Capture parent branch before creating feature branch
