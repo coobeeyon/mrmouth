@@ -4,7 +4,9 @@ use std::process::{Command, Stdio};
 
 use crate::config::Config;
 use crate::litebrite;
+use crate::reviewer;
 use crate::run::{self, RunOptions};
+use crate::shipper;
 use crate::summary;
 
 pub struct LoopOptions {
@@ -28,6 +30,20 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions) -> Result<(
             return Err(LoopError::Bootstrap("git init failed".into()));
         }
     }
+
+    // Capture parent branch before creating feature branch
+    let parent_branch = git_current_branch(repo_root).unwrap_or_else(|_| "main".into());
+
+    // Create feature branch (unless bootstrap mode — stay on main)
+    let mut current_branch = if bootstrap_mode {
+        parent_branch.clone()
+    } else {
+        let branch_name = shipper::generate_branch_name(repo_root, &config.loop_config.shipper_model)
+            .map_err(|e| LoopError::BranchCreation(format!("failed to generate branch name: {e}")))?;
+        shipper::create_and_push_branch(repo_root, &branch_name)
+            .map_err(|e| LoopError::BranchCreation(format!("failed to create branch: {e}")))?;
+        branch_name
+    };
 
     let max_label = if opts.max_runs == 0 {
         "unlimited".to_string()
@@ -56,7 +72,7 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions) -> Result<(
             timeout: None,
             local: false,
             prompt_override: None,
-            branch: None,
+            branch: Some(current_branch.clone()),
         };
 
         let run_result = run::execute(config, repo_root, run_opts);
@@ -64,8 +80,17 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions) -> Result<(
             eprintln!("Run {run_number} failed: {e}");
         }
 
-        // Sync litebrite so decider sees fresh task state
+        // Sync litebrite so reviewer and decider see fresh task state
         litebrite::sync(repo_root);
+
+        // Run reviewer (serial, before decider)
+        let reviewer_opts = reviewer::ReviewerOptions {
+            model: config.loop_config.reviewer_model.clone(),
+            current_branch: current_branch.clone(),
+        };
+        if let Err(e) = reviewer::execute(repo_root, &reviewer_opts) {
+            eprintln!("Reviewer failed (non-fatal): {e}");
+        }
 
         // Run summary and decider in parallel — they're independent
         let decider_model = config.loop_config.decider_model.clone();
@@ -90,6 +115,25 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions) -> Result<(
             Ok(Decision::Continue(reason)) => {
                 eprintln!("Decider: {reason}");
             }
+            Ok(Decision::Ship(reason)) => {
+                eprintln!("Decider (ship): {reason}");
+
+                let ship_opts = shipper::ShipperOptions {
+                    model: config.loop_config.shipper_model.clone(),
+                    current_branch: current_branch.clone(),
+                    parent_branch: parent_branch.clone(),
+                };
+
+                match shipper::execute(repo_root, &ship_opts) {
+                    Ok(result) => {
+                        eprintln!("Shipped! New branch: {}", result.new_branch);
+                        current_branch = result.new_branch;
+                    }
+                    Err(e) => {
+                        eprintln!("Ship failed (continuing on current branch): {e}");
+                    }
+                }
+            }
             Ok(Decision::Stop(reason)) => {
                 eprintln!("Decider: {reason}");
                 eprintln!();
@@ -113,16 +157,21 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions) -> Result<(
 
 enum Decision {
     Continue(String),
+    Ship(String),
     Stop(String),
 }
 
 fn should_continue(repo_root: &Path, decider_model: &str) -> Result<Decision, LoopError> {
-    let schema = r#"{"type":"object","properties":{"continue":{"type":"boolean","description":"true if the loop should continue, false if done"},"reason":{"type":"string","description":"Brief explanation of the decision"}},"required":["continue","reason"]}"#;
+    let schema = r#"{"type":"object","properties":{"action":{"type":"string","enum":["continue","ship","stop"],"description":"continue = keep working, ship = merge current branch and start new one, stop = all done"},"reason":{"type":"string","description":"Brief explanation of the decision"}},"required":["action","reason"]}"#;
 
-    let prompt = "You are deciding whether an AI agent loop should continue or stop. \
+    let prompt = "You are deciding what an AI agent loop should do next. \
         The project is specified in SPEC.md. You can see in the lites what has been done \
         and what remains to do, and you can compare this to the SPEC.md (which may have changed) \
-        in order to make your decision. Use the return field \"continue\" to communicate your decision.";
+        in order to make your decision.\n\n\
+        Actions:\n\
+        - \"continue\": there is more work to do on the current feature branch\n\
+        - \"ship\": the current batch of work is complete and ready to merge; start a new branch for remaining work\n\
+        - \"stop\": all work is done, no more runs needed";
 
     let mut child = Command::new("claude")
         .args([
@@ -162,13 +211,27 @@ fn should_continue(repo_root: &Path, decider_model: &str) -> Result<Decision, Lo
         .map_err(|e| LoopError::Decider(format!("failed to parse decider output: {e}")))?;
 
     let structured = &parsed["structured_output"];
-    let should_continue = structured["continue"].as_bool().unwrap_or(false);
+    let action = structured["action"].as_str().unwrap_or("continue");
     let reason = structured["reason"].as_str().unwrap_or("no reason given").to_string();
 
-    if should_continue {
-        Ok(Decision::Continue(reason))
+    match action {
+        "ship" => Ok(Decision::Ship(reason)),
+        "stop" => Ok(Decision::Stop(reason)),
+        _ => Ok(Decision::Continue(reason)),
+    }
+}
+
+fn git_current_branch(repo_root: &Path) -> Result<String, LoopError> {
+    let output = Command::new("git")
+        .args(["-C", &repo_root.to_string_lossy(), "branch", "--show-current"])
+        .output()
+        .map_err(|e| LoopError::BranchCreation(format!("failed to get current branch: {e}")))?;
+
+    let branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if branch.is_empty() {
+        Ok("main".into())
     } else {
-        Ok(Decision::Stop(reason))
+        Ok(branch)
     }
 }
 
@@ -176,6 +239,7 @@ fn should_continue(repo_root: &Path, decider_model: &str) -> Result<Decision, Lo
 pub enum LoopError {
     Bootstrap(String),
     Decider(String),
+    BranchCreation(String),
 }
 
 impl std::fmt::Display for LoopError {
@@ -183,6 +247,7 @@ impl std::fmt::Display for LoopError {
         match self {
             Self::Bootstrap(msg) => write!(f, "bootstrap error: {msg}"),
             Self::Decider(msg) => write!(f, "decider error: {msg}"),
+            Self::BranchCreation(msg) => write!(f, "branch creation error: {msg}"),
         }
     }
 }
