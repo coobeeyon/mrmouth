@@ -15,6 +15,7 @@ pub struct RunOptions {
     pub timeout: Option<u32>,
     pub local: bool,
     pub prompt_override: Option<String>,
+    pub branch: Option<String>,
 }
 
 pub fn execute(config: &Config, repo_root: &Path, opts: RunOptions) -> Result<(), RunError> {
@@ -36,9 +37,10 @@ pub fn execute(config: &Config, repo_root: &Path, opts: RunOptions) -> Result<()
             }
         }
     };
-    let branch = config
+    let branch = opts
         .branch
         .clone()
+        .or_else(|| config.branch.clone())
         .unwrap_or_else(|| git_current_branch(repo_root).unwrap_or_else(|_| "main".into()));
 
     // 3. Sync litebrite (best-effort)

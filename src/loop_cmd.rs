@@ -56,6 +56,7 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions) -> Result<(
             timeout: None,
             local: false,
             prompt_override: None,
+            branch: None,
         };
 
         let run_result = run::execute(config, repo_root, run_opts);

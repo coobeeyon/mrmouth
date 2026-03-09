@@ -25,6 +25,8 @@ pub struct LoopConfig {
     pub max_runs: u32,
     pub decider_model: String,
     pub summary_model: String,
+    pub reviewer_model: String,
+    pub shipper_model: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -56,6 +58,8 @@ impl Default for LoopConfig {
             max_runs: 0,
             decider_model: "sonnet".into(),
             summary_model: "haiku".into(),
+            reviewer_model: "sonnet".into(),
+            shipper_model: "sonnet".into(),
         }
     }
 }
@@ -193,6 +197,8 @@ delay = 5
 max_runs = 10
 decider_model = "opus"
 summary_model = "sonnet"
+reviewer_model = "haiku"
+shipper_model = "opus"
 
 [epic]
 timeout = 30
@@ -212,6 +218,8 @@ max_failures = 5
         assert_eq!(config.loop_config.max_runs, 10);
         assert_eq!(config.loop_config.decider_model, "opus");
         assert_eq!(config.loop_config.summary_model, "sonnet");
+        assert_eq!(config.loop_config.reviewer_model, "haiku");
+        assert_eq!(config.loop_config.shipper_model, "opus");
         assert_eq!(config.epic.timeout, 30);
         assert_eq!(config.epic.max_failures, 5);
     }

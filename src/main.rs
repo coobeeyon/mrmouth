@@ -124,6 +124,7 @@ fn main() {
                 timeout,
                 local,
                 prompt_override: None,
+                branch: None,
             };
             if let Err(e) = run::execute(&config, &repo_root, opts) {
                 eprintln!("error: {e}");

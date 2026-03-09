@@ -65,6 +65,7 @@ pub fn execute(config: &Config, repo_root: &Path, opts: EpicOptions) -> Result<(
             timeout: Some(opts.timeout),
             local: false,
             prompt_override: Some(prompt),
+            branch: None,
         };
 
         let run_result = run::execute(config, repo_root, run_opts);
