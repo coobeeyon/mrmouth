@@ -1,0 +1,275 @@
+use std::io::Write;
+use std::path::Path;
+use std::process::{Command, Stdio};
+
+pub struct ShipperOptions {
+    pub model: String,
+    pub current_branch: String,
+    pub parent_branch: String,
+}
+
+pub struct ShipResult {
+    pub new_branch: String,
+}
+
+/// Run the shipper agent: check readiness, merge branch, create next feature branch.
+pub fn execute(repo_root: &Path, opts: &ShipperOptions) -> Result<ShipResult, ShipperError> {
+    // 1. Check readiness
+    check_ready(repo_root, &opts.current_branch)?;
+
+    // 2. Merge current branch into parent
+    merge_branch(repo_root, &opts.current_branch, &opts.parent_branch)?;
+
+    // 3. Generate and create next feature branch
+    let branch_name = generate_branch_name(repo_root, &opts.model)?;
+    create_and_push_branch(repo_root, &branch_name)?;
+
+    Ok(ShipResult { new_branch: branch_name })
+}
+
+/// Ask a claude agent to check if the branch is ready to ship.
+/// Checks lb list for open items and runs tests.
+fn check_ready(repo_root: &Path, current_branch: &str) -> Result<(), ShipperError> {
+    let schema = r#"{"type":"object","properties":{"status":{"type":"string","enum":["READY","BLOCKED"]},"reason":{"type":"string"}},"required":["status","reason"]}"#;
+
+    let prompt = format!(
+        "You are checking if branch '{}' is ready to ship. \
+        Check: (1) run 'lb list -s open' to see if there are open tasks that block shipping, \
+        (2) check if there are any obvious test failures. \
+        Return READY if the branch can be merged, BLOCKED if not.",
+        current_branch
+    );
+
+    let mut child = Command::new("claude")
+        .args([
+            "-p",
+            "--no-session-persistence",
+            "--model", "haiku",
+            "--allowedTools", "Bash(lb *),Bash(cargo test *)",
+            "--output-format", "json",
+            "--json-schema", schema,
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::inherit())
+        .current_dir(repo_root)
+        .spawn()
+        .map_err(|e| ShipperError(format!("failed to run readiness check: {e}")))?;
+
+    if let Some(mut stdin) = child.stdin.take() {
+        let _ = stdin.write_all(prompt.as_bytes());
+    }
+
+    let output = child
+        .wait_with_output()
+        .map_err(|e| ShipperError(format!("readiness check failed: {e}")))?;
+
+    if !output.status.success() {
+        return Err(ShipperError(format!(
+            "readiness check exited with code {}",
+            output.status.code().unwrap_or(-1)
+        )));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let parsed: serde_json::Value = serde_json::from_str(stdout.trim())
+        .map_err(|e| ShipperError(format!("failed to parse readiness output: {e}")))?;
+
+    let structured = &parsed["structured_output"];
+    let status = structured["status"].as_str().unwrap_or("BLOCKED");
+    let reason = structured["reason"].as_str().unwrap_or("no reason given");
+
+    if status == "BLOCKED" {
+        return Err(ShipperError(format!("branch not ready to ship: {reason}")));
+    }
+
+    eprintln!("Readiness check passed: {reason}");
+    Ok(())
+}
+
+/// Merge current_branch into parent_branch.
+/// Uses git merge --no-ff for file-remote repos, or gh pr create+merge for GitHub.
+fn merge_branch(
+    repo_root: &Path,
+    current_branch: &str,
+    parent_branch: &str,
+) -> Result<(), ShipperError> {
+    let has_github_remote = Command::new("git")
+        .args(["-C", &repo_root.to_string_lossy(), "remote", "get-url", "origin"])
+        .output()
+        .map(|o| o.status.success() && String::from_utf8_lossy(&o.stdout).contains("github.com"))
+        .unwrap_or(false);
+
+    if has_github_remote {
+        // GitHub flow: create PR and merge
+        eprintln!("Creating and merging PR: {current_branch} -> {parent_branch}");
+
+        let pr_create = Command::new("gh")
+            .args([
+                "pr", "create",
+                "--base", parent_branch,
+                "--head", current_branch,
+                "--title", &format!("Merge {current_branch}"),
+                "--body", "Auto-merged by mrmouth shipper.",
+            ])
+            .current_dir(repo_root)
+            .output()
+            .map_err(|e| ShipperError(format!("failed to create PR: {e}")))?;
+
+        if !pr_create.status.success() {
+            let stderr = String::from_utf8_lossy(&pr_create.stderr);
+            // PR may already exist — that's fine
+            if !stderr.contains("already exists") {
+                return Err(ShipperError(format!("gh pr create failed: {stderr}")));
+            }
+        }
+
+        let pr_merge = Command::new("gh")
+            .args(["pr", "merge", current_branch, "--merge", "--delete-branch"])
+            .current_dir(repo_root)
+            .status()
+            .map_err(|e| ShipperError(format!("failed to merge PR: {e}")))?;
+
+        if !pr_merge.success() {
+            return Err(ShipperError("gh pr merge failed".into()));
+        }
+
+        // Update local repo
+        let _ = Command::new("git")
+            .args(["-C", &repo_root.to_string_lossy(), "checkout", parent_branch])
+            .status();
+        let _ = Command::new("git")
+            .args(["-C", &repo_root.to_string_lossy(), "pull", "--ff-only"])
+            .status();
+    } else {
+        // File-remote / local flow: git merge --no-ff
+        eprintln!("Merging {current_branch} into {parent_branch} (no-ff)...");
+
+        let checkout = Command::new("git")
+            .args(["-C", &repo_root.to_string_lossy(), "checkout", parent_branch])
+            .status()
+            .map_err(|e| ShipperError(format!("failed to checkout {parent_branch}: {e}")))?;
+        if !checkout.success() {
+            return Err(ShipperError(format!("failed to checkout {parent_branch}")));
+        }
+
+        let merge = Command::new("git")
+            .args([
+                "-C", &repo_root.to_string_lossy(),
+                "merge", "--no-ff", current_branch,
+                "-m", &format!("Merge branch '{current_branch}'"),
+            ])
+            .status()
+            .map_err(|e| ShipperError(format!("merge failed: {e}")))?;
+        if !merge.success() {
+            return Err(ShipperError(format!("merge of {current_branch} failed")));
+        }
+
+        // Delete the old feature branch
+        let _ = Command::new("git")
+            .args(["-C", &repo_root.to_string_lossy(), "branch", "-d", current_branch])
+            .status();
+    }
+
+    Ok(())
+}
+
+/// Ask claude to generate a short branch name based on SPEC.md context.
+pub fn generate_branch_name(repo_root: &Path, model: &str) -> Result<String, ShipperError> {
+    let schema = r#"{"type":"object","properties":{"name":{"type":"string","description":"2-4 word kebab-case slug for the branch"}},"required":["name"]}"#;
+
+    let prompt = "Read SPEC.md and the current litebrite task state (lb ready). \
+        Generate a short 2-4 word kebab-case name describing the next batch of work. \
+        Examples: review-ship-flow, docker-caching, test-coverage. \
+        Just the slug, no 'feat-' prefix.";
+
+    let mut child = Command::new("claude")
+        .args([
+            "-p",
+            "--no-session-persistence",
+            "--model", model,
+            "--allowedTools", "Read,Bash(lb *)",
+            "--output-format", "json",
+            "--json-schema", schema,
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::inherit())
+        .current_dir(repo_root)
+        .spawn()
+        .map_err(|e| ShipperError(format!("failed to generate branch name: {e}")))?;
+
+    if let Some(mut stdin) = child.stdin.take() {
+        let _ = stdin.write_all(prompt.as_bytes());
+    }
+
+    let output = child
+        .wait_with_output()
+        .map_err(|e| ShipperError(format!("branch name generation failed: {e}")))?;
+
+    if !output.status.success() {
+        // Fallback to timestamp
+        let ts = chrono::Local::now().format("%Y%m%d-%H%M%S");
+        return Ok(format!("feat-{ts}"));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let parsed: serde_json::Value = serde_json::from_str(stdout.trim()).unwrap_or_default();
+    let slug = parsed["structured_output"]["name"]
+        .as_str()
+        .unwrap_or("")
+        .trim()
+        .to_lowercase()
+        .replace(' ', "-");
+
+    if slug.is_empty() {
+        let ts = chrono::Local::now().format("%Y%m%d-%H%M%S");
+        Ok(format!("feat-{ts}"))
+    } else {
+        Ok(format!("feat-{slug}"))
+    }
+}
+
+/// Create a new branch and push it to origin (if a remote exists).
+pub fn create_and_push_branch(repo_root: &Path, branch_name: &str) -> Result<(), ShipperError> {
+    let status = Command::new("git")
+        .args(["-C", &repo_root.to_string_lossy(), "checkout", "-b", branch_name])
+        .status()
+        .map_err(|e| ShipperError(format!("failed to create branch {branch_name}: {e}")))?;
+
+    if !status.success() {
+        return Err(ShipperError(format!("git checkout -b {branch_name} failed")));
+    }
+
+    // Push to origin if remote exists
+    let has_remote = Command::new("git")
+        .args(["-C", &repo_root.to_string_lossy(), "remote", "get-url", "origin"])
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+
+    if has_remote {
+        let push = Command::new("git")
+            .args(["-C", &repo_root.to_string_lossy(), "push", "-u", "origin", branch_name])
+            .status()
+            .map_err(|e| ShipperError(format!("failed to push branch: {e}")))?;
+
+        if !push.success() {
+            eprintln!("Warning: failed to push branch {branch_name} to origin");
+        }
+    }
+
+    eprintln!("Created branch: {branch_name}");
+    Ok(())
+}
+
+#[derive(Debug)]
+pub struct ShipperError(String);
+
+impl std::fmt::Display for ShipperError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl std::error::Error for ShipperError {}

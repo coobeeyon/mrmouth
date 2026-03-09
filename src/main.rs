@@ -4,7 +4,9 @@ mod epic;
 mod litebrite;
 mod loop_cmd;
 mod prompt;
+mod reviewer;
 mod run;
+mod shipper;
 pub mod stream_fmt;
 mod summary;
 
