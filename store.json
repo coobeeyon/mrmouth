@@ -60,6 +60,16 @@
       "created_at": "2026-03-08T20:58:54.952121479Z",
       "updated_at": "2026-03-08T21:00:10.717950372Z"
     },
+    "lb-uiox": {
+      "id": "lb-uiox",
+      "title": "Add reviewer_model and shipper_model to LoopConfig",
+      "description": "src/config.rs: add reviewer_model (default sonnet) and shipper_model (default sonnet) to LoopConfig struct and its Default impl. Update full_config_parses test.",
+      "item_type": "task",
+      "status": "open",
+      "priority": 2,
+      "created_at": "2026-03-09T15:50:45.672099761Z",
+      "updated_at": "2026-03-09T15:50:45.672099761Z"
+    },
     "lb-y354": {
       "id": "lb-y354",
       "title": "Add unit tests for run.rs helper functions",
@@ -71,5 +81,11 @@
       "updated_at": "2026-03-08T21:00:53.740269267Z"
     }
   },
-  "deps": []
+  "deps": [
+    {
+      "from_id": "lb-uiox",
+      "to_id": "lb-hwg3",
+      "dep_type": "parent"
+    }
+  ]
 }
