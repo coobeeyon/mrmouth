@@ -30,6 +30,16 @@
       "created_at": "2026-03-08T20:59:00.887231581Z",
       "updated_at": "2026-03-08T20:59:43.845061038Z"
     },
+    "lb-hwg3": {
+      "id": "lb-hwg3",
+      "title": "Reviewer, Shipper, and Branch-per-Feature",
+      "description": "Add reviewer and shipper agents to mrmouth loop, plus branch-per-feature management. Workers always work on a feature branch; reviewer runs after each worker pass; decider gains ship action; shipper handles merging and creates next branch.",
+      "item_type": "epic",
+      "status": "open",
+      "priority": 2,
+      "created_at": "2026-03-09T15:48:52.310349878Z",
+      "updated_at": "2026-03-09T15:48:52.310349878Z"
+    },
     "lb-ljfl": {
       "id": "lb-ljfl",
       "title": "Add --init flag to docker run to reap zombie processes",
