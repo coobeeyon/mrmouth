@@ -60,6 +60,16 @@
       "created_at": "2026-03-08T21:46:59.180761897Z",
       "updated_at": "2026-03-08T21:47:28.159597776Z"
     },
+    "lb-5yis": {
+      "id": "lb-5yis",
+      "title": "Modify src/summary.rs: switch to stream-json, use streaming helper",
+      "description": "Currently summary uses no --output-format flag (defaults to plain text stdout). The summary text appears but the agent's tool calls (Read, Write) are invisible.\n\nChanges:\n1. Add --output-format stream-json to the claude CLI args.\n2. Also add --allowedTools to include Read,Write (already there).\n3. Replace manual stdout/stderr tee with run_streaming_claude(child, &mut formatter, logger).\n4. The summary text still gets written to the summary file (agent does this via Write tool).\n5. Remove existing tee_stdout and tee_stderr calls.\n\nResult: SUMMARY pane shows agent reading the JSONL log, writing the summary, and final output — all formatted with colors just like the main agent session.",
+      "item_type": "task",
+      "status": "open",
+      "priority": 1,
+      "created_at": "2026-03-10T13:15:44.665828228Z",
+      "updated_at": "2026-03-10T13:15:44.665828228Z"
+    },
     "lb-68yw": {
       "id": "lb-68yw",
       "title": "Modify src/epic.rs: thread TUI into run::execute calls",
@@ -244,6 +254,11 @@
     },
     {
       "from_id": "lb-cqhc",
+      "to_id": "lb-cmnc",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-5yis",
       "to_id": "lb-cmnc",
       "dep_type": "parent"
     }
