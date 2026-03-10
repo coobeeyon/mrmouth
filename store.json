@@ -137,8 +137,9 @@
       "item_type": "task",
       "status": "open",
       "priority": 1,
+      "claimed_by": "agent-runner",
       "created_at": "2026-03-10T13:15:10.984337128Z",
-      "updated_at": "2026-03-10T13:15:10.984337128Z"
+      "updated_at": "2026-03-10T14:34:42.946225940Z"
     },
     "lb-h5wx": {
       "id": "lb-h5wx",
