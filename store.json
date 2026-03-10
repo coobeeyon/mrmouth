@@ -140,6 +140,16 @@
       "created_at": "2026-03-10T13:15:10.984337128Z",
       "updated_at": "2026-03-10T14:35:11.265418923Z"
     },
+    "lb-glnx": {
+      "id": "lb-glnx",
+      "title": "StreamFormatter created with is_tty=false for TUI targets in streaming.rs",
+      "description": "In src/streaming.rs, run_streaming_claude callers create StreamFormatter::new(logger.map_or(true, |l| !l.has_tui())). When TUI is active (has_tui()=true), this evaluates to is_tty=false, stripping all ANSI color codes. But the TUI uses ansi_to_tui to render ANSI-coded text, so it CAN display colors. The result is that reviewer, decider, shipper, and summary sub-agent output shows in the TUI without any colors. The flag should be true when the target is a TUI pane.",
+      "item_type": "task",
+      "status": "open",
+      "priority": 2,
+      "created_at": "2026-03-10T14:39:16.687201300Z",
+      "updated_at": "2026-03-10T14:39:16.687201300Z"
+    },
     "lb-h5wx": {
       "id": "lb-h5wx",
       "title": "Add branch field to RunOptions",
