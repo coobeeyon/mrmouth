@@ -10,7 +10,7 @@ pub struct Config {
     pub model: String,
     pub image: String,
     pub dockerfile: String,
-    pub volume: String,
+    pub volume: Option<String>,
     pub log_dir: String,
     pub branch: Option<String>,
     #[serde(rename = "loop")]
@@ -42,7 +42,7 @@ impl Default for Config {
             model: "opus".into(),
             image: "mrmouth-runner".into(),
             dockerfile: ".mrmouth/Dockerfile".into(),
-            volume: "mrmouth-claude-home".into(),
+            volume: None,
             log_dir: "logs".into(),
             branch: None,
             loop_config: LoopConfig::default(),
@@ -74,6 +74,22 @@ impl Default for EpicConfig {
 }
 
 impl Config {
+    /// Returns the effective volume name: user-configured value, or a name derived
+    /// from the repo root directory so each project gets isolated Claude memory.
+    pub fn effective_volume(&self, repo_root: &Path) -> String {
+        if let Some(ref v) = self.volume {
+            return v.clone();
+        }
+        let slug: String = repo_root
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("default")
+            .chars()
+            .map(|c| if c.is_alphanumeric() || c == '-' { c } else { '-' })
+            .collect();
+        format!("mrmouth-claude-home-{slug}")
+    }
+
     /// Load config from `.mrmouth/config.toml` relative to `repo_root`.
     /// Returns defaults if the file doesn't exist.
     pub fn load(repo_root: &Path) -> Result<Self, ConfigError> {
@@ -211,7 +227,7 @@ max_failures = 5
         assert_eq!(config.model, "haiku");
         assert_eq!(config.image, "my-image");
         assert_eq!(config.dockerfile, "custom/Dockerfile");
-        assert_eq!(config.volume, "my-vol");
+        assert_eq!(config.volume.as_deref(), Some("my-vol"));
         assert_eq!(config.log_dir, "my-logs");
         assert_eq!(config.branch.as_deref(), Some("dev"));
         assert_eq!(config.loop_config.delay, 5);
@@ -222,6 +238,27 @@ max_failures = 5
         assert_eq!(config.loop_config.shipper_model, "opus");
         assert_eq!(config.epic.timeout, 30);
         assert_eq!(config.epic.max_failures, 5);
+    }
+
+    #[test]
+    fn effective_volume_uses_repo_name_when_not_configured() {
+        let config = Config::default();
+        let path = std::path::Path::new("/some/path/myproject");
+        assert_eq!(config.effective_volume(path), "mrmouth-claude-home-myproject");
+    }
+
+    #[test]
+    fn effective_volume_sanitizes_special_chars() {
+        let config = Config::default();
+        let path = std::path::Path::new("/some/path/my.project_v2");
+        assert_eq!(config.effective_volume(path), "mrmouth-claude-home-my-project-v2");
+    }
+
+    #[test]
+    fn effective_volume_uses_configured_value() {
+        let config = Config { volume: Some("custom-vol".into()), ..Config::default() };
+        let path = std::path::Path::new("/some/path/myproject");
+        assert_eq!(config.effective_volume(path), "custom-vol");
     }
 
     #[test]

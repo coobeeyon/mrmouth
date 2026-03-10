@@ -56,8 +56,9 @@ pub fn execute(config: &Config, repo_root: &Path, opts: RunOptions) -> Result<()
         .map_err(RunError::Docker)?;
 
     // 6. Ensure persistent volume
+    let volume = config.effective_volume(repo_root);
     docker
-        .ensure_volume(&config.volume)
+        .ensure_volume(&volume)
         .map_err(RunError::Docker)?;
 
     // 7. Set up logging
@@ -81,7 +82,7 @@ pub fn execute(config: &Config, repo_root: &Path, opts: RunOptions) -> Result<()
         repo_url,
         branch: branch.clone(),
         runner_script: runner_script.path().to_path_buf(),
-        volume: config.volume.clone(),
+        volume,
         local: opts.local,
         file_remote_path: file_remote_path.clone(),
         timeout_secs: opts.timeout.map(|m| m as u64 * 60),
