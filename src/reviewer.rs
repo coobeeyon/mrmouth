@@ -1,8 +1,8 @@
-use std::io::Write;
 use std::path::Path;
-use std::process::{Command, Stdio};
 
 use crate::logger::Logger;
+use crate::stream_fmt::StreamFormatter;
+use crate::streaming::{self, StreamTarget};
 
 pub struct ReviewerOptions {
     pub model: String,
@@ -31,56 +31,31 @@ pub fn execute(repo_root: &Path, opts: &ReviewerOptions, logger: Option<&Logger>
         opts.current_branch
     );
 
-    let mut child = Command::new("claude")
-        .args([
-            "-p",
-            "--no-session-persistence",
-            "--model", &opts.model,
-            "--allowedTools", "Read,Bash(git diff *),Bash(git log *),Bash(lb *)",
-            "--output-format", "json",
-        ])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .current_dir(repo_root)
+    let mut cmd = streaming::claude_stream_cmd(
+        repo_root,
+        &opts.model,
+        "Read,Bash(git diff *),Bash(git log *),Bash(lb *)",
+    );
+
+    let mut child = cmd
         .spawn()
         .map_err(|e| ReviewerError(format!("failed to run claude CLI: {e}")))?;
 
-    if let Some(mut stdin) = child.stdin.take() {
-        let _ = stdin.write_all(prompt.as_bytes());
-    }
+    streaming::send_prompt(&mut child, &prompt);
 
-    // Tee stderr to terminal + log file
-    let tee_handle = if let Some(stderr) = child.stderr.take() {
-        if let Some(l) = logger {
-            Some(l.tee_stderr(stderr))
-        } else {
-            // No logger — drain to eprintln! in a thread
-            Some(std::thread::spawn(move || {
-                use std::io::BufRead;
-                let reader = std::io::BufReader::new(stderr);
-                for line in reader.lines().map_while(Result::ok) {
-                    eprintln!("{line}");
-                }
-            }))
-        }
-    } else {
-        None
+    let target = match logger.and_then(|l| l.tui_sender()) {
+        Some(tui) => StreamTarget::Tui(tui.with_label("CODE REVIEW")),
+        None => StreamTarget::Stderr,
     };
 
-    let status = child
-        .wait()
-        .map_err(|e| ReviewerError(format!("failed to wait for claude CLI: {e}")))?;
+    let mut formatter = StreamFormatter::new(logger.map_or(true, |l| !l.has_tui()));
 
-    // Wait for stderr drain to complete
-    if let Some(h) = tee_handle {
-        let _ = h.join();
-    }
+    let (_result, exit_code) = streaming::run_streaming_claude(child, &mut formatter, logger, &target)
+        .map_err(|e| ReviewerError(format!("streaming error: {e}")))?;
 
-    if !status.success() {
+    if exit_code != 0 {
         return Err(ReviewerError(format!(
-            "claude CLI exited with code {}",
-            status.code().unwrap_or(-1)
+            "claude CLI exited with code {exit_code}"
         )));
     }
 
