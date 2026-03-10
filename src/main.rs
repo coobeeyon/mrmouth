@@ -121,6 +121,14 @@ fn main() {
         }
     };
 
+    // Start TUI unless --raw is set or stderr is not a TTY
+    let use_raw = matches!(cli.command, Commands::Run { raw: true, .. });
+    let tui = if use_raw {
+        None
+    } else {
+        tui::TuiHandle::try_start()
+    };
+
     match cli.command {
         Commands::Run { raw, model, timeout, local } => {
             let opts = run::RunOptions {
@@ -131,7 +139,7 @@ fn main() {
                 prompt_override: None,
                 branch: None,
             };
-            if let Err(e) = run::execute(&config, &repo_root, opts, None).map(|_| ()) {
+            if let Err(e) = run::execute(&config, &repo_root, opts, tui.as_ref()).map(|_| ()) {
                 eprintln!("error: {e}");
                 std::process::exit(1);
             }
@@ -143,7 +151,7 @@ fn main() {
                 no_summary,
                 model: model.unwrap_or_else(|| config.model.clone()),
             };
-            if let Err(e) = loop_cmd::execute(&config, &repo_root, opts) {
+            if let Err(e) = loop_cmd::execute(&config, &repo_root, opts, tui.as_ref()) {
                 eprintln!("error: {e}");
                 std::process::exit(1);
             }
@@ -155,7 +163,7 @@ fn main() {
                 max_failures: max_failures.unwrap_or(config.epic.max_failures),
                 model: model.unwrap_or_else(|| config.model.clone()),
             };
-            if let Err(e) = epic::execute(&config, &repo_root, opts) {
+            if let Err(e) = epic::execute(&config, &repo_root, opts, tui.as_ref()) {
                 eprintln!("error: {e}");
                 std::process::exit(1);
             }
@@ -170,4 +178,5 @@ fn main() {
             }
         }
     }
+    // TuiHandle drops here → clean terminal restore
 }

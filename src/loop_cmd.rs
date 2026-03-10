@@ -9,6 +9,7 @@ use crate::reviewer;
 use crate::run::{self, RunOptions};
 use crate::shipper;
 use crate::summary;
+use crate::tui::TuiHandle;
 
 pub struct LoopOptions {
     pub delay: u32,
@@ -17,7 +18,7 @@ pub struct LoopOptions {
     pub model: String,
 }
 
-pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions) -> Result<(), LoopError> {
+pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions, tui: Option<&TuiHandle>) -> Result<(), LoopError> {
     // Cold-start: no git repo yet — init one and run in local (bind-mount) mode
     let bootstrap_mode = !repo_root.join(".git").exists();
     if bootstrap_mode {
@@ -115,7 +116,7 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions) -> Result<(
         let head_before = git_head(repo_root);
 
         // run::execute prints its own ITERATION banner with branch + timestamp
-        let run_result = run::execute(config, repo_root, run_opts, None);
+        let run_result = run::execute(config, repo_root, run_opts, tui);
         let logger_opt: Option<Logger> = match run_result {
             Ok(logger) => Some(logger),
             Err(e) => {

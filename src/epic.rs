@@ -4,6 +4,7 @@ use std::process::Command;
 use crate::config::Config;
 use crate::litebrite;
 use crate::run::{self, RunOptions};
+use crate::tui::TuiHandle;
 
 fn make_banner(label: &str) -> String {
     const WIDTH: usize = 80;
@@ -20,7 +21,7 @@ pub struct EpicOptions {
     pub model: String,
 }
 
-pub fn execute(config: &Config, repo_root: &Path, opts: EpicOptions) -> Result<(), EpicError> {
+pub fn execute(config: &Config, repo_root: &Path, opts: EpicOptions, tui: Option<&TuiHandle>) -> Result<(), EpicError> {
     // 1. Verify the epic exists
     let epic_info = lb_show(repo_root, &opts.epic_id)?;
     eprintln!("{}", make_banner(&format!("EPIC: {}", epic_info)));
@@ -75,7 +76,7 @@ pub fn execute(config: &Config, repo_root: &Path, opts: EpicOptions) -> Result<(
             branch: None,
         };
 
-        let run_result = run::execute(config, repo_root, run_opts, None);
+        let run_result = run::execute(config, repo_root, run_opts, tui);
 
         match run_result {
             Ok(_logger) => {
