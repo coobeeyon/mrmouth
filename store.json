@@ -177,8 +177,9 @@
       "item_type": "task",
       "status": "open",
       "priority": 2,
+      "claimed_by": "Michael Daum",
       "created_at": "2026-03-10T16:12:23.648585075Z",
-      "updated_at": "2026-03-10T16:12:27.531911775Z"
+      "updated_at": "2026-03-10T16:13:17.165649069Z"
     },
     "lb-glnx": {
       "id": "lb-glnx",
