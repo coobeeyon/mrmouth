@@ -280,7 +280,7 @@ fn draw(
             .iter()
             .flat_map(|s| {
                 // ansi-to-tui parses ANSI escape codes into styled ratatui Lines
-                match ansi_to_tui::IntoText::into_text(s.as_str()) {
+                match ansi_to_tui::IntoText::into_text(s) {
                     Ok(text) => text.lines,
                     Err(_) => vec![Line::raw(s.as_str())],
                 }

@@ -139,7 +139,7 @@ fn main() {
                 prompt_override: None,
                 branch: None,
             };
-            run::execute(&config, &repo_root, opts, tui.as_ref()).map(|_| ())
+            run::execute(&config, &repo_root, opts, tui.as_ref()).map(|_| ()).map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
         }
         Commands::Loop { delay, max_runs, no_summary, model } => {
             let opts = loop_cmd::LoopOptions {
@@ -148,7 +148,7 @@ fn main() {
                 no_summary,
                 model: model.unwrap_or_else(|| config.model.clone()),
             };
-            loop_cmd::execute(&config, &repo_root, opts, tui.as_ref())
+            loop_cmd::execute(&config, &repo_root, opts, tui.as_ref()).map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
         }
         Commands::Epic { epic_id, timeout, max_failures, model } => {
             let opts = epic::EpicOptions {
@@ -157,13 +157,13 @@ fn main() {
                 max_failures: max_failures.unwrap_or(config.epic.max_failures),
                 model: model.unwrap_or_else(|| config.model.clone()),
             };
-            epic::execute(&config, &repo_root, opts, tui.as_ref())
+            epic::execute(&config, &repo_root, opts, tui.as_ref()).map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
         }
         Commands::Summary { log_file } => {
             let log_file = log_file.unwrap_or_else(|| {
                 format!("{}/latest.jsonl", config.log_dir)
             });
-            summary::execute(&config, &repo_root, &log_file, None)
+            summary::execute(&config, &repo_root, &log_file, None).map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
         }
     };
 
