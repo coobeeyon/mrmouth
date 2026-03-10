@@ -27,8 +27,9 @@
       "item_type": "task",
       "status": "open",
       "priority": 1,
+      "claimed_by": "agent-runner",
       "created_at": "2026-03-10T13:14:29.882698719Z",
-      "updated_at": "2026-03-10T13:14:29.882698719Z"
+      "updated_at": "2026-03-10T14:24:05.278238363Z"
     },
     "lb-34j5": {
       "id": "lb-34j5",
