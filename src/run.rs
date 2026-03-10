@@ -55,7 +55,7 @@ pub fn execute(config: &Config, repo_root: &Path, opts: RunOptions, tui: Option<
 
     // 2. Resolve repo URL
     let (repo_url, file_remote_path) = if opts.local {
-        (git_remote_url(repo_root).unwrap_or_default(), None)
+        (String::new(), None)
     } else {
         match git_remote_url(repo_root) {
             Some(url) => (url, None),
