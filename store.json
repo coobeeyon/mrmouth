@@ -210,6 +210,16 @@
       "created_at": "2026-03-08T21:48:32.914164419Z",
       "updated_at": "2026-03-08T21:48:53.759661473Z"
     },
+    "lb-pmal": {
+      "id": "lb-pmal",
+      "title": "epic.rs uses raw eprintln bypassing TUI routing",
+      "description": "src/epic.rs has ~12 direct eprintln! calls throughout execute(). When TUI is active, stderr is in alternate screen mode (crossterm EnterAlternateScreen). Raw eprintln to stderr in this mode either corrupts TUI rendering or produces invisible output. epic.rs needs to receive a Logger or TuiHandle and route all its status output through it.",
+      "item_type": "task",
+      "status": "open",
+      "priority": 2,
+      "created_at": "2026-03-10T14:39:11.660452237Z",
+      "updated_at": "2026-03-10T14:39:11.660452237Z"
+    },
     "lb-q88t": {
       "id": "lb-q88t",
       "title": "Add ratatui, crossterm, ansi-to-tui to Cargo.toml",
