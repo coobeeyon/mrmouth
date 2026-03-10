@@ -189,10 +189,19 @@ pub fn execute(config: &Config, repo_root: &Path, opts: RunOptions, tui: Option<
         let _ = std::os::unix::fs::symlink(&log_filename, &latest_log);
     }
 
-    // 12. Clean up container
+    // 12. Extract updated Dockerfile from container (agent may have modified it)
+    if !opts.local {
+        let dockerfile_dest = repo_root.join(&config.dockerfile);
+        let container_path = format!("/home/runner/workspace/{}", config.dockerfile);
+        if DockerBuilder::copy_from_container(&container_name, &container_path, &dockerfile_dest) {
+            logger.log("Extracted updated Dockerfile from container.");
+        }
+    }
+
+    // 13. Clean up container
     DockerBuilder::remove_container(&container_name);
 
-    // 13. Post-run sync
+    // 14. Post-run sync
     logger.banner("POST-RUN");
 
     if !opts.local && file_remote_path.is_none() {

@@ -150,7 +150,6 @@ impl DockerBuilder {
     pub fn run(&self, args: &ContainerArgs) -> Result<ContainerHandle, DockerError> {
         let mut cmd = Command::new("docker");
         cmd.arg("run");
-        cmd.arg("--rm");
         cmd.arg("--init");
         cmd.args(["--name", &args.name]);
 
@@ -225,6 +224,21 @@ impl DockerBuilder {
             child,
             watchdog_cancelled: cancelled,
         })
+    }
+
+    /// Copy a file from a stopped container to a local path (best-effort).
+    /// Returns true if the copy succeeded.
+    pub fn copy_from_container(container_name: &str, container_path: &str, local_path: &Path) -> bool {
+        let status = Command::new("docker")
+            .args([
+                "cp",
+                &format!("{container_name}:{container_path}"),
+                &local_path.to_string_lossy(),
+            ])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+        matches!(status, Ok(s) if s.success())
     }
 
     /// Stop a running container by name (best-effort).
