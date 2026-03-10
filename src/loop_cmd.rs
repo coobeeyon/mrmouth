@@ -163,9 +163,11 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions, tui: Option
                 model: config.loop_config.reviewer_model.clone(),
                 current_branch: current_branch.clone(),
             };
-            if let Err(e) = reviewer::execute(repo_root, &reviewer_opts, reviewer_logger.as_ref()) {
+            if let Err(e) = reviewer::execute(config, repo_root, &reviewer_opts, reviewer_logger.as_ref()) {
                 crate::logger::log(logger_opt.as_ref(), &format!("Reviewer failed (non-fatal): {e}"));
             }
+            // Sync lb state pushed by reviewer container back to host
+            litebrite::sync(repo_root);
         } else {
             crate::logger::log(logger_opt.as_ref(), "Reviewer skipped: no new commits from this run.");
         }
@@ -207,7 +209,7 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions, tui: Option
                     parent_branch: parent_branch.clone(),
                 };
 
-                match shipper::execute(repo_root, &ship_opts, logger_opt.as_ref()) {
+                match shipper::execute(config, repo_root, &ship_opts, logger_opt.as_ref()) {
                     Ok(result) => {
                         crate::logger::log(logger_opt.as_ref(), &format!("Shipped! New branch: {}", result.new_branch));
                         current_branch = result.new_branch;

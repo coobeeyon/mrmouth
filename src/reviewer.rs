@@ -1,66 +1,176 @@
+use std::io::{IsTerminal, Write};
 use std::path::Path;
+use std::process::Command;
 
+use crate::config::Config;
+use crate::docker::{ContainerArgs, DockerBuilder};
 use crate::logger::Logger;
-use crate::stream_fmt::StreamFormatter;
-use crate::streaming::{self, StreamTarget};
+use crate::stream_fmt::{self, StreamFormatter};
 
 pub struct ReviewerOptions {
     pub model: String,
     pub current_branch: String,
 }
 
-/// Run a reviewer agent that inspects changes on the current branch vs SPEC.md.
-/// Creates litebrite items for issues found and closes done items.
-/// Non-fatal — errors are logged but don't stop the loop.
-pub fn execute(repo_root: &Path, opts: &ReviewerOptions, logger: Option<&Logger>) -> Result<(), ReviewerError> {
+/// Run a reviewer agent inside the project Docker container so it has access
+/// to the project's build toolchain. Inspects changes on the current branch
+/// vs SPEC.md, verifies the build and tests pass, and creates/closes litebrite
+/// items for issues found. Non-fatal — errors are logged but don't stop the loop.
+pub fn execute(config: &Config, repo_root: &Path, opts: &ReviewerOptions, logger: Option<&Logger>) -> Result<(), ReviewerError> {
     crate::logger::banner(logger, &format!("CODE REVIEW  branch={}", opts.current_branch));
 
     let prompt = format!(
         "You are a code reviewer for this project. Review the changes on branch '{}' \
         against the project spec (SPEC.md). Use git diff and git log to understand what changed. \
         Use lb commands to inspect task state.\n\n\
+        First, verify the project builds and all tests pass. Discover the correct build/test \
+        commands by examining the project structure (Makefile, package.json, Cargo.toml, etc.) \
+        and run them. A build failure or test failure is a blocking issue that must be filed.\n\n\
         Context: You are one step in an automated loop with multiple checks and balances. \
         If you find real issues, another agent will fix them and you will review again. \
         This means you must not miss genuine problems — but you also must not invent them. \
         A clean review is a valid and useful outcome. If the code looks good, say so and stop. \
         Do not manufacture issues to justify your existence.\n\n\
-        If you find issues (bugs, spec deviations, missing tests, code quality problems), \
+        If you find issues (bugs, spec deviations, missing tests, build/test failures, code quality problems), \
         create litebrite items for them: lb create \"<title>\" -d \"<description>\"\n\n\
         If you see completed items that are still open, close them: lb close <id>\n\n\
         Be concise. Only flag real issues, not style nits.",
         opts.current_branch
     );
 
-    let mut cmd = streaming::claude_stream_cmd(
-        repo_root,
-        &opts.model,
-        "Read,Bash(git diff *),Bash(git log *),Bash(lb *)",
+    let escaped_prompt = prompt.replace('\'', "'\\''");
+    let model = &opts.model;
+
+    let script = format!(
+        r#"#!/usr/bin/env bash
+set -euo pipefail
+
+repo_url="${{REPO_URL:-}}"
+branch="${{BRANCH:-main}}"
+work_dir="$HOME/workspace"
+
+# Clone repo
+if [ ! -d "$work_dir/.git" ]; then
+  if [ -n "$repo_url" ]; then
+    echo "Cloning $repo_url (branch: $branch)..."
+    git clone --branch "$branch" "$repo_url" "$work_dir"
+  fi
+fi
+cd "$work_dir"
+git config --global --add safe.directory "$work_dir"
+
+# Initialize litebrite
+if [ -d "$work_dir/.git" ]; then
+  echo "Initializing litebrite..."
+  lb init
+  lb setup claude 2>/dev/null || true
+  lb sync 2>/dev/null || true
+fi
+
+# Restore .claude.json from persisted backup if missing
+claude_config="$HOME/.claude.json"
+if [ ! -f "$claude_config" ] && [ -d "$HOME/.claude/backups" ]; then
+  latest_backup=$(ls -t "$HOME/.claude/backups/.claude.json.backup."* 2>/dev/null | head -1)
+  if [ -n "$latest_backup" ]; then
+    cp "$latest_backup" "$claude_config"
+    echo "Restored .claude.json from backup."
+  fi
+fi
+
+# Run reviewer
+echo "Starting code review..."
+claude -p --dangerously-skip-permissions --verbose --output-format stream-json --model {model} '{escaped_prompt}'
+echo "Code review complete."
+
+# Push lb state changes back so the host loop can sync them
+if [ -d "$work_dir/.git" ]; then
+  lb sync 2>/dev/null || true
+  git push 2>/dev/null || true
+fi
+"#
     );
 
-    let mut child = cmd
-        .spawn()
-        .map_err(|e| ReviewerError(format!("failed to run claude CLI: {e}")))?;
+    let mut tmp = tempfile::NamedTempFile::new()
+        .map_err(|e| ReviewerError(format!("failed to create reviewer script: {e}")))?;
+    tmp.write_all(script.as_bytes())
+        .map_err(|e| ReviewerError(format!("failed to write reviewer script: {e}")))?;
 
-    streaming::send_prompt(&mut child, &prompt);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let perms = std::fs::Permissions::from_mode(0o755);
+        std::fs::set_permissions(tmp.path(), perms)
+            .map_err(|e| ReviewerError(format!("failed to set script permissions: {e}")))?;
+    }
 
-    let target = match logger.and_then(|l| l.tui_sender()) {
-        Some(tui) => StreamTarget::Tui(tui.with_label("CODE REVIEW")),
-        None => StreamTarget::Stderr,
+    let (repo_url, file_remote_path) = match git_remote_url(repo_root) {
+        Some(url) => (url, None),
+        None => ("file:///host-repo".to_string(), Some(repo_root.to_path_buf())),
     };
 
-    let mut formatter = StreamFormatter::new(target.supports_color());
+    let timestamp = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
+    let container_name = format!("review-{timestamp}");
+    let volume = config.effective_volume(repo_root);
 
-    let (_result, exit_code) = streaming::run_streaming_claude(child, &mut formatter, logger, &target)
+    DockerBuilder::remove_container(&container_name);
+
+    let docker = DockerBuilder::new(&config.image);
+    let container_args = ContainerArgs {
+        name: container_name.clone(),
+        repo_url,
+        branch: opts.current_branch.clone(),
+        runner_script: tmp.path().to_path_buf(),
+        volume,
+        local: false,
+        file_remote_path,
+        timeout_secs: None,
+    };
+
+    let mut handle = docker
+        .run(&container_args)
+        .map_err(|e| ReviewerError(format!("failed to start reviewer container: {e}")))?;
+
+    let is_tty = logger.map_or(false, |l| l.has_tui()) || std::io::stdout().is_terminal();
+    let mut formatter = StreamFormatter::new(is_tty);
+
+    handle
+        .stream_output(|line| {
+            if let Some(formatted) = stream_fmt::format_line(&mut formatter, line) {
+                match logger {
+                    Some(l) => {
+                        l.display(&formatted);
+                        l.log_file_only(&formatted);
+                    }
+                    None => eprintln!("{formatted}"),
+                }
+            }
+        })
         .map_err(|e| ReviewerError(format!("streaming error: {e}")))?;
 
+    let exit_code = handle
+        .wait()
+        .map_err(|e| ReviewerError(format!("container wait failed: {e}")))?;
+
+    DockerBuilder::remove_container(&container_name);
+
     if exit_code != 0 {
-        return Err(ReviewerError(format!(
-            "claude CLI exited with code {exit_code}"
-        )));
+        crate::logger::log(logger, &format!("Reviewer container exited with code {exit_code}"));
     }
 
     crate::logger::log(logger, "Reviewer pass complete.");
     Ok(())
+}
+
+fn git_remote_url(repo_root: &Path) -> Option<String> {
+    let output = Command::new("git")
+        .args(["-C", &repo_root.to_string_lossy(), "remote", "get-url", "origin"])
+        .output()
+        .ok()?;
+    if output.status.success() {
+        Some(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    } else {
+        None
+    }
 }
 
 #[derive(Debug)]

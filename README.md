@@ -52,7 +52,7 @@ Run the agent repeatedly until work is done.
 mrmouth loop [--delay <seconds>] [--max-runs <n>] [--no-summary] [--model <model>]
 ```
 
-After each run, an AI decider checks whether open work remains. The loop stops when the decider says done or max iterations are reached.
+After each run: a reviewer agent (inside Docker) checks the code and files litebrite tasks for any issues found; an AI decider decides whether to continue, ship, or stop. When the decider says "ship", a readiness check (inside Docker) verifies builds and tests pass before merging and starting a new branch. The loop stops when the decider says done or max iterations are reached.
 
 ### `mrmouth epic <epic-id>`
 
@@ -93,6 +93,8 @@ delay = 0
 max_runs = 0
 decider_model = "sonnet"
 summary_model = "haiku"
+reviewer_model = "sonnet"
+shipper_model = "sonnet"
 
 [epic]
 timeout = 15
