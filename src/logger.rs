@@ -105,24 +105,6 @@ impl Logger {
         })
     }
 
-    /// Spawn a thread that tees child stdout → display (TUI or stdout) + log file.
-    pub fn tee_stdout(&self, stdout: std::process::ChildStdout) -> JoinHandle<()> {
-        let writer = Arc::clone(&self.writer);
-        let tui = self.tui.clone();
-        std::thread::spawn(move || {
-            let reader = BufReader::new(stdout);
-            for line in reader.lines().map_while(Result::ok) {
-                match &tui {
-                    Some(sender) => sender.send_line(&line),
-                    None => println!("{line}"),
-                }
-                if let Ok(mut w) = writer.lock() {
-                    let _ = writeln!(w, "{line}");
-                }
-            }
-        })
-    }
-
     /// Returns true if this Logger has a TUI sender attached.
     pub fn has_tui(&self) -> bool {
         self.tui.is_some()
