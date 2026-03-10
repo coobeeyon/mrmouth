@@ -215,11 +215,10 @@
       "title": "Add ratatui, crossterm, ansi-to-tui to Cargo.toml",
       "description": "Add dependencies to Cargo.toml:\n  ratatui = \"0.29\"\n  crossterm = \"0.28\"\n  ansi-to-tui = \"4\"\n\nThese are needed for the TUI implementation. ansi-to-tui converts ANSI-colored strings from stream_fmt.rs into ratatui Span structures so colors are preserved in the TUI.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 1,
-      "claimed_by": "agent-runner",
       "created_at": "2026-03-10T13:14:15.197155635Z",
-      "updated_at": "2026-03-10T14:22:56.321662872Z"
+      "updated_at": "2026-03-10T14:23:50.980004747Z"
     },
     "lb-si5j": {
       "id": "lb-si5j",
