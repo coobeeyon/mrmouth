@@ -134,7 +134,7 @@ pub fn execute(config: &Config, repo_root: &Path, opts: RunOptions, tui: Option<
     let jsonl_file = File::create(&jsonl_path)
         .map_err(|e| RunError::Io("creating jsonl file".into(), e))?;
     let mut jsonl_writer = BufWriter::new(jsonl_file);
-    let is_tty = std::io::stdout().is_terminal();
+    let is_tty = logger.has_tui() || std::io::stdout().is_terminal();
 
     if opts.raw {
         let stdout = std::io::stdout();
