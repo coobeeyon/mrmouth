@@ -4,7 +4,7 @@ use std::process::Command;
 use crate::config::Config;
 use crate::litebrite;
 use crate::run::{self, RunOptions};
-use crate::tui::TuiHandle;
+use crate::tui::{TuiHandle, TuiSender};
 
 fn make_banner(label: &str) -> String {
     const WIDTH: usize = 80;
@@ -12,6 +12,14 @@ fn make_banner(label: &str) -> String {
     let empty = format!("##{}##", " ".repeat(WIDTH - 4));
     let text = format!("##  {:<width$}##", label, width = WIDTH - 6);
     format!("{border}\n{empty}\n{text}\n{empty}\n{border}")
+}
+
+/// Route a message to the TUI pane if available, otherwise stderr.
+fn emit(tui_tx: &Option<TuiSender>, msg: &str) {
+    match tui_tx {
+        Some(sender) => sender.send_line(msg),
+        None => eprintln!("{msg}"),
+    }
 }
 
 pub struct EpicOptions {
@@ -22,20 +30,22 @@ pub struct EpicOptions {
 }
 
 pub fn execute(config: &Config, repo_root: &Path, opts: EpicOptions, tui: Option<&TuiHandle>) -> Result<(), EpicError> {
+    let tui_tx = tui.map(|t| t.sender("EPIC"));
+
     // 1. Verify the epic exists
     let epic_info = lb_show(repo_root, &opts.epic_id)?;
-    eprintln!("{}", make_banner(&format!("EPIC: {}", epic_info)));
+    emit(&tui_tx, &make_banner(&format!("EPIC: {}", epic_info)));
 
     // 2. Create feature branch (if not already on one)
     let current_branch = git_current_branch(repo_root)?;
     let feature_branch = if current_branch == "main" || current_branch == "master" {
         let slug = make_slug(&epic_info);
         let branch_name = format!("{}-{}", opts.epic_id, slug);
-        eprintln!("Creating feature branch: {branch_name}");
+        emit(&tui_tx, &format!("Creating feature branch: {branch_name}"));
         git_checkout_new_branch(repo_root, &branch_name)?;
         branch_name
     } else {
-        eprintln!("Already on branch: {current_branch}");
+        emit(&tui_tx, &format!("Already on branch: {current_branch}"));
         current_branch
     };
 
@@ -46,20 +56,19 @@ pub fn execute(config: &Config, repo_root: &Path, opts: EpicOptions, tui: Option
     loop {
         // Check if TUI user cancelled
         if tui.map_or(false, |t| t.is_cancelled()) {
-            eprintln!("Epic cancelled by user.");
+            emit(&tui_tx, "Epic cancelled by user.");
             break;
         }
 
         // Check remaining tasks
         let remaining = count_remaining_tasks(repo_root, &opts.epic_id);
         if remaining == 0 {
-            eprintln!();
-            eprintln!("All tasks in {} complete.", opts.epic_id);
+            emit(&tui_tx, &format!("All tasks in {} complete.", opts.epic_id));
             break;
         }
 
         task_num += 1;
-        eprintln!("{}", make_banner(&format!(
+        emit(&tui_tx, &make_banner(&format!(
             "TASK {}  ({} remaining)  {}",
             task_num, remaining, chrono::Local::now().format("%H:%M:%S")
         )));
@@ -87,36 +96,41 @@ pub fn execute(config: &Config, repo_root: &Path, opts: EpicOptions, tui: Option
         match run_result {
             Ok(_logger) => {
                 consecutive_failures = 0;
-                eprintln!("Task {task_num} succeeded, syncing...");
+                emit(&tui_tx, &format!("Task {task_num} succeeded, syncing..."));
                 sync_and_push(repo_root, &feature_branch);
             }
             Err(e) => {
                 consecutive_failures += 1;
-                eprintln!("--- Task {task_num} failed: {e}");
+                emit(&tui_tx, &format!("--- Task {task_num} failed: {e}"));
 
                 if consecutive_failures >= opts.max_failures {
-                    eprintln!();
-                    eprintln!(
+                    emit(&tui_tx, &format!(
                         "ERROR: {} consecutive failures — aborting",
                         opts.max_failures
-                    );
+                    ));
                     return Err(EpicError::TooManyFailures(opts.max_failures));
                 }
             }
         }
 
-        // Show current task state
-        let _ = Command::new("lb")
+        // Show current task state — capture output and route through TUI
+        if let Ok(output) = Command::new("lb")
             .args(["list", "--parent", &opts.epic_id])
             .current_dir(repo_root)
-            .status();
+            .output()
+        {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            for line in stdout.lines() {
+                emit(&tui_tx, line);
+            }
+        }
     }
 
     // Final sync
-    eprintln!("{}", make_banner("EPIC COMPLETE"));
-    eprintln!("Final push to remote...");
+    emit(&tui_tx, &make_banner("EPIC COMPLETE"));
+    emit(&tui_tx, "Final push to remote...");
     sync_and_push(repo_root, &feature_branch);
-    eprintln!("Done. Merge branch '{}' when ready.", feature_branch);
+    emit(&tui_tx, &format!("Done. Merge branch '{}' when ready.", feature_branch));
 
     Ok(())
 }
