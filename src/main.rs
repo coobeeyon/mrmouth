@@ -9,6 +9,7 @@ mod reviewer;
 mod run;
 mod shipper;
 pub mod stream_fmt;
+mod streaming;
 mod summary;
 mod tui;
 
