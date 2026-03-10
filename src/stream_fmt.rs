@@ -12,7 +12,7 @@ const RESET: &str = "\x1b[0m";
 
 fn indent(s: &str) -> String {
     s.lines()
-        .map(|l| format!("\t{l}"))
+        .map(|l| format!("  {l}"))
         .collect::<Vec<_>>()
         .join("\n")
 }
@@ -434,7 +434,7 @@ mod tests {
         let line = r#"{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"some output"}]}}"#;
         let out = fmt(line).unwrap();
         assert!(out.contains("[result]"));
-        assert!(out.contains("\tsome output"));
+        assert!(out.contains("  some output"));
     }
 
     #[test]

@@ -71,6 +71,7 @@ impl TuiState {
     fn push_line(&mut self, pane: &str, text: String) {
         self.ensure_pane(pane);
         if let Some((_, buf)) = self.panes.iter_mut().find(|(n, _)| n == pane) {
+            let text = text.replace('\r', "");
             buf.push_back(text);
             if buf.len() > MAX_LINES {
                 buf.pop_front();

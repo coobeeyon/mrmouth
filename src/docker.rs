@@ -2,7 +2,7 @@ use std::io::{BufRead, BufReader};
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 /// Default Dockerfile content used when no `.mrmouth/Dockerfile` exists.
 pub const DEFAULT_DOCKERFILE: &str = r#"# Stage 1: Build litebrite (lb) — static musl binary, no glibc dependency
@@ -92,7 +92,6 @@ impl DockerBuilder {
         let uid = get_uid();
         let gid = get_gid();
 
-        eprintln!("Building runner container...");
         let status = Command::new("docker")
             .args([
                 "build",
@@ -210,7 +209,6 @@ impl DockerBuilder {
                     }
                 }
                 if !cancelled_clone.load(Ordering::Relaxed) {
-                    eprintln!("Timeout ({timeout_secs}s) reached — stopping container {container_name}...");
                     let _ = Command::new("docker")
                         .args(["stop", &container_name])
                         .stdout(Stdio::null())
@@ -278,7 +276,8 @@ pub struct ContainerHandle {
 
 impl ContainerHandle {
     /// Stream stdout line by line, calling `handler` for each line.
-    /// Also captures stderr and prints it.
+    /// Container stderr is buffered and then passed through the same handler
+    /// after stdout closes, so it reaches the TUI/logger rather than bypassing it.
     pub fn stream_output<F>(&mut self, mut handler: F) -> Result<(), DockerError>
     where
         F: FnMut(&str),
@@ -294,11 +293,15 @@ impl ContainerHandle {
             .take()
             .ok_or(DockerError::NoStderr)?;
 
-        // Spawn a thread to drain stderr
+        // Buffer stderr on a background thread (handler is not Send)
+        let stderr_buf: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+        let stderr_buf_clone = Arc::clone(&stderr_buf);
         let stderr_handle = std::thread::spawn(move || {
             let reader = BufReader::new(stderr);
             for line in reader.lines().map_while(Result::ok) {
-                eprintln!("{line}");
+                if let Ok(mut v) = stderr_buf_clone.lock() {
+                    v.push(line);
+                }
             }
         });
 
@@ -309,6 +312,13 @@ impl ContainerHandle {
         }
 
         let _ = stderr_handle.join();
+
+        // Route buffered stderr through the same handler so it appears in the TUI/log
+        if let Ok(lines) = stderr_buf.lock() {
+            for line in lines.iter() {
+                handler(line);
+            }
+        }
 
         Ok(())
     }
