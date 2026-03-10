@@ -2,6 +2,7 @@ mod config;
 mod docker;
 mod epic;
 mod litebrite;
+mod logger;
 mod loop_cmd;
 mod prompt;
 mod reviewer;
@@ -128,7 +129,7 @@ fn main() {
                 prompt_override: None,
                 branch: None,
             };
-            if let Err(e) = run::execute(&config, &repo_root, opts) {
+            if let Err(e) = run::execute(&config, &repo_root, opts).map(|_| ()) {
                 eprintln!("error: {e}");
                 std::process::exit(1);
             }
@@ -161,7 +162,7 @@ fn main() {
             let log_file = log_file.unwrap_or_else(|| {
                 format!("{}/latest.jsonl", config.log_dir)
             });
-            if let Err(e) = summary::execute(&config, &repo_root, &log_file) {
+            if let Err(e) = summary::execute(&config, &repo_root, &log_file, None) {
                 eprintln!("error: {e}");
                 std::process::exit(1);
             }

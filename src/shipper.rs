@@ -2,6 +2,8 @@ use std::io::Write;
 use std::path::Path;
 use std::process::{Command, Stdio};
 
+use crate::logger::Logger;
+
 pub struct ShipperOptions {
     pub model: String,
     pub current_branch: String,
@@ -13,23 +15,42 @@ pub struct ShipResult {
 }
 
 /// Run the shipper agent: check readiness, merge branch, create next feature branch.
-pub fn execute(repo_root: &Path, opts: &ShipperOptions) -> Result<ShipResult, ShipperError> {
+pub fn execute(repo_root: &Path, opts: &ShipperOptions, logger: Option<&Logger>) -> Result<ShipResult, ShipperError> {
+    crate::logger::banner(logger, &format!("SHIPPING  {} -> {}", opts.current_branch, opts.parent_branch));
+
     // 1. Check readiness
-    check_ready(repo_root, &opts.current_branch)?;
+    check_ready(repo_root, &opts.current_branch, logger)?;
 
     // 2. Merge current branch into parent
-    merge_branch(repo_root, &opts.current_branch, &opts.parent_branch)?;
+    merge_branch(repo_root, &opts.current_branch, &opts.parent_branch, logger)?;
 
     // 3. Generate and create next feature branch
-    let branch_name = generate_branch_name(repo_root, &opts.model)?;
-    create_and_push_branch(repo_root, &branch_name)?;
+    let branch_name = generate_branch_name(repo_root, &opts.model, logger)?;
+    create_and_push_branch(repo_root, &branch_name, logger)?;
 
     Ok(ShipResult { new_branch: branch_name })
 }
 
-/// Ask a claude agent to check if the branch is ready to ship.
-/// Checks lb list for open items and runs tests.
-fn check_ready(repo_root: &Path, current_branch: &str) -> Result<(), ShipperError> {
+fn tee_stderr_or_inherit(
+    child: &mut std::process::Child,
+    logger: Option<&Logger>,
+) -> Option<std::thread::JoinHandle<()>> {
+    child.stderr.take().map(|stderr| {
+        if let Some(l) = logger {
+            l.tee_stderr(stderr)
+        } else {
+            std::thread::spawn(move || {
+                use std::io::BufRead;
+                let reader = std::io::BufReader::new(stderr);
+                for line in reader.lines().map_while(Result::ok) {
+                    eprintln!("{line}");
+                }
+            })
+        }
+    })
+}
+
+fn check_ready(repo_root: &Path, current_branch: &str, logger: Option<&Logger>) -> Result<(), ShipperError> {
     let schema = r#"{"type":"object","properties":{"status":{"type":"string","enum":["READY","BLOCKED"]},"reason":{"type":"string"}},"required":["status","reason"]}"#;
 
     let prompt = format!(
@@ -51,7 +72,7 @@ fn check_ready(repo_root: &Path, current_branch: &str) -> Result<(), ShipperErro
         ])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::inherit())
+        .stderr(Stdio::piped())
         .current_dir(repo_root)
         .spawn()
         .map_err(|e| ShipperError(format!("failed to run readiness check: {e}")))?;
@@ -60,9 +81,13 @@ fn check_ready(repo_root: &Path, current_branch: &str) -> Result<(), ShipperErro
         let _ = stdin.write_all(prompt.as_bytes());
     }
 
+    let tee_handle = tee_stderr_or_inherit(&mut child, logger);
+
     let output = child
         .wait_with_output()
         .map_err(|e| ShipperError(format!("readiness check failed: {e}")))?;
+
+    if let Some(h) = tee_handle { let _ = h.join(); }
 
     if !output.status.success() {
         return Err(ShipperError(format!(
@@ -83,16 +108,15 @@ fn check_ready(repo_root: &Path, current_branch: &str) -> Result<(), ShipperErro
         return Err(ShipperError(format!("branch not ready to ship: {reason}")));
     }
 
-    eprintln!("Readiness check passed: {reason}");
+    crate::logger::log(logger, &format!("Readiness check passed: {reason}"));
     Ok(())
 }
 
-/// Merge current_branch into parent_branch.
-/// Uses git merge --no-ff for file-remote repos, or gh pr create+merge for GitHub.
 fn merge_branch(
     repo_root: &Path,
     current_branch: &str,
     parent_branch: &str,
+    logger: Option<&Logger>,
 ) -> Result<(), ShipperError> {
     let has_github_remote = Command::new("git")
         .args(["-C", &repo_root.to_string_lossy(), "remote", "get-url", "origin"])
@@ -101,8 +125,7 @@ fn merge_branch(
         .unwrap_or(false);
 
     if has_github_remote {
-        // GitHub flow: create PR and merge
-        eprintln!("Creating and merging PR: {current_branch} -> {parent_branch}");
+        crate::logger::log(logger, &format!("Creating and merging PR: {current_branch} -> {parent_branch}"));
 
         let pr_create = Command::new("gh")
             .args([
@@ -118,7 +141,6 @@ fn merge_branch(
 
         if !pr_create.status.success() {
             let stderr = String::from_utf8_lossy(&pr_create.stderr);
-            // PR may already exist — that's fine
             if !stderr.contains("already exists") {
                 return Err(ShipperError(format!("gh pr create failed: {stderr}")));
             }
@@ -134,7 +156,6 @@ fn merge_branch(
             return Err(ShipperError("gh pr merge failed".into()));
         }
 
-        // Update local repo
         let _ = Command::new("git")
             .args(["-C", &repo_root.to_string_lossy(), "checkout", parent_branch])
             .status();
@@ -142,8 +163,7 @@ fn merge_branch(
             .args(["-C", &repo_root.to_string_lossy(), "pull", "--ff-only"])
             .status();
     } else {
-        // File-remote / local flow: git merge --no-ff
-        eprintln!("Merging {current_branch} into {parent_branch} (no-ff)...");
+        crate::logger::log(logger, &format!("Merging {current_branch} into {parent_branch} (no-ff)..."));
 
         let checkout = Command::new("git")
             .args(["-C", &repo_root.to_string_lossy(), "checkout", parent_branch])
@@ -165,7 +185,6 @@ fn merge_branch(
             return Err(ShipperError(format!("merge of {current_branch} failed")));
         }
 
-        // Delete the old feature branch
         let _ = Command::new("git")
             .args(["-C", &repo_root.to_string_lossy(), "branch", "-d", current_branch])
             .status();
@@ -174,8 +193,7 @@ fn merge_branch(
     Ok(())
 }
 
-/// Ask claude to generate a short branch name based on SPEC.md context.
-pub fn generate_branch_name(repo_root: &Path, model: &str) -> Result<String, ShipperError> {
+pub fn generate_branch_name(repo_root: &Path, model: &str, logger: Option<&Logger>) -> Result<String, ShipperError> {
     let schema = r#"{"type":"object","properties":{"name":{"type":"string","description":"2-4 word kebab-case slug for the branch"}},"required":["name"]}"#;
 
     let prompt = "Read SPEC.md and the current litebrite task state (lb ready). \
@@ -194,7 +212,7 @@ pub fn generate_branch_name(repo_root: &Path, model: &str) -> Result<String, Shi
         ])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::inherit())
+        .stderr(Stdio::piped())
         .current_dir(repo_root)
         .spawn()
         .map_err(|e| ShipperError(format!("failed to generate branch name: {e}")))?;
@@ -203,12 +221,15 @@ pub fn generate_branch_name(repo_root: &Path, model: &str) -> Result<String, Shi
         let _ = stdin.write_all(prompt.as_bytes());
     }
 
+    let tee_handle = tee_stderr_or_inherit(&mut child, logger);
+
     let output = child
         .wait_with_output()
         .map_err(|e| ShipperError(format!("branch name generation failed: {e}")))?;
 
+    if let Some(h) = tee_handle { let _ = h.join(); }
+
     if !output.status.success() {
-        // Fallback to timestamp
         let ts = chrono::Local::now().format("%Y%m%d-%H%M%S");
         return Ok(format!("feat-{ts}"));
     }
@@ -230,9 +251,7 @@ pub fn generate_branch_name(repo_root: &Path, model: &str) -> Result<String, Shi
     }
 }
 
-/// Create a new branch and push it to origin (if a remote exists).
-/// If the branch already exists locally (e.g. from a previous interrupted run), just check it out.
-pub fn create_and_push_branch(repo_root: &Path, branch_name: &str) -> Result<(), ShipperError> {
+pub fn create_and_push_branch(repo_root: &Path, branch_name: &str, logger: Option<&Logger>) -> Result<(), ShipperError> {
     let branch_exists = Command::new("git")
         .args([
             "-C",
@@ -263,7 +282,6 @@ pub fn create_and_push_branch(repo_root: &Path, branch_name: &str) -> Result<(),
         return Err(ShipperError(format!("git checkout -b {branch_name} failed")));
     }
 
-    // Push to origin if remote exists
     let has_remote = Command::new("git")
         .args(["-C", &repo_root.to_string_lossy(), "remote", "get-url", "origin"])
         .output()
@@ -277,11 +295,11 @@ pub fn create_and_push_branch(repo_root: &Path, branch_name: &str) -> Result<(),
             .map_err(|e| ShipperError(format!("failed to push branch: {e}")))?;
 
         if !push.success() {
-            eprintln!("Warning: failed to push branch {branch_name} to origin");
+            crate::logger::log(logger, &format!("Warning: failed to push branch {branch_name} to origin"));
         }
     }
 
-    eprintln!("Created branch: {branch_name}");
+    crate::logger::log(logger, &format!("Created branch: {branch_name}"));
     Ok(())
 }
 

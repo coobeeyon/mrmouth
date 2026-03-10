@@ -6,6 +6,7 @@ use std::process::Command;
 use crate::config::Config;
 use crate::docker::{ContainerArgs, DockerBuilder};
 use crate::litebrite;
+use crate::logger::Logger;
 use crate::prompt;
 use crate::stream_fmt::{self, StreamFormatter};
 
@@ -18,38 +19,54 @@ pub struct RunOptions {
     pub branch: Option<String>,
 }
 
-pub fn execute(config: &Config, repo_root: &Path, opts: RunOptions) -> Result<(), RunError> {
-    // 1. Preflight checks
-    preflight(repo_root, opts.local)?;
+/// Execute one agent run. Returns the Logger so callers can continue writing to the same
+/// log file for subsequent stages (reviewer, decider, summary, etc.).
+pub fn execute(config: &Config, repo_root: &Path, opts: RunOptions) -> Result<Logger, RunError> {
+    // 0. Set up logging first so every stage is captured
+    let log_dir = repo_root.join(&config.log_dir);
+    fs::create_dir_all(&log_dir)
+        .map_err(|e| RunError::Io("creating log directory".into(), e))?;
+    let timestamp = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
+    let log_filename = format!("run-{timestamp}.log");
+    let log_path = log_dir.join(&log_filename);
+    let logger = Logger::new(&log_path)
+        .map_err(|e| RunError::Io("creating log file".into(), e))?;
 
-    // 2. Resolve repo URL and branch
-    let (repo_url, file_remote_path) = if opts.local {
-        (git_remote_url(repo_root).unwrap_or_default(), None)
-    } else {
-        match git_remote_url(repo_root) {
-            Some(url) => (url, None),
-            None => {
-                // No remote configured — mount the host repo into the container and
-                // use it as a file:// remote. The container clones from it, the agent
-                // commits and pushes back, and updateInstead keeps the host tree in sync.
-                configure_file_remote(repo_root)?;
-                ("file:///host-repo".to_string(), Some(repo_root.to_path_buf()))
-            }
-        }
-    };
+    // Resolve branch early so we can include it in the opening banner
     let branch = opts
         .branch
         .clone()
         .or_else(|| config.branch.clone())
         .unwrap_or_else(|| git_current_branch(repo_root).unwrap_or_else(|_| "main".into()));
 
+    logger.banner(&format!("AGENT RUN  branch={}  {}", branch, timestamp));
+
+    // 1. Preflight checks
+    logger.log("Checking preflight conditions...");
+    preflight(repo_root, opts.local).map_err(|e| { logger.flush(); e })?;
+
+    // 2. Resolve repo URL
+    let (repo_url, file_remote_path) = if opts.local {
+        (git_remote_url(repo_root).unwrap_or_default(), None)
+    } else {
+        match git_remote_url(repo_root) {
+            Some(url) => (url, None),
+            None => {
+                configure_file_remote(repo_root)?;
+                ("file:///host-repo".to_string(), Some(repo_root.to_path_buf()))
+            }
+        }
+    };
+
     // 3. Sync litebrite (best-effort)
+    logger.log("Syncing litebrite...");
     litebrite::init_and_sync(repo_root);
 
-    // 4. Write the runner entrypoint script to a temp file
+    // 4. Write runner entrypoint script
     let runner_script = write_runner_script(repo_root, &opts.model, opts.prompt_override.as_deref())?;
 
     // 5. Build Docker image
+    logger.banner("DOCKER BUILD");
     let docker = DockerBuilder::new(&config.image);
     docker
         .build(repo_root, &config.dockerfile)
@@ -61,22 +78,19 @@ pub fn execute(config: &Config, repo_root: &Path, opts: RunOptions) -> Result<()
         .ensure_volume(&volume)
         .map_err(RunError::Docker)?;
 
-    // 7. Set up logging
-    let log_dir = repo_root.join(&config.log_dir);
-    fs::create_dir_all(&log_dir)
-        .map_err(|e| RunError::Io("creating log directory".into(), e))?;
-    let timestamp = chrono::Local::now().format("%Y%m%d-%H%M%S");
-    let log_filename = format!("run-{timestamp}.jsonl");
-    let log_path = log_dir.join(&log_filename);
+    // 7. Set up JSONL log alongside the text log
+    let jsonl_filename = format!("run-{timestamp}.jsonl");
+    let jsonl_path = log_dir.join(&jsonl_filename);
 
     let container_name = format!("run-{timestamp}");
-    eprintln!("Running agent on branch {branch}...");
-    eprintln!("Container name: {container_name}");
 
     // Remove stale container
     DockerBuilder::remove_container(&container_name);
 
     // 8. Start container
+    logger.banner(&format!("AGENT SESSION  container={}", container_name));
+    logger.log(&format!("Branch: {branch}"));
+
     let container_args = ContainerArgs {
         name: container_name.clone(),
         repo_url,
@@ -90,95 +104,96 @@ pub fn execute(config: &Config, repo_root: &Path, opts: RunOptions) -> Result<()
 
     let mut handle = docker.run(&container_args).map_err(RunError::Docker)?;
 
-    // 9. Stream output
-    let log_file = File::create(&log_path)
-        .map_err(|e| RunError::Io("creating log file".into(), e))?;
-    let mut log_writer = BufWriter::new(log_file);
+    // 9. Stream output — raw JSONL to .jsonl file, formatted text to terminal + .log file
+    let jsonl_file = File::create(&jsonl_path)
+        .map_err(|e| RunError::Io("creating jsonl file".into(), e))?;
+    let mut jsonl_writer = BufWriter::new(jsonl_file);
     let is_tty = std::io::stdout().is_terminal();
 
     if opts.raw {
         handle
             .stream_output(|line| {
                 println!("{line}");
-                let _ = writeln!(log_writer, "{line}");
+                let _ = writeln!(jsonl_writer, "{line}");
+                logger.log_file_only(line);
             })
             .map_err(RunError::Docker)?;
     } else {
         let mut formatter = StreamFormatter::new(is_tty);
         handle
             .stream_output(|line| {
-                // Always log raw JSONL
-                let _ = writeln!(log_writer, "{line}");
-                // Format for display
+                let _ = writeln!(jsonl_writer, "{line}");
                 if let Some(formatted) = stream_fmt::format_line(&mut formatter, line) {
                     println!("{formatted}");
+                    logger.log_file_only(&formatted);
                 }
             })
             .map_err(RunError::Docker)?;
     }
 
-    // Flush log
-    let _ = log_writer.flush();
+    let _ = jsonl_writer.flush();
 
     // 10. Wait for container exit
     let exit_code = handle.wait().map_err(RunError::Docker)?;
+    logger.log(&format!("Container {container_name} finished (exit code {exit_code})."));
 
-    eprintln!();
-    eprintln!("Container {container_name} finished (exit code {exit_code}).");
-
-    // 11. Update latest symlink
-    let latest_link = log_dir.join("latest.jsonl");
-    let _ = fs::remove_file(&latest_link);
+    // 11. Update symlinks (latest.jsonl and latest.log)
+    let latest_jsonl = log_dir.join("latest.jsonl");
+    let latest_log = log_dir.join("latest.log");
+    let _ = fs::remove_file(&latest_jsonl);
+    let _ = fs::remove_file(&latest_log);
     #[cfg(unix)]
     {
-        let _ = std::os::unix::fs::symlink(&log_filename, &latest_link);
+        let _ = std::os::unix::fs::symlink(&jsonl_filename, &latest_jsonl);
+        let _ = std::os::unix::fs::symlink(&log_filename, &latest_log);
     }
 
     // 12. Clean up container
     DockerBuilder::remove_container(&container_name);
 
-    // 13. Pull changes (unless local mode or file-remote — updateInstead already synced the tree)
+    // 13. Post-run sync
+    logger.banner("POST-RUN");
+
     if !opts.local && file_remote_path.is_none() {
-        eprintln!("Pulling code changes from remote...");
+        logger.log("Pulling code changes from remote...");
         let pull_status = Command::new("git")
             .args(["-C", &repo_root.to_string_lossy(), "pull", "--ff-only"])
             .status();
         match pull_status {
             Ok(s) if s.success() => {}
-            _ => eprintln!("No new commits to pull."),
+            _ => logger.log("No new commits to pull."),
         }
     }
 
-    // 14. Sync litebrite again (pick up any changes)
     litebrite::init_and_sync(repo_root);
-
-    eprintln!("Done. Log saved: {}", log_path.display());
+    logger.log(&format!("Done. Log saved: {}", log_path.display()));
 
     if exit_code != 0 {
         return Err(RunError::ContainerFailed(exit_code));
     }
 
-    Ok(())
+    Ok(logger)
 }
 
 fn preflight(repo_root: &Path, local: bool) -> Result<(), RunError> {
-    // Check for Docker
-    let docker_check = Command::new("docker").arg("info").stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status();
+    let docker_check = Command::new("docker")
+        .arg("info")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status();
     match docker_check {
         Ok(s) if s.success() => {}
         _ => return Err(RunError::Preflight("Docker is not available. Is Docker running?".into())),
     }
 
-    // Check for credentials
     let has_api_key = std::env::var("ANTHROPIC_API_KEY").is_ok();
     let has_oauth = std::env::var("CLAUDE_CODE_OAUTH_TOKEN").is_ok();
     if !has_api_key && !has_oauth {
         return Err(RunError::Preflight(
-            "No credentials found. Set ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN in your environment.".into(),
+            "No credentials found. Set ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN.".into(),
         ));
     }
 
-    // Check for clean working tree (skip in local mode — the whole point is to work on local state)
     if !local {
         let diff_status = Command::new("git")
             .args(["-C", &repo_root.to_string_lossy(), "diff", "--quiet"])
@@ -199,7 +214,6 @@ fn preflight(repo_root: &Path, local: bool) -> Result<(), RunError> {
     Ok(())
 }
 
-/// Returns the `origin` remote URL, or `None` if no remote is configured.
 fn git_remote_url(repo_root: &Path) -> Option<String> {
     let output = Command::new("git")
         .args(["-C", &repo_root.to_string_lossy(), "remote", "get-url", "origin"])
@@ -212,8 +226,6 @@ fn git_remote_url(repo_root: &Path) -> Option<String> {
     }
 }
 
-/// Configure the host repo to accept pushes to its checked-out branch by
-/// updating the working tree in place (git's "updateInstead" policy).
 fn configure_file_remote(repo_root: &Path) -> Result<(), RunError> {
     let status = Command::new("git")
         .args(["-C", &repo_root.to_string_lossy(), "config", "receive.denyCurrentBranch", "updateInstead"])
@@ -234,8 +246,6 @@ fn git_current_branch(repo_root: &Path) -> Result<String, RunError> {
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
-/// Write the runner entrypoint script that runs inside the container.
-/// Returns a NamedTempFile that stays alive for the duration of the run.
 fn write_runner_script(
     repo_root: &Path,
     model: &str,
@@ -245,7 +255,6 @@ fn write_runner_script(
         Some(p) => p.to_string(),
         None => prompt::load_prompt(repo_root),
     };
-    // Escape single quotes for shell embedding
     let escaped_prompt = prompt_text.replace('\'', "'\\''");
 
     let script = format!(
@@ -307,7 +316,6 @@ fi
     tmp.write_all(script.as_bytes())
         .map_err(|e| RunError::Io("writing runner script".into(), e))?;
 
-    // Make executable
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -360,7 +368,6 @@ mod tests {
         let tmp = write_runner_script(dir.path(), "opus", None).unwrap();
         let mut content = String::new();
         File::open(tmp.path()).unwrap().read_to_string(&mut content).unwrap();
-        // Verify lb sync is called after init (not just at the end)
         let init_pos = content.find("lb init").unwrap();
         let sync_pos = content.find("lb sync 2>/dev/null || true").unwrap();
         assert!(sync_pos > init_pos, "lb sync should come after lb init");
@@ -381,7 +388,6 @@ mod tests {
         let tmp = write_runner_script(dir.path(), "opus", Some("don't break")).unwrap();
         let mut content = String::new();
         File::open(tmp.path()).unwrap().read_to_string(&mut content).unwrap();
-        // Single quotes should be escaped for shell embedding
         assert!(content.contains(r"don'\''t break"));
     }
 

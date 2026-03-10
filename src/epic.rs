@@ -5,6 +5,14 @@ use crate::config::Config;
 use crate::litebrite;
 use crate::run::{self, RunOptions};
 
+fn make_banner(label: &str) -> String {
+    const WIDTH: usize = 80;
+    let border = "#".repeat(WIDTH);
+    let empty = format!("##{}##", " ".repeat(WIDTH - 4));
+    let text = format!("##  {:<width$}##", label, width = WIDTH - 6);
+    format!("{border}\n{empty}\n{text}\n{empty}\n{border}")
+}
+
 pub struct EpicOptions {
     pub epic_id: String,
     pub timeout: u32,
@@ -15,7 +23,7 @@ pub struct EpicOptions {
 pub fn execute(config: &Config, repo_root: &Path, opts: EpicOptions) -> Result<(), EpicError> {
     // 1. Verify the epic exists
     let epic_info = lb_show(repo_root, &opts.epic_id)?;
-    eprintln!("Epic: {epic_info}");
+    eprintln!("{}", make_banner(&format!("EPIC: {}", epic_info)));
 
     // 2. Create feature branch (if not already on one)
     let current_branch = git_current_branch(repo_root)?;
@@ -44,11 +52,10 @@ pub fn execute(config: &Config, repo_root: &Path, opts: EpicOptions) -> Result<(
         }
 
         task_num += 1;
-        eprintln!();
-        eprintln!(
-            "=== Task {task_num} | {remaining} remaining | {} ===",
-            chrono::Local::now().format("%H:%M:%S")
-        );
+        eprintln!("{}", make_banner(&format!(
+            "TASK {}  ({} remaining)  {}",
+            task_num, remaining, chrono::Local::now().format("%H:%M:%S")
+        )));
 
         // Build epic-focused prompt
         let prompt = format!(
@@ -71,9 +78,9 @@ pub fn execute(config: &Config, repo_root: &Path, opts: EpicOptions) -> Result<(
         let run_result = run::execute(config, repo_root, run_opts);
 
         match run_result {
-            Ok(()) => {
+            Ok(_logger) => {
                 consecutive_failures = 0;
-                eprintln!("--- Task {task_num} succeeded, syncing...");
+                eprintln!("Task {task_num} succeeded, syncing...");
                 sync_and_push(repo_root, &feature_branch);
             }
             Err(e) => {
@@ -99,13 +106,10 @@ pub fn execute(config: &Config, repo_root: &Path, opts: EpicOptions) -> Result<(
     }
 
     // Final sync
-    eprintln!();
+    eprintln!("{}", make_banner("EPIC COMPLETE"));
     eprintln!("Final push to remote...");
     sync_and_push(repo_root, &feature_branch);
-    eprintln!(
-        "Done. Merge branch '{}' when ready.",
-        feature_branch
-    );
+    eprintln!("Done. Merge branch '{}' when ready.", feature_branch);
 
     Ok(())
 }

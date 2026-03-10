@@ -3,8 +3,9 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 
 use crate::config::Config;
+use crate::logger::Logger;
 
-pub fn execute(config: &Config, repo_root: &Path, log_file: &str) -> Result<(), SummaryError> {
+pub fn execute(config: &Config, repo_root: &Path, log_file: &str, logger: Option<&Logger>) -> Result<(), SummaryError> {
     let log_path = if Path::new(log_file).is_absolute() {
         std::path::PathBuf::from(log_file)
     } else {
@@ -38,9 +39,7 @@ pub fn execute(config: &Config, repo_root: &Path, log_file: &str) -> Result<(), 
     let log_dir = repo_root.join(&config.log_dir);
     let summary_dir = log_dir.join("summaries");
     std::fs::create_dir_all(&summary_dir).map_err(|e| {
-        SummaryError(format!(
-            "failed to create summaries directory: {e}"
-        ))
+        SummaryError(format!("failed to create summaries directory: {e}"))
     })?;
     let summary_file = summary_dir.join(format!("{log_name}.md"));
 
@@ -56,7 +55,8 @@ pub fn execute(config: &Config, repo_root: &Path, log_file: &str) -> Result<(), 
         summary_file.display()
     );
 
-    eprintln!("Generating summary...");
+    crate::logger::banner(logger, "SUMMARY");
+
     let mut child = Command::new("claude")
         .args([
             "-p",
@@ -67,8 +67,8 @@ pub fn execute(config: &Config, repo_root: &Path, log_file: &str) -> Result<(), 
             "Read,Write",
         ])
         .stdin(Stdio::piped())
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
         .current_dir(repo_root)
         .spawn()
         .map_err(|e| SummaryError(format!("failed to run claude CLI: {e}")))?;
@@ -77,9 +77,41 @@ pub fn execute(config: &Config, repo_root: &Path, log_file: &str) -> Result<(), 
         let _ = stdin.write_all(prompt.as_bytes());
     }
 
+    // Tee stdout (summary text) and stderr to terminal + log file
+    let stdout_handle = child.stdout.take().map(|stdout| {
+        if let Some(l) = logger {
+            l.tee_stdout(stdout)
+        } else {
+            std::thread::spawn(move || {
+                use std::io::BufRead;
+                let reader = std::io::BufReader::new(stdout);
+                for line in reader.lines().map_while(Result::ok) {
+                    println!("{line}");
+                }
+            })
+        }
+    });
+
+    let stderr_handle = child.stderr.take().map(|stderr| {
+        if let Some(l) = logger {
+            l.tee_stderr(stderr)
+        } else {
+            std::thread::spawn(move || {
+                use std::io::BufRead;
+                let reader = std::io::BufReader::new(stderr);
+                for line in reader.lines().map_while(Result::ok) {
+                    eprintln!("{line}");
+                }
+            })
+        }
+    });
+
     let status = child
         .wait()
         .map_err(|e| SummaryError(format!("failed to wait for claude CLI: {e}")))?;
+
+    if let Some(h) = stdout_handle { let _ = h.join(); }
+    if let Some(h) = stderr_handle { let _ = h.join(); }
 
     if !status.success() {
         return Err(SummaryError(format!(
@@ -88,7 +120,7 @@ pub fn execute(config: &Config, repo_root: &Path, log_file: &str) -> Result<(), 
         )));
     }
 
-    eprintln!("Summary saved: {}", summary_file.display());
+    crate::logger::log(logger, &format!("Summary saved: {}", summary_file.display()));
     Ok(())
 }
 

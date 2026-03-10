@@ -4,6 +4,7 @@ use std::process::{Command, Stdio};
 
 use crate::config::Config;
 use crate::litebrite;
+use crate::logger::Logger;
 use crate::reviewer;
 use crate::run::{self, RunOptions};
 use crate::shipper;
@@ -20,6 +21,7 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions) -> Result<(
     // Cold-start: no git repo yet — init one and run in local (bind-mount) mode
     let bootstrap_mode = !repo_root.join(".git").exists();
     if bootstrap_mode {
+        eprintln!("{}", make_banner("BOOTSTRAP"));
         eprintln!("No git repository found in {}. Running git init...", repo_root.display());
         let status = Command::new("git")
             .arg("init")
@@ -29,7 +31,6 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions) -> Result<(
         if !status.success() {
             return Err(LoopError::Bootstrap("git init failed".into()));
         }
-        // Ensure logs/ is gitignored before staging anything
         let gitignore_path = repo_root.join(".gitignore");
         if !gitignore_path.exists() {
             let _ = std::fs::write(&gitignore_path, "logs/\n");
@@ -44,15 +45,12 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions) -> Result<(
             }
         }
 
-        // Commit any existing files (e.g. SPEC.md) so the repo has at least one commit
-        // and the file:// remote clone inside the container can succeed.
         let add_status = Command::new("git")
             .args(["add", "-A"])
             .current_dir(repo_root)
             .status()
             .map_err(|e| LoopError::Bootstrap(format!("failed to stage files: {e}")))?;
         if add_status.success() {
-            // Only commit if there's something staged
             let has_staged = Command::new("git")
                 .args(["diff", "--cached", "--quiet"])
                 .current_dir(repo_root)
@@ -79,9 +77,10 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions) -> Result<(
     let mut current_branch = if bootstrap_mode {
         parent_branch.clone()
     } else {
-        let branch_name = shipper::generate_branch_name(repo_root, &config.loop_config.shipper_model)
+        eprintln!("{}", make_banner("BRANCH SETUP"));
+        let branch_name = shipper::generate_branch_name(repo_root, &config.loop_config.shipper_model, None)
             .map_err(|e| LoopError::BranchCreation(format!("failed to generate branch name: {e}")))?;
-        shipper::create_and_push_branch(repo_root, &branch_name)
+        shipper::create_and_push_branch(repo_root, &branch_name, None)
             .map_err(|e| LoopError::BranchCreation(format!("failed to create branch: {e}")))?;
         branch_name
     };
@@ -91,7 +90,7 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions) -> Result<(
     } else {
         opts.max_runs.to_string()
     };
-    eprintln!("=== Agent loop ({}s between runs, max={}, Ctrl-C to stop) ===", opts.delay, max_label);
+    eprintln!("Agent loop: {}s between runs, max={}, Ctrl-C to stop", opts.delay, max_label);
 
     let mut run_number: u32 = 0;
 
@@ -100,12 +99,9 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions) -> Result<(
 
         if opts.max_runs > 0 && run_number > opts.max_runs {
             eprintln!();
-            eprintln!("=== Loop complete: reached max runs ({}) ===", opts.max_runs);
+            eprintln!("{}", make_banner(&format!("LOOP COMPLETE  {} runs", opts.max_runs)));
             break;
         }
-
-        eprintln!();
-        eprintln!("--- Run {run_number} starting at {} ---", chrono::Local::now().format("%Y-%m-%d %H:%M:%S"));
 
         let run_opts = RunOptions {
             raw: false,
@@ -118,10 +114,15 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions) -> Result<(
 
         let head_before = git_head(repo_root);
 
+        // run::execute prints its own ITERATION banner with branch + timestamp
         let run_result = run::execute(config, repo_root, run_opts);
-        if let Err(e) = &run_result {
-            eprintln!("Run {run_number} failed: {e}");
-        }
+        let logger_opt: Option<Logger> = match run_result {
+            Ok(logger) => Some(logger),
+            Err(e) => {
+                eprintln!("Run {run_number} failed: {e}");
+                None
+            }
+        };
 
         // Sync litebrite so reviewer and decider see fresh task state
         litebrite::sync(repo_root);
@@ -131,16 +132,17 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions) -> Result<(
         let agent_made_commits = head_before.is_ok()
             && head_after.is_ok()
             && head_before.unwrap() != head_after.unwrap();
+
         if agent_made_commits {
             let reviewer_opts = reviewer::ReviewerOptions {
                 model: config.loop_config.reviewer_model.clone(),
                 current_branch: current_branch.clone(),
             };
-            if let Err(e) = reviewer::execute(repo_root, &reviewer_opts) {
-                eprintln!("Reviewer failed (non-fatal): {e}");
+            if let Err(e) = reviewer::execute(repo_root, &reviewer_opts, logger_opt.as_ref()) {
+                crate::logger::log(logger_opt.as_ref(), &format!("Reviewer failed (non-fatal): {e}"));
             }
         } else {
-            eprintln!("Reviewer skipped: no new commits from this run.");
+            crate::logger::log(logger_opt.as_ref(), "Reviewer skipped: no new commits from this run.");
         }
 
         // Run summary and decider in parallel — they're independent
@@ -148,15 +150,17 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions) -> Result<(
         let decision = std::thread::scope(|s| {
             if !opts.no_summary {
                 let log_file = format!("{}/latest.jsonl", config.log_dir);
+                let summary_logger = logger_opt.clone();
                 s.spawn(move || {
-                    if let Err(e) = summary::execute(config, repo_root, &log_file) {
-                        eprintln!("Summary generation failed: {e}");
+                    if let Err(e) = summary::execute(config, repo_root, &log_file, summary_logger.as_ref()) {
+                        crate::logger::log(summary_logger.as_ref(), &format!("Summary generation failed: {e}"));
                     }
                 });
             }
 
-            let decider_handle = s.spawn(|| {
-                should_continue(repo_root, &decider_model)
+            let decider_logger = logger_opt.clone();
+            let decider_handle = s.spawn(move || {
+                should_continue(repo_root, &decider_model, decider_logger.as_ref())
             });
 
             decider_handle.join().expect("decider thread panicked")
@@ -164,10 +168,10 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions) -> Result<(
 
         match decision {
             Ok(Decision::Continue(reason)) => {
-                eprintln!("Decider: {reason}");
+                crate::logger::log(logger_opt.as_ref(), &format!("Decider: continue — {reason}"));
             }
             Ok(Decision::Ship(reason)) => {
-                eprintln!("Decider (ship): {reason}");
+                crate::logger::log(logger_opt.as_ref(), &format!("Decider: ship — {reason}"));
 
                 let ship_opts = shipper::ShipperOptions {
                     model: config.loop_config.shipper_model.clone(),
@@ -175,35 +179,41 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions) -> Result<(
                     parent_branch: parent_branch.clone(),
                 };
 
-                match shipper::execute(repo_root, &ship_opts) {
+                match shipper::execute(repo_root, &ship_opts, logger_opt.as_ref()) {
                     Ok(result) => {
-                        eprintln!("Shipped! New branch: {}", result.new_branch);
+                        crate::logger::log(logger_opt.as_ref(), &format!("Shipped! New branch: {}", result.new_branch));
                         current_branch = result.new_branch;
                     }
                     Err(e) => {
-                        eprintln!("Ship failed (continuing on current branch): {e}");
+                        crate::logger::log(logger_opt.as_ref(), &format!("Ship failed (continuing on current branch): {e}"));
                     }
                 }
             }
             Ok(Decision::Stop(reason)) => {
-                eprintln!("Decider: {reason}");
-                eprintln!();
-                eprintln!("=== Loop complete after {run_number} runs ===");
+                crate::logger::log(logger_opt.as_ref(), &format!("Decider: stop — {reason}"));
+                eprintln!("{}", make_banner(&format!("LOOP COMPLETE  {} runs", run_number)));
                 break;
             }
             Err(e) => {
-                eprintln!("Decider error (continuing anyway): {e}");
+                crate::logger::log(logger_opt.as_ref(), &format!("Decider error (continuing anyway): {e}"));
             }
         }
 
         if opts.delay > 0 {
-            eprintln!();
-            eprintln!("--- Waiting {}s until next run ---", opts.delay);
+            eprintln!("Waiting {}s until next run...", opts.delay);
             std::thread::sleep(std::time::Duration::from_secs(opts.delay as u64));
         }
     }
 
     Ok(())
+}
+
+fn make_banner(label: &str) -> String {
+    const WIDTH: usize = 80;
+    let border = "#".repeat(WIDTH);
+    let empty = format!("##{}##", " ".repeat(WIDTH - 4));
+    let text = format!("##  {:<width$}##", label, width = WIDTH - 6);
+    format!("{border}\n{empty}\n{text}\n{empty}\n{border}")
 }
 
 enum Decision {
@@ -212,7 +222,9 @@ enum Decision {
     Stop(String),
 }
 
-fn should_continue(repo_root: &Path, decider_model: &str) -> Result<Decision, LoopError> {
+fn should_continue(repo_root: &Path, decider_model: &str, logger: Option<&Logger>) -> Result<Decision, LoopError> {
+    crate::logger::banner(logger, "DECISION");
+
     let schema = r#"{"type":"object","properties":{"action":{"type":"string","enum":["continue","ship","stop"],"description":"continue = keep working, ship = merge current branch and start new one, stop = all done"},"reason":{"type":"string","description":"Brief explanation of the decision"}},"required":["action","reason"]}"#;
 
     let prompt = "You are deciding what an AI agent loop should do next. \
@@ -235,7 +247,7 @@ fn should_continue(repo_root: &Path, decider_model: &str) -> Result<Decision, Lo
         ])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::inherit())
+        .stderr(Stdio::piped())
         .current_dir(repo_root)
         .spawn()
         .map_err(|e| LoopError::Decider(format!("failed to run claude CLI: {e}")))?;
@@ -244,9 +256,26 @@ fn should_continue(repo_root: &Path, decider_model: &str) -> Result<Decision, Lo
         let _ = stdin.write_all(prompt.as_bytes());
     }
 
+    // Tee decider stderr
+    let tee_handle = child.stderr.take().map(|stderr| {
+        if let Some(l) = logger {
+            l.tee_stderr(stderr)
+        } else {
+            std::thread::spawn(move || {
+                use std::io::BufRead;
+                let reader = std::io::BufReader::new(stderr);
+                for line in reader.lines().map_while(Result::ok) {
+                    eprintln!("{line}");
+                }
+            })
+        }
+    });
+
     let output = child
         .wait_with_output()
         .map_err(|e| LoopError::Decider(format!("failed to wait for claude CLI: {e}")))?;
+
+    if let Some(h) = tee_handle { let _ = h.join(); }
 
     if !output.status.success() {
         return Err(LoopError::Decider(format!(
@@ -256,8 +285,6 @@ fn should_continue(repo_root: &Path, decider_model: &str) -> Result<Decision, Lo
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-
-    // Parse the JSON output to extract structured_output
     let parsed: serde_json::Value = serde_json::from_str(stdout.trim())
         .map_err(|e| LoopError::Decider(format!("failed to parse decider output: {e}")))?;
 

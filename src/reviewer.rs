@@ -2,6 +2,8 @@ use std::io::Write;
 use std::path::Path;
 use std::process::{Command, Stdio};
 
+use crate::logger::Logger;
+
 pub struct ReviewerOptions {
     pub model: String,
     pub current_branch: String,
@@ -10,8 +12,8 @@ pub struct ReviewerOptions {
 /// Run a reviewer agent that inspects changes on the current branch vs SPEC.md.
 /// Creates litebrite items for issues found and closes done items.
 /// Non-fatal — errors are logged but don't stop the loop.
-pub fn execute(repo_root: &Path, opts: &ReviewerOptions) -> Result<(), ReviewerError> {
-    eprintln!("Running reviewer on branch {}...", opts.current_branch);
+pub fn execute(repo_root: &Path, opts: &ReviewerOptions, logger: Option<&Logger>) -> Result<(), ReviewerError> {
+    crate::logger::banner(logger, &format!("CODE REVIEW  branch={}", opts.current_branch));
 
     let prompt = format!(
         "You are a code reviewer for this project. Review the changes on branch '{}' \
@@ -34,7 +36,7 @@ pub fn execute(repo_root: &Path, opts: &ReviewerOptions) -> Result<(), ReviewerE
         ])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::inherit())
+        .stderr(Stdio::piped())
         .current_dir(repo_root)
         .spawn()
         .map_err(|e| ReviewerError(format!("failed to run claude CLI: {e}")))?;
@@ -43,9 +45,32 @@ pub fn execute(repo_root: &Path, opts: &ReviewerOptions) -> Result<(), ReviewerE
         let _ = stdin.write_all(prompt.as_bytes());
     }
 
+    // Tee stderr to terminal + log file
+    let tee_handle = if let Some(stderr) = child.stderr.take() {
+        if let Some(l) = logger {
+            Some(l.tee_stderr(stderr))
+        } else {
+            // No logger — drain to eprintln! in a thread
+            Some(std::thread::spawn(move || {
+                use std::io::BufRead;
+                let reader = std::io::BufReader::new(stderr);
+                for line in reader.lines().map_while(Result::ok) {
+                    eprintln!("{line}");
+                }
+            }))
+        }
+    } else {
+        None
+    };
+
     let status = child
         .wait()
         .map_err(|e| ReviewerError(format!("failed to wait for claude CLI: {e}")))?;
+
+    // Wait for stderr drain to complete
+    if let Some(h) = tee_handle {
+        let _ = h.join();
+    }
 
     if !status.success() {
         return Err(ReviewerError(format!(
@@ -54,7 +79,7 @@ pub fn execute(repo_root: &Path, opts: &ReviewerOptions) -> Result<(), ReviewerE
         )));
     }
 
-    eprintln!("Reviewer pass complete.");
+    crate::logger::log(logger, "Reviewer pass complete.");
     Ok(())
 }
 
