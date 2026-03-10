@@ -65,11 +65,10 @@
       "title": "Extract updated Dockerfile from container after exit",
       "description": "SPEC.md says: After the container exits, mrmouth extracts the updated Dockerfile back to .mrmouth/Dockerfile so changes persist. This is not implemented. Need to add docker cp to extract Dockerfile after container exit in run.rs.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 1,
-      "claimed_by": "agent-runner",
       "created_at": "2026-03-10T16:52:38.773121968Z",
-      "updated_at": "2026-03-10T16:52:44.181215008Z"
+      "updated_at": "2026-03-10T16:54:08.429935529Z"
     },
     "lb-4nvs": {
       "id": "lb-4nvs",
