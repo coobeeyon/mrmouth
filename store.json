@@ -330,6 +330,16 @@
       "created_at": "2026-03-10T13:14:15.197155635Z",
       "updated_at": "2026-03-10T14:23:50.980004747Z"
     },
+    "lb-seph": {
+      "id": "lb-seph",
+      "title": "Litebrite operations silently swallow all errors with no logging",
+      "description": "In litebrite.rs, all lb commands suppress stderr/stdout and ignore failures. While these are best-effort, there should be at least debug-level logging when they fail, to aid in troubleshooting issues where lb state gets out of sync.",
+      "item_type": "task",
+      "status": "open",
+      "priority": 4,
+      "created_at": "2026-03-10T16:31:30.511025502Z",
+      "updated_at": "2026-03-10T16:31:30.511025502Z"
+    },
     "lb-si5j": {
       "id": "lb-si5j",
       "title": "Add GitHub Actions release workflow",
