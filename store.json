@@ -126,10 +126,10 @@
       "title": "Fix relative path construction in loop_cmd.rs log_file",
       "description": "Not a bug: summary::execute joins relative paths to repo_root. The format! path works correctly.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 2,
       "created_at": "2026-03-10T16:52:40.255483883Z",
-      "updated_at": "2026-03-10T16:53:55.908652540Z"
+      "updated_at": "2026-03-10T16:53:55.914462167Z"
     },
     "lb-6xo6": {
       "id": "lb-6xo6",
