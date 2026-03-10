@@ -204,12 +204,20 @@ pub fn execute(config: &Config, repo_root: &Path, opts: RunOptions, tui: Option<
 
     if !opts.local && file_remote_path.is_none() {
         logger.log("Pulling code changes from remote...");
-        let pull_status = Command::new("git")
+        let pull_output = Command::new("git")
             .args(["-C", &repo_root.to_string_lossy(), "pull", "--ff-only"])
-            .status();
-        match pull_status {
-            Ok(s) if s.success() => {}
-            _ => logger.log("No new commits to pull."),
+            .output();
+        match pull_output {
+            Ok(o) if o.status.success() => {}
+            Ok(o) => {
+                let stderr = String::from_utf8_lossy(&o.stderr);
+                if stderr.contains("Already up to date") || stderr.is_empty() {
+                    logger.log("No new commits to pull.");
+                } else {
+                    logger.log(&format!("Warning: git pull failed: {}", stderr.trim()));
+                }
+            }
+            Err(e) => logger.log(&format!("Warning: git pull failed: {e}")),
         }
     }
 
@@ -403,7 +411,9 @@ fn atomic_symlink(target: &str, link_path: &std::path::PathBuf) {
     let tmp = link_path.with_extension("tmp");
     let _ = fs::remove_file(&tmp);
     if unix_fs::symlink(target, &tmp).is_ok() {
-        let _ = fs::rename(&tmp, link_path);
+        if fs::rename(&tmp, link_path).is_err() {
+            let _ = fs::remove_file(&tmp);
+        }
     }
 }
 

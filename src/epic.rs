@@ -259,7 +259,12 @@ fn make_slug(title: &str) -> String {
     // Trim trailing dash and limit length
     let trimmed = result.trim_end_matches('-');
     if trimmed.len() > 50 {
-        trimmed[..50].trim_end_matches('-').to_string()
+        // Use char boundary to avoid panic on multibyte UTF-8
+        let mut end = 50;
+        while !trimmed.is_char_boundary(end) {
+            end -= 1;
+        }
+        trimmed[..end].trim_end_matches('-').to_string()
     } else {
         trimmed.to_string()
     }
