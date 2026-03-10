@@ -178,15 +178,13 @@ pub fn execute(config: &Config, repo_root: &Path, opts: RunOptions, tui: Option<
     watcher_done.store(true, Ordering::Relaxed);
     logger.log(&format!("Container {container_name} finished (exit code {exit_code})."));
 
-    // 11. Update symlinks (latest.jsonl and latest.log)
+    // 11. Update symlinks atomically (latest.jsonl and latest.log)
     let latest_jsonl = log_dir.join("latest.jsonl");
     let latest_log = log_dir.join("latest.log");
-    let _ = fs::remove_file(&latest_jsonl);
-    let _ = fs::remove_file(&latest_log);
     #[cfg(unix)]
     {
-        let _ = std::os::unix::fs::symlink(&jsonl_filename, &latest_jsonl);
-        let _ = std::os::unix::fs::symlink(&log_filename, &latest_log);
+        atomic_symlink(&jsonl_filename, &latest_jsonl);
+        atomic_symlink(&log_filename, &latest_log);
     }
 
     // 12. Extract updated Dockerfile from container (agent may have modified it)
@@ -397,6 +395,17 @@ impl std::fmt::Display for RunError {
 }
 
 impl std::error::Error for RunError {}
+
+/// Atomically replace a symlink by creating a temp link and renaming over the target.
+#[cfg(unix)]
+fn atomic_symlink(target: &str, link_path: &std::path::PathBuf) {
+    use std::os::unix::fs as unix_fs;
+    let tmp = link_path.with_extension("tmp");
+    let _ = fs::remove_file(&tmp);
+    if unix_fs::symlink(target, &tmp).is_ok() {
+        let _ = fs::rename(&tmp, link_path);
+    }
+}
 
 #[cfg(test)]
 mod tests {
