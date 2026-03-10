@@ -1,4 +1,4 @@
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, IsTerminal, Write};
 use std::process::{Child, Stdio};
 
 use crate::logger::Logger;
@@ -6,12 +6,25 @@ use crate::stream_fmt::{self, StreamFormatter};
 use crate::tui::TuiSender;
 
 /// Output destination for streaming claude output.
-/// Either a TUI pane or direct terminal (stderr) output.
 pub enum StreamTarget {
     /// Route formatted output to a TUI pane.
     Tui(TuiSender),
     /// Print formatted output to stderr (non-TUI mode).
     Stderr,
+    /// Print formatted output to stdout (e.g. standalone summary command).
+    Stdout,
+}
+
+impl StreamTarget {
+    /// Whether ANSI color codes should be emitted for this target.
+    /// TUI always supports colors; terminal targets check is_terminal().
+    pub fn supports_color(&self) -> bool {
+        match self {
+            StreamTarget::Tui(_) => true,
+            StreamTarget::Stderr => std::io::stderr().is_terminal(),
+            StreamTarget::Stdout => std::io::stdout().is_terminal(),
+        }
+    }
 }
 
 /// Run a claude CLI child process that uses `--output-format stream-json`,
@@ -152,5 +165,6 @@ fn display(text: &str, target: &StreamTarget) {
     match target {
         StreamTarget::Tui(sender) => sender.send_line(text),
         StreamTarget::Stderr => eprintln!("{text}"),
+        StreamTarget::Stdout => println!("{text}"),
     }
 }

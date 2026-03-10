@@ -48,7 +48,7 @@ pub fn execute(repo_root: &Path, opts: &ReviewerOptions, logger: Option<&Logger>
         None => StreamTarget::Stderr,
     };
 
-    let mut formatter = StreamFormatter::new(true);
+    let mut formatter = StreamFormatter::new(target.supports_color());
 
     let (_result, exit_code) = streaming::run_streaming_claude(child, &mut formatter, logger, &target)
         .map_err(|e| ReviewerError(format!("streaming error: {e}")))?;

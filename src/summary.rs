@@ -71,10 +71,10 @@ pub fn execute(config: &Config, repo_root: &Path, log_file: &str, logger: Option
 
     let target = match logger.and_then(|l| l.tui_sender()) {
         Some(tui) => StreamTarget::Tui(tui.with_label("SUMMARY")),
-        None => StreamTarget::Stderr,
+        None => StreamTarget::Stdout,
     };
 
-    let mut formatter = StreamFormatter::new(true);
+    let mut formatter = StreamFormatter::new(target.supports_color());
 
     let (_result, exit_code) = streaming::run_streaming_claude(child, &mut formatter, logger, &target)
         .map_err(|e| SummaryError(format!("streaming error: {e}")))?;

@@ -61,7 +61,7 @@ fn check_ready(repo_root: &Path, current_branch: &str, logger: Option<&Logger>) 
         None => StreamTarget::Stderr,
     };
 
-    let mut formatter = StreamFormatter::new(true);
+    let mut formatter = StreamFormatter::new(target.supports_color());
 
     let (result_text, exit_code) = streaming::run_streaming_claude(child, &mut formatter, logger, &target)
         .map_err(|e| ShipperError(format!("readiness check failed: {e}")))?;
@@ -191,7 +191,7 @@ pub fn generate_branch_name(repo_root: &Path, model: &str, logger: Option<&Logge
         None => StreamTarget::Stderr,
     };
 
-    let mut formatter = StreamFormatter::new(true);
+    let mut formatter = StreamFormatter::new(target.supports_color());
 
     let (result_text, exit_code) = streaming::run_streaming_claude(child, &mut formatter, logger, &target)
         .map_err(|e| ShipperError(format!("branch name generation failed: {e}")))?;

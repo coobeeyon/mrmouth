@@ -279,7 +279,7 @@ fn should_continue(repo_root: &Path, decider_model: &str, logger: Option<&Logger
         None => StreamTarget::Stderr,
     };
 
-    let mut formatter = StreamFormatter::new(true);
+    let mut formatter = StreamFormatter::new(target.supports_color());
 
     let (result_text, exit_code) = streaming::run_streaming_claude(child, &mut formatter, logger, &target)
         .map_err(|e| LoopError::Decider(format!("streaming error: {e}")))?;
