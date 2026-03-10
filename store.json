@@ -215,11 +215,10 @@
       "title": "Symlink update in run.rs is non-atomic",
       "description": "In run.rs, latest.jsonl symlink is removed then recreated. If process crashes between the two operations, the symlink is broken. Use a temp symlink + rename for atomicity.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 3,
-      "claimed_by": "agent-runner",
       "created_at": "2026-03-10T17:03:57.856654287Z",
-      "updated_at": "2026-03-10T17:05:23.648205112Z"
+      "updated_at": "2026-03-10T17:05:58.770073186Z"
     },
     "lb-eivs": {
       "id": "lb-eivs",
