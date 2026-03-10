@@ -74,7 +74,7 @@ pub fn execute(config: &Config, repo_root: &Path, log_file: &str, logger: Option
         None => StreamTarget::Stderr,
     };
 
-    let mut formatter = StreamFormatter::new(logger.map_or(true, |l| !l.has_tui()));
+    let mut formatter = StreamFormatter::new(true);
 
     let (_result, exit_code) = streaming::run_streaming_claude(child, &mut formatter, logger, &target)
         .map_err(|e| SummaryError(format!("streaming error: {e}")))?;

@@ -269,7 +269,7 @@ fn should_continue(repo_root: &Path, decider_model: &str, logger: Option<&Logger
         None => StreamTarget::Stderr,
     };
 
-    let mut formatter = StreamFormatter::new(logger.map_or(true, |l| !l.has_tui()));
+    let mut formatter = StreamFormatter::new(true);
 
     let (result_text, exit_code) = streaming::run_streaming_claude(child, &mut formatter, logger, &target)
         .map_err(|e| LoopError::Decider(format!("streaming error: {e}")))?;
