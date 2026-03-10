@@ -122,7 +122,7 @@ fn main() {
     };
 
     // Start TUI unless --raw is set or stderr is not a TTY
-    let use_raw = matches!(cli.command, Commands::Run { raw: true, .. });
+    let use_raw = matches!(cli.command, Commands::Run { raw: true, .. } | Commands::Summary { .. });
     let tui = if use_raw {
         None
     } else {
