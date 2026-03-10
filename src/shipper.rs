@@ -1,8 +1,9 @@
-use std::io::Write;
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::Command;
 
 use crate::logger::Logger;
+use crate::stream_fmt::StreamFormatter;
+use crate::streaming::{self, StreamTarget};
 
 pub struct ShipperOptions {
     pub model: String,
@@ -31,25 +32,6 @@ pub fn execute(repo_root: &Path, opts: &ShipperOptions, logger: Option<&Logger>)
     Ok(ShipResult { new_branch: branch_name })
 }
 
-fn tee_stderr_or_inherit(
-    child: &mut std::process::Child,
-    logger: Option<&Logger>,
-) -> Option<std::thread::JoinHandle<()>> {
-    child.stderr.take().map(|stderr| {
-        if let Some(l) = logger {
-            l.tee_stderr(stderr)
-        } else {
-            std::thread::spawn(move || {
-                use std::io::BufRead;
-                let reader = std::io::BufReader::new(stderr);
-                for line in reader.lines().map_while(Result::ok) {
-                    eprintln!("{line}");
-                }
-            })
-        }
-    })
-}
-
 fn check_ready(repo_root: &Path, current_branch: &str, logger: Option<&Logger>) -> Result<(), ShipperError> {
     let schema = r#"{"type":"object","properties":{"status":{"type":"string","enum":["READY","BLOCKED"]},"reason":{"type":"string"}},"required":["status","reason"]}"#;
 
@@ -61,48 +43,38 @@ fn check_ready(repo_root: &Path, current_branch: &str, logger: Option<&Logger>) 
         current_branch
     );
 
-    let mut child = Command::new("claude")
-        .args([
-            "-p",
-            "--no-session-persistence",
-            "--model", "haiku",
-            "--allowedTools", "Bash(lb *),Bash(cargo test *)",
-            "--output-format", "json",
-            "--json-schema", schema,
-        ])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .current_dir(repo_root)
+    let mut cmd = streaming::claude_stream_cmd_with_schema(
+        repo_root,
+        "haiku",
+        "Bash(lb *),Bash(cargo test *)",
+        schema,
+    );
+
+    let mut child = cmd
         .spawn()
         .map_err(|e| ShipperError(format!("failed to run readiness check: {e}")))?;
 
-    if let Some(mut stdin) = child.stdin.take() {
-        let _ = stdin.write_all(prompt.as_bytes());
-    }
+    streaming::send_prompt(&mut child, &prompt);
 
-    let tee_handle = tee_stderr_or_inherit(&mut child, logger);
+    let target = match logger.and_then(|l| l.tui_sender()) {
+        Some(tui) => StreamTarget::Tui(tui.with_label("READINESS CHECK")),
+        None => StreamTarget::Stderr,
+    };
 
-    let output = child
-        .wait_with_output()
+    let mut formatter = StreamFormatter::new(logger.map_or(true, |l| !l.has_tui()));
+
+    let (result_text, exit_code) = streaming::run_streaming_claude(child, &mut formatter, logger, &target)
         .map_err(|e| ShipperError(format!("readiness check failed: {e}")))?;
 
-    if let Some(h) = tee_handle { let _ = h.join(); }
-
-    if !output.status.success() {
+    if exit_code != 0 {
         return Err(ShipperError(format!(
-            "readiness check exited with code {}",
-            output.status.code().unwrap_or(-1)
+            "readiness check exited with code {exit_code}"
         )));
     }
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let parsed: serde_json::Value = serde_json::from_str(stdout.trim())
-        .map_err(|e| ShipperError(format!("failed to parse readiness output: {e}")))?;
-
-    let structured = &parsed["structured_output"];
-    let status = structured["status"].as_str().unwrap_or("BLOCKED");
-    let reason = structured["reason"].as_str().unwrap_or("no reason given");
+    let parsed: serde_json::Value = serde_json::from_str(&result_text).unwrap_or_default();
+    let status = parsed["status"].as_str().unwrap_or("BLOCKED");
+    let reason = parsed["reason"].as_str().unwrap_or("no reason given");
 
     if status == "BLOCKED" {
         return Err(ShipperError(format!("branch not ready to ship: {reason}")));
@@ -201,42 +173,36 @@ pub fn generate_branch_name(repo_root: &Path, model: &str, logger: Option<&Logge
         Examples: review-ship-flow, docker-caching, test-coverage. \
         Just the slug, no 'feat-' prefix.";
 
-    let mut child = Command::new("claude")
-        .args([
-            "-p",
-            "--no-session-persistence",
-            "--model", model,
-            "--allowedTools", "Read,Bash(lb *)",
-            "--output-format", "json",
-            "--json-schema", schema,
-        ])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .current_dir(repo_root)
+    let mut cmd = streaming::claude_stream_cmd_with_schema(
+        repo_root,
+        model,
+        "Read,Bash(lb *)",
+        schema,
+    );
+
+    let mut child = cmd
         .spawn()
         .map_err(|e| ShipperError(format!("failed to generate branch name: {e}")))?;
 
-    if let Some(mut stdin) = child.stdin.take() {
-        let _ = stdin.write_all(prompt.as_bytes());
-    }
+    streaming::send_prompt(&mut child, prompt);
 
-    let tee_handle = tee_stderr_or_inherit(&mut child, logger);
+    let target = match logger.and_then(|l| l.tui_sender()) {
+        Some(tui) => StreamTarget::Tui(tui.with_label("BRANCH NAME")),
+        None => StreamTarget::Stderr,
+    };
 
-    let output = child
-        .wait_with_output()
+    let mut formatter = StreamFormatter::new(logger.map_or(true, |l| !l.has_tui()));
+
+    let (result_text, exit_code) = streaming::run_streaming_claude(child, &mut formatter, logger, &target)
         .map_err(|e| ShipperError(format!("branch name generation failed: {e}")))?;
 
-    if let Some(h) = tee_handle { let _ = h.join(); }
-
-    if !output.status.success() {
+    if exit_code != 0 {
         let ts = chrono::Local::now().format("%Y%m%d-%H%M%S");
         return Ok(format!("feat-{ts}"));
     }
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let parsed: serde_json::Value = serde_json::from_str(stdout.trim()).unwrap_or_default();
-    let slug = parsed["structured_output"]["name"]
+    let parsed: serde_json::Value = serde_json::from_str(&result_text).unwrap_or_default();
+    let slug = parsed["name"]
         .as_str()
         .unwrap_or("")
         .trim()
