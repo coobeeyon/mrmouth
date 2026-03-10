@@ -10,6 +10,7 @@ mod run;
 mod shipper;
 pub mod stream_fmt;
 mod summary;
+mod tui;
 
 use clap::{Parser, Subcommand};
 use config::Config;
