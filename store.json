@@ -280,6 +280,16 @@
       "created_at": "2026-03-10T13:14:47.518545914Z",
       "updated_at": "2026-03-10T14:30:01.357645161Z"
     },
+    "lb-xfzy": {
+      "id": "lb-xfzy",
+      "title": "TUI q/Ctrl+C exits via process::exit bypassing Docker cleanup",
+      "description": "In src/tui.rs render_loop(), pressing q or Ctrl+C calls std::process::exit(0) after cleanup_terminal(). This bypasses all cleanup in the main thread: running Docker containers are not stopped (orphan containers), litebrite state is not synced, and any other cleanup code (git pulls, etc.) is skipped. Should send a cancellation signal to the main thread instead of calling process::exit.",
+      "item_type": "task",
+      "status": "open",
+      "priority": 1,
+      "created_at": "2026-03-10T14:39:09.544293746Z",
+      "updated_at": "2026-03-10T14:39:09.544293746Z"
+    },
     "lb-y354": {
       "id": "lb-y354",
       "title": "Add unit tests for run.rs helper functions",
