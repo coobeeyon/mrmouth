@@ -231,9 +231,31 @@ pub fn generate_branch_name(repo_root: &Path, model: &str) -> Result<String, Shi
 }
 
 /// Create a new branch and push it to origin (if a remote exists).
+/// If the branch already exists locally (e.g. from a previous interrupted run), just check it out.
 pub fn create_and_push_branch(repo_root: &Path, branch_name: &str) -> Result<(), ShipperError> {
+    let branch_exists = Command::new("git")
+        .args([
+            "-C",
+            &repo_root.to_string_lossy(),
+            "show-ref",
+            "--verify",
+            "--quiet",
+            &format!("refs/heads/{branch_name}"),
+        ])
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+
+    let checkout_args: &[&str] = if branch_exists {
+        &["checkout", branch_name]
+    } else {
+        &["checkout", "-b", branch_name]
+    };
+
     let status = Command::new("git")
-        .args(["-C", &repo_root.to_string_lossy(), "checkout", "-b", branch_name])
+        .arg("-C")
+        .arg(&*repo_root.to_string_lossy())
+        .args(checkout_args)
         .status()
         .map_err(|e| ShipperError(format!("failed to create branch {branch_name}: {e}")))?;
 
