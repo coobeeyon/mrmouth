@@ -220,6 +220,16 @@
       "created_at": "2026-03-10T13:15:10.984337128Z",
       "updated_at": "2026-03-10T14:35:11.265418923Z"
     },
+    "lb-eryu": {
+      "id": "lb-eryu",
+      "title": "Decider JSON parse failures silently default to continue",
+      "description": "In loop_cmd.rs, if Claude returns malformed JSON, serde_json::from_str falls back to default Value which causes the decider to default to continue. Should log a warning when JSON parsing fails.",
+      "item_type": "task",
+      "status": "open",
+      "priority": 2,
+      "created_at": "2026-03-10T17:03:56.437475603Z",
+      "updated_at": "2026-03-10T17:03:56.437475603Z"
+    },
     "lb-gipm": {
       "id": "lb-gipm",
       "title": "Fix --raw mode output goes to stderr instead of stdout",
