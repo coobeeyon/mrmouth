@@ -131,7 +131,7 @@ fn main() {
                 prompt_override: None,
                 branch: None,
             };
-            if let Err(e) = run::execute(&config, &repo_root, opts).map(|_| ()) {
+            if let Err(e) = run::execute(&config, &repo_root, opts, None).map(|_| ()) {
                 eprintln!("error: {e}");
                 std::process::exit(1);
             }

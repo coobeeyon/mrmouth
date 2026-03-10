@@ -75,7 +75,7 @@ pub fn execute(config: &Config, repo_root: &Path, opts: EpicOptions) -> Result<(
             branch: None,
         };
 
-        let run_result = run::execute(config, repo_root, run_opts);
+        let run_result = run::execute(config, repo_root, run_opts, None);
 
         match run_result {
             Ok(_logger) => {

@@ -9,6 +9,7 @@ use crate::litebrite;
 use crate::logger::Logger;
 use crate::prompt;
 use crate::stream_fmt::{self, StreamFormatter};
+use crate::tui::TuiHandle;
 
 pub struct RunOptions {
     pub raw: bool,
@@ -21,7 +22,7 @@ pub struct RunOptions {
 
 /// Execute one agent run. Returns the Logger so callers can continue writing to the same
 /// log file for subsequent stages (reviewer, decider, summary, etc.).
-pub fn execute(config: &Config, repo_root: &Path, opts: RunOptions) -> Result<Logger, RunError> {
+pub fn execute(config: &Config, repo_root: &Path, opts: RunOptions, tui: Option<&TuiHandle>) -> Result<Logger, RunError> {
     // 0. Set up logging first so every stage is captured
     let log_dir = repo_root.join(&config.log_dir);
     fs::create_dir_all(&log_dir)
@@ -29,8 +30,12 @@ pub fn execute(config: &Config, repo_root: &Path, opts: RunOptions) -> Result<Lo
     let timestamp = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
     let log_filename = format!("run-{timestamp}.log");
     let log_path = log_dir.join(&log_filename);
-    let logger = Logger::new(&log_path)
-        .map_err(|e| RunError::Io("creating log file".into(), e))?;
+    let logger = match tui {
+        Some(t) => Logger::with_tui(&log_path, t.sender("AGENT SESSION"))
+            .map_err(|e| RunError::Io("creating log file".into(), e))?,
+        None => Logger::new(&log_path)
+            .map_err(|e| RunError::Io("creating log file".into(), e))?,
+    };
 
     // Resolve branch early so we can include it in the opening banner
     let branch = opts
@@ -113,7 +118,7 @@ pub fn execute(config: &Config, repo_root: &Path, opts: RunOptions) -> Result<Lo
     if opts.raw {
         handle
             .stream_output(|line| {
-                println!("{line}");
+                logger.display(line);
                 let _ = writeln!(jsonl_writer, "{line}");
                 logger.log_file_only(line);
             })
@@ -124,7 +129,7 @@ pub fn execute(config: &Config, repo_root: &Path, opts: RunOptions) -> Result<Lo
             .stream_output(|line| {
                 let _ = writeln!(jsonl_writer, "{line}");
                 if let Some(formatted) = stream_fmt::format_line(&mut formatter, line) {
-                    println!("{formatted}");
+                    logger.display(&formatted);
                     logger.log_file_only(&formatted);
                 }
             })

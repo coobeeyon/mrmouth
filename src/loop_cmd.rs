@@ -115,7 +115,7 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions) -> Result<(
         let head_before = git_head(repo_root);
 
         // run::execute prints its own ITERATION banner with branch + timestamp
-        let run_result = run::execute(config, repo_root, run_opts);
+        let run_result = run::execute(config, repo_root, run_opts, None);
         let logger_opt: Option<Logger> = match run_result {
             Ok(logger) => Some(logger),
             Err(e) => {
