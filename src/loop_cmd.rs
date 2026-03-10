@@ -1,6 +1,5 @@
-use std::io::Write;
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::Command;
 
 use crate::config::Config;
 use crate::litebrite;
@@ -8,6 +7,8 @@ use crate::logger::Logger;
 use crate::reviewer;
 use crate::run::{self, RunOptions};
 use crate::shipper;
+use crate::stream_fmt::StreamFormatter;
+use crate::streaming::{self, StreamTarget};
 use crate::summary;
 use crate::tui::TuiHandle;
 
@@ -237,61 +238,40 @@ fn should_continue(repo_root: &Path, decider_model: &str, logger: Option<&Logger
         - \"ship\": the current batch of work is complete and ready to merge; start a new branch for remaining work\n\
         - \"stop\": all work is done, no more runs needed";
 
-    let mut child = Command::new("claude")
-        .args([
-            "-p",
-            "--no-session-persistence",
-            "--model", decider_model,
-            "--allowedTools", "Read,Bash(git *),Bash(lb *)",
-            "--output-format", "json",
-            "--json-schema", schema,
-        ])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .current_dir(repo_root)
+    let mut cmd = streaming::claude_stream_cmd_with_schema(
+        repo_root,
+        decider_model,
+        "Read,Bash(git *),Bash(lb *)",
+        schema,
+    );
+
+    let mut child = cmd
         .spawn()
         .map_err(|e| LoopError::Decider(format!("failed to run claude CLI: {e}")))?;
 
-    if let Some(mut stdin) = child.stdin.take() {
-        let _ = stdin.write_all(prompt.as_bytes());
-    }
+    streaming::send_prompt(&mut child, prompt);
 
-    // Tee decider stderr
-    let tee_handle = child.stderr.take().map(|stderr| {
-        if let Some(l) = logger {
-            l.tee_stderr(stderr)
-        } else {
-            std::thread::spawn(move || {
-                use std::io::BufRead;
-                let reader = std::io::BufReader::new(stderr);
-                for line in reader.lines().map_while(Result::ok) {
-                    eprintln!("{line}");
-                }
-            })
-        }
-    });
+    let target = match logger.and_then(|l| l.tui_sender()) {
+        Some(tui) => StreamTarget::Tui(tui.with_label("DECISION")),
+        None => StreamTarget::Stderr,
+    };
 
-    let output = child
-        .wait_with_output()
-        .map_err(|e| LoopError::Decider(format!("failed to wait for claude CLI: {e}")))?;
+    let mut formatter = StreamFormatter::new(logger.map_or(true, |l| !l.has_tui()));
 
-    if let Some(h) = tee_handle { let _ = h.join(); }
+    let (result_text, exit_code) = streaming::run_streaming_claude(child, &mut formatter, logger, &target)
+        .map_err(|e| LoopError::Decider(format!("streaming error: {e}")))?;
 
-    if !output.status.success() {
+    if exit_code != 0 {
         return Err(LoopError::Decider(format!(
-            "claude CLI exited with code {}",
-            output.status.code().unwrap_or(-1)
+            "claude CLI exited with code {exit_code}"
         )));
     }
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let parsed: serde_json::Value = serde_json::from_str(stdout.trim())
-        .map_err(|e| LoopError::Decider(format!("failed to parse decider output: {e}")))?;
-
-    let structured = &parsed["structured_output"];
-    let action = structured["action"].as_str().unwrap_or("continue");
-    let reason = structured["reason"].as_str().unwrap_or("no reason given").to_string();
+    // Parse the structured result from the stream-json result event
+    let parsed: serde_json::Value = serde_json::from_str(&result_text)
+        .unwrap_or_default();
+    let action = parsed["action"].as_str().unwrap_or("continue");
+    let reason = parsed["reason"].as_str().unwrap_or("no reason given").to_string();
 
     match action {
         "ship" => Ok(Decision::Ship(reason)),
