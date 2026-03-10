@@ -385,11 +385,10 @@
       "title": "Epic creates feature branch but doesn't push before first container run",
       "description": "epic.rs creates a new feature branch locally via git checkout -b, but the first run::execute call will clone from remote using that branch name. Since it hasn't been pushed yet, the clone fails. Fix: push the new branch to remote after creating it.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 1,
-      "claimed_by": "agent-runner",
       "created_at": "2026-03-10T16:54:40.793650522Z",
-      "updated_at": "2026-03-10T16:54:44.122027057Z"
+      "updated_at": "2026-03-10T16:55:01.121730511Z"
     },
     "lb-u4qp": {
       "id": "lb-u4qp",
