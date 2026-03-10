@@ -137,9 +137,10 @@ pub fn execute(config: &Config, repo_root: &Path, opts: RunOptions, tui: Option<
     let is_tty = std::io::stdout().is_terminal();
 
     if opts.raw {
+        let stdout = std::io::stdout();
         handle
             .stream_output(|line| {
-                logger.display(line);
+                let _ = writeln!(stdout.lock(), "{line}");
                 let _ = writeln!(jsonl_writer, "{line}");
                 logger.log_file_only(line);
             })
