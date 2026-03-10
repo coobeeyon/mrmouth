@@ -247,8 +247,9 @@
       "item_type": "task",
       "status": "open",
       "priority": 1,
+      "claimed_by": "agent-runner",
       "created_at": "2026-03-10T13:15:26.855969367Z",
-      "updated_at": "2026-03-10T13:15:26.855969367Z"
+      "updated_at": "2026-03-10T14:25:22.095379104Z"
     },
     "lb-uaey": {
       "id": "lb-uaey",
