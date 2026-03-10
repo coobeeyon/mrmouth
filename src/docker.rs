@@ -17,7 +17,8 @@ FROM node:22
 
 # Layer 1: System deps (changes ~never)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    unzip openssh-client sudo curl \
+    unzip openssh-client sudo curl git-lfs \
+  && git lfs install \
   && rm -rf /var/lib/apt/lists/*
 
 # Layer 2: GitHub CLI (changes occasionally)
