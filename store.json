@@ -25,11 +25,10 @@
       "title": "Create src/tui.rs: TuiHandle, TuiSender, multi-pane render thread",
       "description": "New file src/tui.rs implementing:\n\nPublic API:\n  pub struct TuiHandle  // owns background render thread; Drop → shutdown\n  pub struct TuiSender { label: String, tx: Sender<TuiMsg> }\n\n  impl TuiHandle {\n      pub fn try_start() -> Option<Self>   // None if stderr is not TTY\n      pub fn sender(&self, label: &str) -> TuiSender\n  }\n  impl Drop for TuiHandle { fn drop(&mut self) { /* send Quit, join thread */ } }\n\n  impl TuiSender {\n      pub fn send_line(&self, line: String)\n      pub fn with_label(&self, label: &str) -> Self  // clone with different pane label\n  }\n\nInternal:\n  enum TuiMsg { Line { pane: String, text: String }, Quit }\n  struct TuiState { panes: IndexMap<String, VecDeque<String>>, active: String, max_lines: usize /* 500 */ }\n\nLayout:\n  ┌───────────────────────────────────────────┐\n  │ mrmouth │ AGENT SESSION │ branch=feat-foo  │  ← header: active pane label\n  ├───────────────────────────────────────────┤\n  │ [text]                                    │\n  │     I'll start by reading...              │  ← scrolling ring buffer\n  │ [Bash]                                    │\n  │     lb list                               │\n  │ [1/3]  Tab=next  q=quit                  │  ← footer (only if >1 pane)\n  └───────────────────────────────────────────┘\n\nRender thread: crossterm alternate screen mode. Loop: recv() on mpsc::Receiver<TuiMsg> + crossterm::event::poll(50ms) for keyboard. Redraws on each event.\n\nKeyboard: Tab cycles panes, q/Ctrl-C sends SIGTERM or process::exit(0) after terminal restore.\n\nANSI: use ansi-to-tui crate to convert ANSI strings from stream_fmt.rs to ratatui Text/Lines/Spans.\n\nShutdown: Drop sends Quit, joins thread. Cleanup: disable_raw_mode() + LeaveAlternateScreen.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 1,
-      "claimed_by": "agent-runner",
       "created_at": "2026-03-10T13:14:29.882698719Z",
-      "updated_at": "2026-03-10T14:24:05.278238363Z"
+      "updated_at": "2026-03-10T14:25:05.382456602Z"
     },
     "lb-34j5": {
       "id": "lb-34j5",
