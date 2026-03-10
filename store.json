@@ -95,11 +95,10 @@
       "title": "Sub-agent formatter hardcodes is_tty=true, pollutes non-TTY output with ANSI codes",
       "description": "In streaming.rs callers (reviewer.rs, shipper.rs, summary.rs, loop_cmd.rs), StreamFormatter::new(true) is always called regardless of whether stderr is a TTY. This means ANSI escape codes are embedded in output even in non-TTY environments (CI, piped logs). The main agent formatter in run.rs correctly checks stdout.is_terminal(). The fix: in run_streaming_claude or its callers, use io::stderr().is_terminal() || logger.has_tui() to decide is_tty.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 2,
-      "claimed_by": "agent-runner",
       "created_at": "2026-03-10T16:05:37.358803537Z",
-      "updated_at": "2026-03-10T16:07:52.834262539Z"
+      "updated_at": "2026-03-10T16:09:11.739446482Z"
     },
     "lb-68yw": {
       "id": "lb-68yw",
