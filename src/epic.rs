@@ -331,4 +331,14 @@ mod tests {
     fn slug_all_special_chars() {
         assert_eq!(make_slug("!@#$%^&*()"), "");
     }
+
+    #[test]
+    fn slug_multibyte_utf8_truncation() {
+        // Title with accented chars that produce multibyte UTF-8
+        let title = "é".repeat(60); // each é is 2 bytes
+        let slug = make_slug(&title);
+        assert!(slug.len() <= 50);
+        // Verify it's valid UTF-8 (would panic on bad boundary)
+        let _ = slug.chars().count();
+    }
 }
