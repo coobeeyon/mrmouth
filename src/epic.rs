@@ -45,9 +45,14 @@ pub fn execute(config: &Config, repo_root: &Path, opts: EpicOptions, tui: Option
         git_checkout_new_branch(repo_root, &branch_name)?;
         // Push the new branch so container can clone it
         emit(&tui_tx, &format!("Pushing branch to remote..."));
-        let _ = Command::new("git")
+        let push_status = Command::new("git")
             .args(["-C", &repo_root.to_string_lossy(), "push", "-u", "origin", &branch_name])
             .status();
+        match push_status {
+            Ok(s) if s.success() => {}
+            Ok(s) => emit(&tui_tx, &format!("WARNING: git push exited with code {} — container may fail to clone this branch", s.code().unwrap_or(-1))),
+            Err(e) => emit(&tui_tx, &format!("WARNING: git push failed: {e} — container may fail to clone this branch")),
+        }
         branch_name
     } else {
         emit(&tui_tx, &format!("Already on branch: {current_branch}"));
