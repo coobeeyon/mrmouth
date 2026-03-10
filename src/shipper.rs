@@ -72,7 +72,13 @@ fn check_ready(repo_root: &Path, current_branch: &str, logger: Option<&Logger>) 
         )));
     }
 
-    let parsed: serde_json::Value = serde_json::from_str(&result_text).unwrap_or_default();
+    let parsed: serde_json::Value = match serde_json::from_str(&result_text) {
+        Ok(v) => v,
+        Err(e) => {
+            crate::logger::log(logger, &format!("WARNING: readiness check returned invalid JSON: {e}"));
+            return Err(ShipperError(format!("readiness check returned invalid JSON: {e}")));
+        }
+    };
     let status = parsed["status"].as_str().unwrap_or("BLOCKED");
     let reason = parsed["reason"].as_str().unwrap_or("no reason given");
 
@@ -201,7 +207,14 @@ pub fn generate_branch_name(repo_root: &Path, model: &str, logger: Option<&Logge
         return Ok(format!("feat-{ts}"));
     }
 
-    let parsed: serde_json::Value = serde_json::from_str(&result_text).unwrap_or_default();
+    let parsed: serde_json::Value = match serde_json::from_str(&result_text) {
+        Ok(v) => v,
+        Err(e) => {
+            crate::logger::log(logger, &format!("WARNING: branch name generation returned invalid JSON (using timestamp fallback): {e}"));
+            let ts = chrono::Local::now().format("%Y%m%d-%H%M%S");
+            return Ok(format!("feat-{ts}"));
+        }
+    };
     let slug = parsed["name"]
         .as_str()
         .unwrap_or("")

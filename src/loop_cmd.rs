@@ -300,8 +300,14 @@ fn should_continue(repo_root: &Path, decider_model: &str, logger: Option<&Logger
     }
 
     // Parse the structured result from the stream-json result event
-    let parsed: serde_json::Value = serde_json::from_str(&result_text)
-        .unwrap_or_default();
+    let parsed: serde_json::Value = match serde_json::from_str(&result_text) {
+        Ok(v) => v,
+        Err(e) => {
+            crate::logger::log(logger, &format!("WARNING: decider returned invalid JSON (defaulting to 'continue'): {e}"));
+            crate::logger::log(logger, &format!("  raw output: {result_text}"));
+            return Ok(Decision::Continue("JSON parse failure — defaulting to continue".into()));
+        }
+    };
     let action = parsed["action"].as_str().unwrap_or("continue");
     let reason = parsed["reason"].as_str().unwrap_or("no reason given").to_string();
 
