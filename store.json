@@ -60,6 +60,16 @@
       "created_at": "2026-03-08T21:49:43.709600051Z",
       "updated_at": "2026-03-08T21:50:00.988079113Z"
     },
+    "lb-cmnc": {
+      "id": "lb-cmnc",
+      "title": "Add Ratatui TUI with streaming output to mrmouth",
+      "description": "Add a Ratatui TUI that shows streaming agent output in named panes (one per stage), with a header indicating the active stage and Tab-based pane switching for concurrent stages. Replace all terminal output with TUI-routed versions when running in a TTY. Also fix reviewer, summary, decider, and shipper to use --output-format stream-json so their work is visible (not just stderr chatter).",
+      "item_type": "epic",
+      "status": "open",
+      "priority": 1,
+      "created_at": "2026-03-10T13:14:09.186143805Z",
+      "updated_at": "2026-03-10T13:14:09.186143805Z"
+    },
     "lb-ljfl": {
       "id": "lb-ljfl",
       "title": "Add --init flag to docker run to reap zombie processes",
