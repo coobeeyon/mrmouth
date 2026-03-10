@@ -360,6 +360,16 @@
       "created_at": "2026-03-09T15:50:45.683044731Z",
       "updated_at": "2026-03-09T18:43:24.859337500Z"
     },
+    "lb-u4qp": {
+      "id": "lb-u4qp",
+      "title": "Cancel watcher thread leaks if run::execute errors after thread spawn",
+      "description": "In run.rs, the cancel watcher thread is spawned before the streaming/wait logic. If stream_output() or handle.wait() returns an error, run::execute returns early via ? without setting watcher_done=true. The _cancel_watcher JoinHandle drops (detaching the thread), leaving it spinning at 200ms intervals indefinitely (until TUI q is pressed or process exits). In a loop with repeated failures, multiple watcher threads accumulate. Fix: set watcher_done=true in a defer-style pattern (e.g. on Drop), or join/signal the thread on all exit paths.",
+      "item_type": "task",
+      "status": "open",
+      "priority": 4,
+      "created_at": "2026-03-10T16:35:16.848386583Z",
+      "updated_at": "2026-03-10T16:35:16.848386583Z"
+    },
     "lb-u9z2": {
       "id": "lb-u9z2",
       "title": "Extract run_streaming_claude helper for shared streaming logic",
