@@ -43,6 +43,11 @@ pub fn execute(config: &Config, repo_root: &Path, opts: EpicOptions, tui: Option
         let branch_name = format!("{}-{}", opts.epic_id, slug);
         emit(&tui_tx, &format!("Creating feature branch: {branch_name}"));
         git_checkout_new_branch(repo_root, &branch_name)?;
+        // Push the new branch so container can clone it
+        emit(&tui_tx, &format!("Pushing branch to remote..."));
+        let _ = Command::new("git")
+            .args(["-C", &repo_root.to_string_lossy(), "push", "-u", "origin", &branch_name])
+            .status();
         branch_name
     } else {
         emit(&tui_tx, &format!("Already on branch: {current_branch}"));
