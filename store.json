@@ -335,11 +335,10 @@
       "title": "Litebrite operations silently swallow all errors with no logging",
       "description": "In litebrite.rs, all lb commands suppress stderr/stdout and ignore failures. While these are best-effort, there should be at least debug-level logging when they fail, to aid in troubleshooting issues where lb state gets out of sync.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 4,
-      "claimed_by": "agent-runner",
       "created_at": "2026-03-10T16:31:30.511025502Z",
-      "updated_at": "2026-03-10T16:37:56.869798929Z"
+      "updated_at": "2026-03-10T16:38:44.119853551Z"
     },
     "lb-si5j": {
       "id": "lb-si5j",
