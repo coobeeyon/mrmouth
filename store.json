@@ -235,11 +235,10 @@
       "title": "Decider JSON parse failures silently default to continue",
       "description": "In loop_cmd.rs, if Claude returns malformed JSON, serde_json::from_str falls back to default Value which causes the decider to default to continue. Should log a warning when JSON parsing fails.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 2,
-      "claimed_by": "agent-runner",
       "created_at": "2026-03-10T17:03:56.437475603Z",
-      "updated_at": "2026-03-10T17:04:31.188068015Z"
+      "updated_at": "2026-03-10T17:05:16.563684351Z"
     },
     "lb-gipm": {
       "id": "lb-gipm",
