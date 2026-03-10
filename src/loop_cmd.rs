@@ -99,6 +99,12 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions, tui: Option
     loop {
         run_number += 1;
 
+        // Check if TUI user cancelled
+        if tui.map_or(false, |t| t.is_cancelled()) {
+            eprintln!("{}", make_banner("LOOP CANCELLED BY USER"));
+            break;
+        }
+
         if opts.max_runs > 0 && run_number > opts.max_runs {
             eprintln!();
             eprintln!("{}", make_banner(&format!("LOOP COMPLETE  {} runs", opts.max_runs)));
@@ -200,6 +206,12 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions, tui: Option
             Err(e) => {
                 crate::logger::log(logger_opt.as_ref(), &format!("Decider error (continuing anyway): {e}"));
             }
+        }
+
+        // Check if TUI user cancelled before sleeping
+        if tui.map_or(false, |t| t.is_cancelled()) {
+            eprintln!("{}", make_banner("LOOP CANCELLED BY USER"));
+            break;
         }
 
         if opts.delay > 0 {

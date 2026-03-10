@@ -44,6 +44,12 @@ pub fn execute(config: &Config, repo_root: &Path, opts: EpicOptions, tui: Option
     let mut consecutive_failures: u32 = 0;
 
     loop {
+        // Check if TUI user cancelled
+        if tui.map_or(false, |t| t.is_cancelled()) {
+            eprintln!("Epic cancelled by user.");
+            break;
+        }
+
         // Check remaining tasks
         let remaining = count_remaining_tasks(repo_root, &opts.epic_id);
         if remaining == 0 {

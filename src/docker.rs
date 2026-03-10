@@ -227,6 +227,15 @@ impl DockerBuilder {
         })
     }
 
+    /// Stop a running container by name (best-effort).
+    pub fn stop_container(name: &str) {
+        let _ = Command::new("docker")
+            .args(["stop", "-t", "5", name])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+    }
+
     /// Remove a container by name (best-effort).
     pub fn remove_container(name: &str) {
         let _ = Command::new("docker")

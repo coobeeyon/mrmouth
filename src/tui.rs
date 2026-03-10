@@ -1,6 +1,8 @@
 use std::collections::VecDeque;
-use std::io::{self, IsTerminal, Stdout};
+use std::io::{self, IsTerminal};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::Arc;
 use std::thread::JoinHandle;
 use std::time::Duration;
 
@@ -29,6 +31,7 @@ enum TuiMsg {
 pub struct TuiHandle {
     tx: Sender<TuiMsg>,
     thread: Option<JoinHandle<()>>,
+    cancelled: Arc<AtomicBool>,
 }
 
 /// Cloneable sender that tags each line with a pane label.
@@ -112,8 +115,10 @@ impl TuiHandle {
         }
 
         let (tx, rx) = mpsc::channel();
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let cancelled_clone = Arc::clone(&cancelled);
         let thread = std::thread::spawn(move || {
-            if let Err(e) = render_loop(rx) {
+            if let Err(e) = render_loop(rx, &cancelled_clone) {
                 // Best effort: restore terminal and print error
                 let _ = disable_raw_mode();
                 let _ = execute!(io::stderr(), LeaveAlternateScreen);
@@ -124,7 +129,18 @@ impl TuiHandle {
         Some(Self {
             tx,
             thread: Some(thread),
+            cancelled,
         })
+    }
+
+    /// Returns true if the user requested cancellation (q or Ctrl+C).
+    pub fn is_cancelled(&self) -> bool {
+        self.cancelled.load(Ordering::Relaxed)
+    }
+
+    /// Returns a clone of the cancellation flag for use in watcher threads.
+    pub fn cancelled_flag(&self) -> Arc<AtomicBool> {
+        Arc::clone(&self.cancelled)
     }
 
     /// Create a TuiSender that tags lines with the given pane label.
@@ -164,7 +180,7 @@ impl TuiSender {
 }
 
 /// Main render loop running on the background thread.
-fn render_loop(rx: Receiver<TuiMsg>) -> io::Result<()> {
+fn render_loop(rx: Receiver<TuiMsg>, cancelled: &AtomicBool) -> io::Result<()> {
     enable_raw_mode()?;
     let mut stderr = io::stderr();
     execute!(stderr, EnterAlternateScreen)?;
@@ -199,8 +215,9 @@ fn render_loop(rx: Receiver<TuiMsg>) -> io::Result<()> {
             if let Event::Key(key) = event::read()? {
                 match (key.code, key.modifiers) {
                     (KeyCode::Char('q'), _) | (KeyCode::Char('c'), KeyModifiers::CONTROL) => {
+                        cancelled.store(true, Ordering::Relaxed);
                         cleanup_terminal(&mut terminal)?;
-                        std::process::exit(0);
+                        return Ok(());
                     }
                     (KeyCode::Tab, _) => {
                         state.next_pane();

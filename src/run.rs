@@ -3,6 +3,9 @@ use std::io::{BufWriter, IsTerminal, Write};
 use std::path::Path;
 use std::process::Command;
 
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+
 use crate::config::Config;
 use crate::docker::{ContainerArgs, DockerBuilder};
 use crate::litebrite;
@@ -109,6 +112,24 @@ pub fn execute(config: &Config, repo_root: &Path, opts: RunOptions, tui: Option<
 
     let mut handle = docker.run(&container_args).map_err(RunError::Docker)?;
 
+    // 8b. Spawn a watcher that stops the container if the TUI user cancels (q / Ctrl+C)
+    let watcher_done = Arc::new(AtomicBool::new(false));
+    let _cancel_watcher = if let Some(t) = tui {
+        let flag = t.cancelled_flag();
+        let done = Arc::clone(&watcher_done);
+        let name = container_name.clone();
+        Some(std::thread::spawn(move || {
+            while !flag.load(Ordering::Relaxed) && !done.load(Ordering::Relaxed) {
+                std::thread::sleep(std::time::Duration::from_millis(200));
+            }
+            if flag.load(Ordering::Relaxed) {
+                DockerBuilder::stop_container(&name);
+            }
+        }))
+    } else {
+        None
+    };
+
     // 9. Stream output — raw JSONL to .jsonl file, formatted text to terminal + .log file
     let jsonl_file = File::create(&jsonl_path)
         .map_err(|e| RunError::Io("creating jsonl file".into(), e))?;
@@ -140,6 +161,7 @@ pub fn execute(config: &Config, repo_root: &Path, opts: RunOptions, tui: Option<
 
     // 10. Wait for container exit
     let exit_code = handle.wait().map_err(RunError::Docker)?;
+    watcher_done.store(true, Ordering::Relaxed);
     logger.log(&format!("Container {container_name} finished (exit code {exit_code})."));
 
     // 11. Update symlinks (latest.jsonl and latest.log)
