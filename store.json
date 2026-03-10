@@ -173,11 +173,12 @@
     "lb-gipm": {
       "id": "lb-gipm",
       "title": "Fix --raw mode output goes to stderr instead of stdout",
+      "description": "In run.rs raw mode, logger.display(line) routes to eprintln (stderr) in non-TUI mode. Previously this was println (stdout). Raw mode is intended for piping (e.g. mrmouth run --raw | jq), so output must reach stdout. The Logger::display docstring even says 'TUI or stdout' but display_line uses eprintln for the non-TUI case. Fix: add a stdout-routing variant to Logger and use it in the raw branch, or bypass Logger and write directly to stdout in the raw path.",
       "item_type": "task",
       "status": "open",
       "priority": 2,
       "created_at": "2026-03-10T16:12:23.648585075Z",
-      "updated_at": "2026-03-10T16:12:23.648585075Z"
+      "updated_at": "2026-03-10T16:12:27.531911775Z"
     },
     "lb-glnx": {
       "id": "lb-glnx",
