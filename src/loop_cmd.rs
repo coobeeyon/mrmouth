@@ -10,7 +10,7 @@ use crate::shipper;
 use crate::stream_fmt::StreamFormatter;
 use crate::streaming::{self, StreamTarget};
 use crate::summary;
-use crate::tui::TuiHandle;
+use crate::tui::{TuiHandle, TuiSender};
 
 pub struct LoopOptions {
     pub delay: u32,
@@ -19,12 +19,22 @@ pub struct LoopOptions {
     pub model: String,
 }
 
+/// Route a message to the TUI pane if available, otherwise stderr.
+fn emit(tui_tx: &Option<TuiSender>, msg: &str) {
+    match tui_tx {
+        Some(sender) => sender.send_line(msg),
+        None => eprintln!("{msg}"),
+    }
+}
+
 pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions, tui: Option<&TuiHandle>) -> Result<(), LoopError> {
+    let tui_tx = tui.map(|t| t.sender("LOOP"));
+
     // Cold-start: no git repo yet — init one and run in local (bind-mount) mode
     let bootstrap_mode = !repo_root.join(".git").exists();
     if bootstrap_mode {
-        eprintln!("{}", make_banner("BOOTSTRAP"));
-        eprintln!("No git repository found in {}. Running git init...", repo_root.display());
+        emit(&tui_tx, &make_banner("BOOTSTRAP"));
+        emit(&tui_tx, &format!("No git repository found in {}. Running git init...", repo_root.display()));
         let status = Command::new("git")
             .arg("init")
             .current_dir(repo_root)
@@ -79,7 +89,7 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions, tui: Option
     let mut current_branch = if bootstrap_mode {
         parent_branch.clone()
     } else {
-        eprintln!("{}", make_banner("BRANCH SETUP"));
+        emit(&tui_tx, &make_banner("BRANCH SETUP"));
         let branch_name = shipper::generate_branch_name(repo_root, &config.loop_config.shipper_model, None)
             .map_err(|e| LoopError::BranchCreation(format!("failed to generate branch name: {e}")))?;
         shipper::create_and_push_branch(repo_root, &branch_name, None)
@@ -92,7 +102,7 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions, tui: Option
     } else {
         opts.max_runs.to_string()
     };
-    eprintln!("Agent loop: {}s between runs, max={}, Ctrl-C to stop", opts.delay, max_label);
+    emit(&tui_tx, &format!("Agent loop: {}s between runs, max={}, Ctrl-C to stop", opts.delay, max_label));
 
     let mut run_number: u32 = 0;
 
@@ -101,13 +111,13 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions, tui: Option
 
         // Check if TUI user cancelled
         if tui.map_or(false, |t| t.is_cancelled()) {
-            eprintln!("{}", make_banner("LOOP CANCELLED BY USER"));
+            emit(&tui_tx, &make_banner("LOOP CANCELLED BY USER"));
             break;
         }
 
         if opts.max_runs > 0 && run_number > opts.max_runs {
-            eprintln!();
-            eprintln!("{}", make_banner(&format!("LOOP COMPLETE  {} runs", opts.max_runs)));
+            emit(&tui_tx, "");
+            emit(&tui_tx, &make_banner(&format!("LOOP COMPLETE  {} runs", opts.max_runs)));
             break;
         }
 
@@ -127,7 +137,7 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions, tui: Option
         let logger_opt: Option<Logger> = match run_result {
             Ok(logger) => Some(logger),
             Err(e) => {
-                eprintln!("Run {run_number} failed: {e}");
+                emit(&tui_tx, &format!("Run {run_number} failed: {e}"));
                 None
             }
         };
@@ -200,7 +210,7 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions, tui: Option
             }
             Ok(Decision::Stop(reason)) => {
                 crate::logger::log(logger_opt.as_ref(), &format!("Decider: stop — {reason}"));
-                eprintln!("{}", make_banner(&format!("LOOP COMPLETE  {} runs", run_number)));
+                emit(&tui_tx, &make_banner(&format!("LOOP COMPLETE  {} runs", run_number)));
                 break;
             }
             Err(e) => {
@@ -210,12 +220,12 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions, tui: Option
 
         // Check if TUI user cancelled before sleeping
         if tui.map_or(false, |t| t.is_cancelled()) {
-            eprintln!("{}", make_banner("LOOP CANCELLED BY USER"));
+            emit(&tui_tx, &make_banner("LOOP CANCELLED BY USER"));
             break;
         }
 
         if opts.delay > 0 {
-            eprintln!("Waiting {}s until next run...", opts.delay);
+            emit(&tui_tx, &format!("Waiting {}s until next run...", opts.delay));
             std::thread::sleep(std::time::Duration::from_secs(opts.delay as u64));
         }
     }
