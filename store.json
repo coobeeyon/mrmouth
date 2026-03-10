@@ -75,11 +75,10 @@
       "title": "Modify src/epic.rs: thread TUI into run::execute calls",
       "description": "Add tui: Option<&TuiHandle> parameter to epic::execute(). Forward to each run::execute() call within the epic loop. No other changes needed — the TUI pane label 'AGENT SESSION' will be reused across iterations (each iteration overwrites the previous content in the same pane, or could append — either is acceptable for v1).",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 1,
-      "claimed_by": "agent-runner",
       "created_at": "2026-03-10T13:15:15.779001414Z",
-      "updated_at": "2026-03-10T14:30:17.715421611Z"
+      "updated_at": "2026-03-10T14:30:18.618664894Z"
     },
     "lb-95nz": {
       "id": "lb-95nz",
