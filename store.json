@@ -265,11 +265,10 @@
       "title": "process::exit in main.rs bypasses TuiHandle drop, leaving terminal in bad state",
       "description": "In main.rs, the error handlers for run (line 144), loop (line 156), and epic (line 168) call std::process::exit(1) after TUI has already started. process::exit does not run destructors, so TuiHandle::drop is never called. The TUI render thread is not sent Quit, disable_raw_mode and LeaveAlternateScreen are never called, and the terminal is left in raw mode on the alternate screen. Fix: explicitly drop(tui) before calling process::exit(1), or restructure main to avoid process::exit by returning from a run() helper function.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 1,
-      "claimed_by": "Michael Daum",
       "created_at": "2026-03-10T16:59:35.592755522Z",
-      "updated_at": "2026-03-10T17:00:10.892065805Z"
+      "updated_at": "2026-03-10T17:02:13.505722737Z"
     },
     "lb-l78i": {
       "id": "lb-l78i",
