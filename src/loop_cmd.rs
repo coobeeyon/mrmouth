@@ -142,6 +142,12 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions, tui: Option
             }
         };
 
+        // Check if TUI user cancelled during the run
+        if tui.map_or(false, |t| t.is_cancelled()) {
+            emit(&tui_tx, &make_banner("LOOP CANCELLED BY USER"));
+            break;
+        }
+
         // Sync litebrite so reviewer and decider see fresh task state
         litebrite::sync(repo_root);
 
