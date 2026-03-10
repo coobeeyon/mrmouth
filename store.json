@@ -55,11 +55,10 @@
       "title": "loop_cmd.rs uses raw eprintln bypassing TUI routing",
       "description": "Same issue as lb-pmal but in src/loop_cmd.rs: ~12 direct eprintln! calls for bootstrap messages, loop status, and delay notifications bypass the TUI when it is active. Should route through a TuiSender like epic.rs now does.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 3,
-      "claimed_by": "agent-runner",
       "created_at": "2026-03-10T15:49:11.375644641Z",
-      "updated_at": "2026-03-10T15:52:52.290482698Z"
+      "updated_at": "2026-03-10T15:54:04.661386232Z"
     },
     "lb-5amv": {
       "id": "lb-5amv",
