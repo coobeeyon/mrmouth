@@ -20,6 +20,16 @@
       "created_at": "2026-03-08T21:47:00.082961738Z",
       "updated_at": "2026-03-08T21:48:10.649899511Z"
     },
+    "lb-2095": {
+      "id": "lb-2095",
+      "title": "mrmouth summary starts TUI but routes output to raw stderr, hiding all output",
+      "description": "When 'mrmouth summary' is run on a TTY, TuiHandle::try_start() enters alternate screen mode on stderr. However, summary::execute is called with logger=None (main.rs), so run_streaming_claude uses StreamTarget::Stderr and all formatted output goes via eprintln\\! to raw stderr. In alternate screen mode this output is hidden/overwritten by TUI redraws, making summary output invisible. Fix: either (a) pass tui.as_ref() into summary::execute and add TUI routing there, or (b) skip TUI startup for the summary subcommand (add it to the use_raw check).",
+      "item_type": "task",
+      "status": "open",
+      "priority": 1,
+      "created_at": "2026-03-10T15:57:59.159157928Z",
+      "updated_at": "2026-03-10T15:57:59.159157928Z"
+    },
     "lb-2dra": {
       "id": "lb-2dra",
       "title": "Create src/tui.rs: TuiHandle, TuiSender, multi-pane render thread",
