@@ -170,6 +170,15 @@
       "created_at": "2026-03-10T13:15:10.984337128Z",
       "updated_at": "2026-03-10T14:35:11.265418923Z"
     },
+    "lb-gipm": {
+      "id": "lb-gipm",
+      "title": "Fix --raw mode output goes to stderr instead of stdout",
+      "item_type": "task",
+      "status": "open",
+      "priority": 2,
+      "created_at": "2026-03-10T16:12:23.648585075Z",
+      "updated_at": "2026-03-10T16:12:23.648585075Z"
+    },
     "lb-glnx": {
       "id": "lb-glnx",
       "title": "StreamFormatter created with is_tty=false for TUI targets in streaming.rs",
