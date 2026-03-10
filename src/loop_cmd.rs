@@ -101,6 +101,8 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions) -> Result<(
             branch: Some(current_branch.clone()),
         };
 
+        let head_before = git_head(repo_root);
+
         let run_result = run::execute(config, repo_root, run_opts);
         if let Err(e) = &run_result {
             eprintln!("Run {run_number} failed: {e}");
@@ -109,13 +111,21 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions) -> Result<(
         // Sync litebrite so reviewer and decider see fresh task state
         litebrite::sync(repo_root);
 
-        // Run reviewer (serial, before decider)
-        let reviewer_opts = reviewer::ReviewerOptions {
-            model: config.loop_config.reviewer_model.clone(),
-            current_branch: current_branch.clone(),
-        };
-        if let Err(e) = reviewer::execute(repo_root, &reviewer_opts) {
-            eprintln!("Reviewer failed (non-fatal): {e}");
+        // Only run reviewer if the agent actually committed something
+        let head_after = git_head(repo_root);
+        let agent_made_commits = head_before.is_ok()
+            && head_after.is_ok()
+            && head_before.unwrap() != head_after.unwrap();
+        if agent_made_commits {
+            let reviewer_opts = reviewer::ReviewerOptions {
+                model: config.loop_config.reviewer_model.clone(),
+                current_branch: current_branch.clone(),
+            };
+            if let Err(e) = reviewer::execute(repo_root, &reviewer_opts) {
+                eprintln!("Reviewer failed (non-fatal): {e}");
+            }
+        } else {
+            eprintln!("Reviewer skipped: no new commits from this run.");
         }
 
         // Run summary and decider in parallel — they're independent
@@ -244,6 +254,18 @@ fn should_continue(repo_root: &Path, decider_model: &str) -> Result<Decision, Lo
         "ship" => Ok(Decision::Ship(reason)),
         "stop" => Ok(Decision::Stop(reason)),
         _ => Ok(Decision::Continue(reason)),
+    }
+}
+
+fn git_head(repo_root: &Path) -> Result<String, ()> {
+    let output = Command::new("git")
+        .args(["-C", &repo_root.to_string_lossy(), "rev-parse", "HEAD"])
+        .output()
+        .map_err(|_| ())?;
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    } else {
+        Err(())
     }
 }
 
