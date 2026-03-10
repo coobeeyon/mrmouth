@@ -185,11 +185,10 @@
       "title": "UTF-8 unsafe string slicing in epic.rs branch name truncation",
       "description": "epic.rs:262 uses byte-based slicing trimmed[..50] which will panic if the 50th byte falls in the middle of a multibyte UTF-8 character. Should use char-based truncation instead.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 1,
-      "claimed_by": "agent-runner",
       "created_at": "2026-03-10T17:13:12.622645931Z",
-      "updated_at": "2026-03-10T17:13:18.607689717Z"
+      "updated_at": "2026-03-10T17:14:08.098983873Z"
     },
     "lb-anmx": {
       "id": "lb-anmx",
