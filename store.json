@@ -210,6 +210,16 @@
       "created_at": "2026-03-10T13:15:35.567464446Z",
       "updated_at": "2026-03-10T14:31:15.396572497Z"
     },
+    "lb-ebpt": {
+      "id": "lb-ebpt",
+      "title": "Symlink update in run.rs is non-atomic",
+      "description": "In run.rs, latest.jsonl symlink is removed then recreated. If process crashes between the two operations, the symlink is broken. Use a temp symlink + rename for atomicity.",
+      "item_type": "task",
+      "status": "open",
+      "priority": 3,
+      "created_at": "2026-03-10T17:03:57.856654287Z",
+      "updated_at": "2026-03-10T17:03:57.856654287Z"
+    },
     "lb-eivs": {
       "id": "lb-eivs",
       "title": "Modify src/loop_cmd.rs: thread TUI, per-stage labels for concurrent stages",
