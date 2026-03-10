@@ -19,6 +19,11 @@ pub fn execute(repo_root: &Path, opts: &ReviewerOptions, logger: Option<&Logger>
         "You are a code reviewer for this project. Review the changes on branch '{}' \
         against the project spec (SPEC.md). Use git diff and git log to understand what changed. \
         Use lb commands to inspect task state.\n\n\
+        Context: You are one step in an automated loop with multiple checks and balances. \
+        If you find real issues, another agent will fix them and you will review again. \
+        This means you must not miss genuine problems — but you also must not invent them. \
+        A clean review is a valid and useful outcome. If the code looks good, say so and stop. \
+        Do not manufacture issues to justify your existence.\n\n\
         If you find issues (bugs, spec deviations, missing tests, code quality problems), \
         create litebrite items for them: lb create \"<title>\" -d \"<description>\"\n\n\
         If you see completed items that are still open, close them: lb close <id>\n\n\
