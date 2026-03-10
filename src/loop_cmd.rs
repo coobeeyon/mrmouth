@@ -136,11 +136,12 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions, tui: Option
             && head_before.unwrap() != head_after.unwrap();
 
         if agent_made_commits {
+            let reviewer_logger = logger_opt.as_ref().map(|l| l.with_label("CODE REVIEW"));
             let reviewer_opts = reviewer::ReviewerOptions {
                 model: config.loop_config.reviewer_model.clone(),
                 current_branch: current_branch.clone(),
             };
-            if let Err(e) = reviewer::execute(repo_root, &reviewer_opts, logger_opt.as_ref()) {
+            if let Err(e) = reviewer::execute(repo_root, &reviewer_opts, reviewer_logger.as_ref()) {
                 crate::logger::log(logger_opt.as_ref(), &format!("Reviewer failed (non-fatal): {e}"));
             }
         } else {
@@ -152,7 +153,7 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions, tui: Option
         let decision = std::thread::scope(|s| {
             if !opts.no_summary {
                 let log_file = format!("{}/latest.jsonl", config.log_dir);
-                let summary_logger = logger_opt.clone();
+                let summary_logger = logger_opt.as_ref().map(|l| l.with_label("SUMMARY"));
                 s.spawn(move || {
                     if let Err(e) = summary::execute(config, repo_root, &log_file, summary_logger.as_ref()) {
                         crate::logger::log(summary_logger.as_ref(), &format!("Summary generation failed: {e}"));
@@ -160,7 +161,7 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions, tui: Option
                 });
             }
 
-            let decider_logger = logger_opt.clone();
+            let decider_logger = logger_opt.as_ref().map(|l| l.with_label("DECISION"));
             let decider_handle = s.spawn(move || {
                 should_continue(repo_root, &decider_model, decider_logger.as_ref())
             });
