@@ -100,6 +100,16 @@
       "created_at": "2026-03-10T13:14:38.810345525Z",
       "updated_at": "2026-03-10T13:14:38.810345525Z"
     },
+    "lb-anmx": {
+      "id": "lb-anmx",
+      "title": "Create src/shipper.rs",
+      "description": "New host-side agent. ShipperOptions { model, current_branch, parent_branch }. ShipResult { new_branch }. Steps: (1) run_shipper_agent checks lb list -s open and runs tests, returns READY/BLOCKED via JSON; (2) merge_branch: file-remote=git merge --no-ff, github=gh pr create + gh pr merge; (3) generate_branch_name asks claude to read SPEC.md for 2-4 word kebab name, formats as feat-{slug}, fallback feat-{timestamp}; (4) create_and_push_branch: git checkout -b, push -u origin if github remote. Also exports create_and_push_branch and generate_branch_name as pub for use by loop_cmd.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 2,
+      "created_at": "2026-03-09T15:50:45.687857316Z",
+      "updated_at": "2026-03-09T18:43:24.864301848Z"
+    },
     "lb-cmnc": {
       "id": "lb-cmnc",
       "title": "Add Ratatui TUI with streaming output to mrmouth",
@@ -130,6 +140,36 @@
       "created_at": "2026-03-10T13:15:10.984337128Z",
       "updated_at": "2026-03-10T13:15:10.984337128Z"
     },
+    "lb-h5wx": {
+      "id": "lb-h5wx",
+      "title": "Add branch field to RunOptions",
+      "description": "src/run.rs: add 'pub branch: Option<String>' to RunOptions. Update branch resolution to check opts.branch first, then config.branch, then git current branch, then main. Add branch: None to callers in main.rs and epic.rs.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 2,
+      "created_at": "2026-03-09T15:50:45.677736673Z",
+      "updated_at": "2026-03-09T18:43:24.853311781Z"
+    },
+    "lb-hwg3": {
+      "id": "lb-hwg3",
+      "title": "Reviewer, Shipper, and Branch-per-Feature",
+      "description": "Add reviewer and shipper agents to mrmouth loop, plus branch-per-feature management. Workers always work on a feature branch; reviewer runs after each worker pass; decider gains ship action; shipper handles merging and creates next branch.",
+      "item_type": "epic",
+      "status": "closed",
+      "priority": 2,
+      "created_at": "2026-03-09T15:48:52.310349878Z",
+      "updated_at": "2026-03-09T18:43:24.878167219Z"
+    },
+    "lb-l78i": {
+      "id": "lb-l78i",
+      "title": "Update loop_cmd: Decision enum, decider schema, branch management",
+      "description": "Decision enum: add Ship variant. Decider JSON schema: change from {continue:bool} to {action: continue|ship|stop, reason}. Update should_continue to parse action field. execute(): capture parent_branch before feature branch creation; bootstrap mode stays on main (no branch created); otherwise call shipper::generate_branch_name + create_and_push_branch; track current_branch as mutable; pass branch: Some(current_branch) to RunOptions; run reviewer after litebrite::sync (serial, before decider); handle Ship decision by calling shipper::execute and updating current_branch. Add BranchCreation variant to LoopError. Add git_current_branch helper.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 2,
+      "created_at": "2026-03-09T15:50:45.692248176Z",
+      "updated_at": "2026-03-09T18:43:24.869000085Z"
+    },
     "lb-ljfl": {
       "id": "lb-ljfl",
       "title": "Add --init flag to docker run to reap zombie processes",
@@ -139,6 +179,16 @@
       "priority": 2,
       "created_at": "2026-03-08T21:02:10.433788241Z",
       "updated_at": "2026-03-08T21:02:30.562957936Z"
+    },
+    "lb-m12l": {
+      "id": "lb-m12l",
+      "title": "Register modules in main.rs",
+      "description": "Add 'mod reviewer;' and 'mod shipper;' to main.rs. Add branch: None to RunOptions construction in Commands::Run arm.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 2,
+      "created_at": "2026-03-09T15:50:45.696492755Z",
+      "updated_at": "2026-03-09T18:43:24.873621362Z"
     },
     "lb-okra": {
       "id": "lb-okra",
@@ -180,6 +230,16 @@
       "created_at": "2026-03-08T20:58:54.952121479Z",
       "updated_at": "2026-03-08T21:00:10.717950372Z"
     },
+    "lb-tso7": {
+      "id": "lb-tso7",
+      "title": "Create src/reviewer.rs",
+      "description": "New host-side claude agent. Mirrors summary.rs pattern. ReviewerOptions { model, current_branch }. Allowed tools: Read,Bash(git diff *),Bash(git log *),Bash(lb *). Prompt: review changes on current_branch vs SPEC.md using git diff/log, create brites for issues (lb create), mark done items (lb close). Single pass. Non-fatal at call site.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 2,
+      "created_at": "2026-03-09T15:50:45.683044731Z",
+      "updated_at": "2026-03-09T18:43:24.859337500Z"
+    },
     "lb-u9z2": {
       "id": "lb-u9z2",
       "title": "Extract run_streaming_claude helper for shared streaming logic",
@@ -199,6 +259,16 @@
       "priority": 1,
       "created_at": "2026-03-10T13:16:03.564285893Z",
       "updated_at": "2026-03-10T13:16:03.564285893Z"
+    },
+    "lb-uiox": {
+      "id": "lb-uiox",
+      "title": "Add reviewer_model and shipper_model to LoopConfig",
+      "description": "src/config.rs: add reviewer_model (default sonnet) and shipper_model (default sonnet) to LoopConfig struct and its Default impl. Update full_config_parses test.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 2,
+      "created_at": "2026-03-09T15:50:45.672099761Z",
+      "updated_at": "2026-03-09T18:43:24.848543554Z"
     },
     "lb-vsce": {
       "id": "lb-vsce",
@@ -233,47 +303,7 @@
   },
   "deps": [
     {
-      "from_id": "lb-q88t",
-      "to_id": "lb-cmnc",
-      "dep_type": "parent"
-    },
-    {
       "from_id": "lb-2dra",
-      "to_id": "lb-cmnc",
-      "dep_type": "parent"
-    },
-    {
-      "from_id": "lb-9lnz",
-      "to_id": "lb-cmnc",
-      "dep_type": "parent"
-    },
-    {
-      "from_id": "lb-vsce",
-      "to_id": "lb-cmnc",
-      "dep_type": "parent"
-    },
-    {
-      "from_id": "lb-okra",
-      "to_id": "lb-cmnc",
-      "dep_type": "parent"
-    },
-    {
-      "from_id": "lb-eivs",
-      "to_id": "lb-cmnc",
-      "dep_type": "parent"
-    },
-    {
-      "from_id": "lb-68yw",
-      "to_id": "lb-cmnc",
-      "dep_type": "parent"
-    },
-    {
-      "from_id": "lb-u9z2",
-      "to_id": "lb-cmnc",
-      "dep_type": "parent"
-    },
-    {
-      "from_id": "lb-cqhc",
       "to_id": "lb-cmnc",
       "dep_type": "parent"
     },
@@ -283,12 +313,82 @@
       "dep_type": "parent"
     },
     {
-      "from_id": "lb-yzzv",
+      "from_id": "lb-68yw",
+      "to_id": "lb-cmnc",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-9lnz",
+      "to_id": "lb-cmnc",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-anmx",
+      "to_id": "lb-hwg3",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-cqhc",
+      "to_id": "lb-cmnc",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-eivs",
+      "to_id": "lb-cmnc",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-h5wx",
+      "to_id": "lb-hwg3",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-l78i",
+      "to_id": "lb-hwg3",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-m12l",
+      "to_id": "lb-hwg3",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-okra",
+      "to_id": "lb-cmnc",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-q88t",
+      "to_id": "lb-cmnc",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-tso7",
+      "to_id": "lb-hwg3",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-u9z2",
       "to_id": "lb-cmnc",
       "dep_type": "parent"
     },
     {
       "from_id": "lb-uaey",
+      "to_id": "lb-cmnc",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-uiox",
+      "to_id": "lb-hwg3",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-vsce",
+      "to_id": "lb-cmnc",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-yzzv",
       "to_id": "lb-cmnc",
       "dep_type": "parent"
     }
