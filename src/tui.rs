@@ -188,6 +188,7 @@ fn render_loop(rx: Receiver<TuiMsg>, cancelled: &AtomicBool) -> io::Result<()> {
 
     let backend = CrosstermBackend::new(stderr);
     let mut terminal = Terminal::new(backend)?;
+    terminal.clear()?;
     let mut state = TuiState::new();
     let mut needs_redraw = true;
 
