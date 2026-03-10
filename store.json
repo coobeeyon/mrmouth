@@ -255,11 +255,10 @@
       "title": "Loop continues post-run AI stages after TUI cancellation",
       "description": "When the user presses q/Ctrl+C in the TUI, the cancellation flag is set and the watcher thread stops the Docker container. However, loop_cmd.rs only checks is_cancelled() at the top of each loop iteration and before sleeping — not immediately after run::execute returns. This means after a user-requested cancel, the loop still runs litebrite::sync, the reviewer (if commits exist), and spawns summary+decider threads before checking cancellation again. Fix: add a cancellation check in loop_cmd::execute immediately after run::execute returns, before litebrite::sync and the post-run AI stages.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 2,
-      "claimed_by": "Michael Daum",
       "created_at": "2026-03-10T16:22:48.890709459Z",
-      "updated_at": "2026-03-10T16:23:26.197534174Z"
+      "updated_at": "2026-03-10T16:25:04.834856803Z"
     },
     "lb-o0x7": {
       "id": "lb-o0x7",
