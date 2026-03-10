@@ -305,11 +305,10 @@
       "title": "Atomic symlink can leave dangling tmp file on rename failure",
       "description": "run.rs atomic_symlink function doesn't clean up the tmp symlink if fs::rename fails.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 3,
-      "claimed_by": "agent-runner",
       "created_at": "2026-03-10T17:13:14.106194083Z",
-      "updated_at": "2026-03-10T17:13:38.156828605Z"
+      "updated_at": "2026-03-10T17:14:08.109844927Z"
     },
     "lb-jf0a": {
       "id": "lb-jf0a",
