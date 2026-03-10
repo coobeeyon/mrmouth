@@ -235,11 +235,10 @@
       "title": "mrmouth summary standalone command now outputs to stderr instead of stdout (spec deviation)",
       "description": "SPEC.md says: 'Print summary to stdout'. Before this branch, summary.rs used tee_stdout (println\\!) to display Claude output. After this branch, it uses StreamTarget::Stderr -> eprintln\\!. Anyone piping 'mrmouth summary > file.md' now gets an empty file. Fix: for the standalone summary command, either use StreamTarget::Stdout (add a new variant) or keep using println\\! for the summary command path.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 2,
-      "claimed_by": "agent-runner",
       "created_at": "2026-03-10T16:05:43.465752389Z",
-      "updated_at": "2026-03-10T16:09:20.928779703Z"
+      "updated_at": "2026-03-10T16:09:21.762474887Z"
     },
     "lb-okra": {
       "id": "lb-okra",
