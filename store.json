@@ -225,11 +225,10 @@
       "title": "run.rs StreamFormatter strips colors when TUI active but stdout redirected",
       "description": "In run.rs:149, StreamFormatter is initialized with is_tty = std::io::stdout().is_terminal(). When TUI is active (stderr is a TTY) but stdout is redirected (e.g. mrmouth run > file.txt), is_tty is false and ANSI colors are stripped even though the TUI pane supports them via ansi-to-tui. All other callers in streaming.rs correctly use target.supports_color() which returns true for StreamTarget::Tui. Only run.rs bypasses this. Fix: change run.rs:137 to: let is_tty = logger.has_tui() || std::io::stdout().is_terminal();",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 3,
-      "claimed_by": "Michael Daum",
       "created_at": "2026-03-10T16:28:19.225487388Z",
-      "updated_at": "2026-03-10T16:28:53.397622550Z"
+      "updated_at": "2026-03-10T16:30:04.282411850Z"
     },
     "lb-l78i": {
       "id": "lb-l78i",
