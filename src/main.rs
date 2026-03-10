@@ -129,7 +129,7 @@ fn main() {
         tui::TuiHandle::try_start()
     };
 
-    match cli.command {
+    let result = match cli.command {
         Commands::Run { raw, model, timeout, local } => {
             let opts = run::RunOptions {
                 raw,
@@ -139,10 +139,7 @@ fn main() {
                 prompt_override: None,
                 branch: None,
             };
-            if let Err(e) = run::execute(&config, &repo_root, opts, tui.as_ref()).map(|_| ()) {
-                eprintln!("error: {e}");
-                std::process::exit(1);
-            }
+            run::execute(&config, &repo_root, opts, tui.as_ref()).map(|_| ())
         }
         Commands::Loop { delay, max_runs, no_summary, model } => {
             let opts = loop_cmd::LoopOptions {
@@ -151,10 +148,7 @@ fn main() {
                 no_summary,
                 model: model.unwrap_or_else(|| config.model.clone()),
             };
-            if let Err(e) = loop_cmd::execute(&config, &repo_root, opts, tui.as_ref()) {
-                eprintln!("error: {e}");
-                std::process::exit(1);
-            }
+            loop_cmd::execute(&config, &repo_root, opts, tui.as_ref())
         }
         Commands::Epic { epic_id, timeout, max_failures, model } => {
             let opts = epic::EpicOptions {
@@ -163,20 +157,21 @@ fn main() {
                 max_failures: max_failures.unwrap_or(config.epic.max_failures),
                 model: model.unwrap_or_else(|| config.model.clone()),
             };
-            if let Err(e) = epic::execute(&config, &repo_root, opts, tui.as_ref()) {
-                eprintln!("error: {e}");
-                std::process::exit(1);
-            }
+            epic::execute(&config, &repo_root, opts, tui.as_ref())
         }
         Commands::Summary { log_file } => {
             let log_file = log_file.unwrap_or_else(|| {
                 format!("{}/latest.jsonl", config.log_dir)
             });
-            if let Err(e) = summary::execute(&config, &repo_root, &log_file, None) {
-                eprintln!("error: {e}");
-                std::process::exit(1);
-            }
+            summary::execute(&config, &repo_root, &log_file, None)
         }
+    };
+
+    // Drop TUI first to restore terminal before printing errors or exiting
+    drop(tui);
+
+    if let Err(e) = result {
+        eprintln!("error: {e}");
+        std::process::exit(1);
     }
-    // TuiHandle drops here → clean terminal restore
 }
