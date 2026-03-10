@@ -120,6 +120,16 @@
       "created_at": "2026-03-10T13:15:15.779001414Z",
       "updated_at": "2026-03-10T14:30:18.618664894Z"
     },
+    "lb-6fha": {
+      "id": "lb-6fha",
+      "title": "Fix relative path construction in loop_cmd.rs log_file",
+      "description": "loop_cmd.rs:177 uses format! without joining to repo_root, unlike run.rs and summary.rs which properly use repo_root.join(). Should be consistent.",
+      "item_type": "task",
+      "status": "open",
+      "priority": 2,
+      "created_at": "2026-03-10T16:52:40.255483883Z",
+      "updated_at": "2026-03-10T16:52:40.255483883Z"
+    },
     "lb-6xo6": {
       "id": "lb-6xo6",
       "title": "loop_cmd.rs decider thread join uses .expect() instead of error handling",
