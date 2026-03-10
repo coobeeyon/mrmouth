@@ -29,6 +29,21 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions) -> Result<(
         if !status.success() {
             return Err(LoopError::Bootstrap("git init failed".into()));
         }
+        // Ensure logs/ is gitignored before staging anything
+        let gitignore_path = repo_root.join(".gitignore");
+        if !gitignore_path.exists() {
+            let _ = std::fs::write(&gitignore_path, "logs/\n");
+        } else if let Ok(contents) = std::fs::read_to_string(&gitignore_path) {
+            if !contents.lines().any(|l| l.trim() == "logs/") {
+                let mut updated = contents;
+                if !updated.ends_with('\n') {
+                    updated.push('\n');
+                }
+                updated.push_str("logs/\n");
+                let _ = std::fs::write(&gitignore_path, updated);
+            }
+        }
+
         // Commit any existing files (e.g. SPEC.md) so the repo has at least one commit
         // and the file:// remote clone inside the container can succeed.
         let add_status = Command::new("git")
