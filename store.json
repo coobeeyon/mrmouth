@@ -225,11 +225,10 @@
       "title": "epic.rs uses raw eprintln bypassing TUI routing",
       "description": "src/epic.rs has ~12 direct eprintln! calls throughout execute(). When TUI is active, stderr is in alternate screen mode (crossterm EnterAlternateScreen). Raw eprintln to stderr in this mode either corrupts TUI rendering or produces invisible output. epic.rs needs to receive a Logger or TuiHandle and route all its status output through it.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 2,
-      "claimed_by": "agent-runner",
       "created_at": "2026-03-10T14:39:11.660452237Z",
-      "updated_at": "2026-03-10T15:47:54.049764751Z"
+      "updated_at": "2026-03-10T15:48:56.479006564Z"
     },
     "lb-q88t": {
       "id": "lb-q88t",
