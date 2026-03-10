@@ -387,8 +387,9 @@
       "item_type": "task",
       "status": "open",
       "priority": 1,
+      "claimed_by": "agent-runner",
       "created_at": "2026-03-10T16:54:40.793650522Z",
-      "updated_at": "2026-03-10T16:54:40.793650522Z"
+      "updated_at": "2026-03-10T16:54:44.122027057Z"
     },
     "lb-u4qp": {
       "id": "lb-u4qp",
