@@ -90,6 +90,16 @@
       "created_at": "2026-03-10T13:14:09.186143805Z",
       "updated_at": "2026-03-10T13:14:09.186143805Z"
     },
+    "lb-eivs": {
+      "id": "lb-eivs",
+      "title": "Modify src/loop_cmd.rs: thread TUI, per-stage labels for concurrent stages",
+      "description": "Changes to loop_cmd::execute():\n\n1. Add tui: Option<&TuiHandle> parameter. Forward to run::execute().\n\n2. For the concurrent summary+decider thread::scope block, create per-stage loggers using Logger::with_label():\n   let summary_logger = logger_opt.as_ref().map(|l| l.with_label(\"SUMMARY\"));\n   let decider_logger = logger_opt.as_ref().map(|l| l.with_label(\"DECISION\"));\n   // Pass summary_logger to summary::execute(), decider_logger to should_continue()\n\n3. For reviewer:\n   let reviewer_logger = logger_opt.as_ref().map(|l| l.with_label(\"CODE REVIEW\"));\n   // Pass to reviewer::execute()\n\nThis causes summary, decider, and reviewer to each appear in their own TUI pane while sharing the same log file.\n\nNote: Bare eprintln! calls in loop_cmd.rs (bootstrap, branch setup banners) can stay as-is for v1 — they go to the hidden main screen in alternate-screen mode. They are already logged to file via Logger.",
+      "item_type": "task",
+      "status": "open",
+      "priority": 1,
+      "created_at": "2026-03-10T13:15:10.984337128Z",
+      "updated_at": "2026-03-10T13:15:10.984337128Z"
+    },
     "lb-ljfl": {
       "id": "lb-ljfl",
       "title": "Add --init flag to docker run to reap zombie processes",
@@ -184,6 +194,11 @@
     },
     {
       "from_id": "lb-okra",
+      "to_id": "lb-cmnc",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-eivs",
       "to_id": "lb-cmnc",
       "dep_type": "parent"
     }
