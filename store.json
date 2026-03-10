@@ -209,6 +209,16 @@
       "priority": 3,
       "created_at": "2026-03-08T20:58:56.504066401Z",
       "updated_at": "2026-03-08T21:00:53.740269267Z"
+    },
+    "lb-yzzv": {
+      "id": "lb-yzzv",
+      "title": "Modify loop_cmd.rs::should_continue: switch decider to stream-json",
+      "description": "Currently decider uses --output-format json --json-schema ...; its reasoning is invisible.\n\nChanges in should_continue():\n1. Keep --json-schema (it constrains agent output to valid JSON per schema; works with stream-json).\n2. Change --output-format from json to stream-json.\n3. Replace manual wait_with_output() + tee_stderr with run_streaming_claude(child, &mut formatter, logger).\n4. Parse structured output from the returned result string instead of parsed[\"structured_output\"]:\n   let result_json: serde_json::Value = serde_json::from_str(&result_text)?;\n   let action = result_json[\"action\"].as_str()...;\n   let reason = result_json[\"reason\"].as_str()...;\n\nResult: DECISION pane shows the decider's reasoning, what it reads (SPEC.md, lb ready), and the final decision — fully visible.",
+      "item_type": "task",
+      "status": "open",
+      "priority": 1,
+      "created_at": "2026-03-10T13:15:54.771022003Z",
+      "updated_at": "2026-03-10T13:15:54.771022003Z"
     }
   },
   "deps": [
@@ -259,6 +269,11 @@
     },
     {
       "from_id": "lb-5yis",
+      "to_id": "lb-cmnc",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-yzzv",
       "to_id": "lb-cmnc",
       "dep_type": "parent"
     }
