@@ -188,7 +188,10 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions, tui: Option
                 should_continue(repo_root, &decider_model, decider_logger.as_ref())
             });
 
-            decider_handle.join().expect("decider thread panicked")
+            match decider_handle.join() {
+                Ok(result) => result,
+                Err(_) => Err(LoopError::Decider("decider thread panicked".into())),
+            }
         });
 
         match decision {

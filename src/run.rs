@@ -14,6 +14,16 @@ use crate::prompt;
 use crate::stream_fmt::{self, StreamFormatter};
 use crate::tui::TuiHandle;
 
+/// Guard that sets an AtomicBool to true on drop, ensuring the cancel watcher
+/// thread is signaled even if the function returns early via `?`.
+struct DoneGuard(Arc<AtomicBool>);
+
+impl Drop for DoneGuard {
+    fn drop(&mut self) {
+        self.0.store(true, Ordering::Relaxed);
+    }
+}
+
 pub struct RunOptions {
     pub raw: bool,
     pub model: String,
@@ -114,6 +124,9 @@ pub fn execute(config: &Config, repo_root: &Path, opts: RunOptions, tui: Option<
 
     // 8b. Spawn a watcher that stops the container if the TUI user cancels (q / Ctrl+C)
     let watcher_done = Arc::new(AtomicBool::new(false));
+    // DoneGuard ensures watcher_done is set even if we return early via `?`,
+    // preventing the cancel watcher thread from spinning indefinitely.
+    let _done_guard = DoneGuard(Arc::clone(&watcher_done));
     let _cancel_watcher = if let Some(t) = tui {
         let flag = t.cancelled_flag();
         let done = Arc::clone(&watcher_done);
