@@ -293,7 +293,9 @@ fn draw(
         let end = total.saturating_sub(scroll_offset);
         let start = end.saturating_sub(body_height);
 
-        let visible: Vec<Line<'_>> = text_lines[start..end].to_vec();
+        let visible: Vec<Line<'_>> = text_lines.get(start..end)
+            .unwrap_or_default()
+            .to_vec();
 
         let body = Paragraph::new(visible)
             .block(Block::default().borders(Borders::NONE));
