@@ -43,10 +43,12 @@ Run the agent repeatedly until work is done.
 **What it does:**
 
 1. Execute `mrmouth run`
-2. After each run, call Claude (via API, using a lightweight model like Sonnet) to decide whether open work remains. The decider reads the SPEC.md and litebrite task state.
+2. After each run, if the agent committed changes, run a **reviewer** agent inside Docker. The reviewer checks the diff against SPEC.md, verifies the build and tests pass, and files/closes litebrite tasks for issues found.
 3. Optionally generate a summary of each run log (using Haiku)
-4. If the decider says "continue", loop back to step 1
-5. Stop when the decider says "done" or max iterations reached
+4. Run an AI **decider** that reads SPEC.md and litebrite task state and returns one of: `continue`, `ship`, or `stop`
+5. If `ship`: run a **readiness check** inside Docker (verifies no open blocking tasks and all build/tests pass), merge the current branch, and start a new feature branch
+6. If `continue`, loop back to step 1
+7. Stop when the decider says `stop` or max iterations are reached
 
 **Flags:**
 
@@ -113,6 +115,10 @@ max_runs = 0
 decider_model = "sonnet"
 # Model for run summaries (default: haiku)
 summary_model = "haiku"
+# Model for the reviewer Docker agent (default: sonnet)
+reviewer_model = "sonnet"
+# Model for the shipper readiness check Docker agent (default: sonnet)
+shipper_model = "sonnet"
 
 [epic]
 # Per-task timeout in minutes
@@ -218,10 +224,16 @@ mrmouth/                    # Rust project root (inside this repo)
     config.rs               # Config loading from .mrmouth/config.toml
     docker.rs               # Docker build/run orchestration
     run.rs                  # mrmouth run implementation
-    loop.rs                 # mrmouth loop implementation
+    loop_cmd.rs             # mrmouth loop implementation
     epic.rs                 # mrmouth epic implementation
     summary.rs              # mrmouth summary implementation
+    reviewer.rs             # Code reviewer Docker agent (runs inside container)
+    shipper.rs              # Shipper: readiness check (Docker), merge, new branch
     stream_fmt.rs           # JSONL stream formatter
+    streaming.rs            # Host-side streaming (for decider, branch naming)
+    logger.rs               # Logger with TUI/file support
+    litebrite.rs            # lb sync helpers
+    tui.rs                  # Terminal UI
     prompt.rs               # Embedded agent prompt
 ```
 

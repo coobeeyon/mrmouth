@@ -3,12 +3,26 @@ use std::io::{BufWriter, IsTerminal, Write};
 use std::path::Path;
 use std::process::Command;
 
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+
 use crate::config::Config;
 use crate::docker::{ContainerArgs, DockerBuilder};
 use crate::litebrite;
 use crate::logger::Logger;
 use crate::prompt;
 use crate::stream_fmt::{self, StreamFormatter};
+use crate::tui::TuiHandle;
+
+/// Guard that sets an AtomicBool to true on drop, ensuring the cancel watcher
+/// thread is signaled even if the function returns early via `?`.
+struct DoneGuard(Arc<AtomicBool>);
+
+impl Drop for DoneGuard {
+    fn drop(&mut self) {
+        self.0.store(true, Ordering::Relaxed);
+    }
+}
 
 pub struct RunOptions {
     pub raw: bool,
@@ -21,7 +35,7 @@ pub struct RunOptions {
 
 /// Execute one agent run. Returns the Logger so callers can continue writing to the same
 /// log file for subsequent stages (reviewer, decider, summary, etc.).
-pub fn execute(config: &Config, repo_root: &Path, opts: RunOptions) -> Result<Logger, RunError> {
+pub fn execute(config: &Config, repo_root: &Path, opts: RunOptions, tui: Option<&TuiHandle>) -> Result<Logger, RunError> {
     // 0. Set up logging first so every stage is captured
     let log_dir = repo_root.join(&config.log_dir);
     fs::create_dir_all(&log_dir)
@@ -29,8 +43,12 @@ pub fn execute(config: &Config, repo_root: &Path, opts: RunOptions) -> Result<Lo
     let timestamp = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
     let log_filename = format!("run-{timestamp}.log");
     let log_path = log_dir.join(&log_filename);
-    let logger = Logger::new(&log_path)
-        .map_err(|e| RunError::Io("creating log file".into(), e))?;
+    let logger = match tui {
+        Some(t) => Logger::with_tui(&log_path, t.sender("AGENT SESSION"))
+            .map_err(|e| RunError::Io("creating log file".into(), e))?,
+        None => Logger::new(&log_path)
+            .map_err(|e| RunError::Io("creating log file".into(), e))?,
+    };
 
     // Resolve branch early so we can include it in the opening banner
     let branch = opts
@@ -47,7 +65,7 @@ pub fn execute(config: &Config, repo_root: &Path, opts: RunOptions) -> Result<Lo
 
     // 2. Resolve repo URL
     let (repo_url, file_remote_path) = if opts.local {
-        (git_remote_url(repo_root).unwrap_or_default(), None)
+        (String::new(), None)
     } else {
         match git_remote_url(repo_root) {
             Some(url) => (url, None),
@@ -104,16 +122,38 @@ pub fn execute(config: &Config, repo_root: &Path, opts: RunOptions) -> Result<Lo
 
     let mut handle = docker.run(&container_args).map_err(RunError::Docker)?;
 
+    // 8b. Spawn a watcher that stops the container if the TUI user cancels (q / Ctrl+C)
+    let watcher_done = Arc::new(AtomicBool::new(false));
+    // DoneGuard ensures watcher_done is set even if we return early via `?`,
+    // preventing the cancel watcher thread from spinning indefinitely.
+    let _done_guard = DoneGuard(Arc::clone(&watcher_done));
+    let _cancel_watcher = if let Some(t) = tui {
+        let flag = t.cancelled_flag();
+        let done = Arc::clone(&watcher_done);
+        let name = container_name.clone();
+        Some(std::thread::spawn(move || {
+            while !flag.load(Ordering::Relaxed) && !done.load(Ordering::Relaxed) {
+                std::thread::sleep(std::time::Duration::from_millis(200));
+            }
+            if flag.load(Ordering::Relaxed) {
+                DockerBuilder::stop_container(&name);
+            }
+        }))
+    } else {
+        None
+    };
+
     // 9. Stream output — raw JSONL to .jsonl file, formatted text to terminal + .log file
     let jsonl_file = File::create(&jsonl_path)
         .map_err(|e| RunError::Io("creating jsonl file".into(), e))?;
     let mut jsonl_writer = BufWriter::new(jsonl_file);
-    let is_tty = std::io::stdout().is_terminal();
+    let is_tty = logger.has_tui() || std::io::stdout().is_terminal();
 
     if opts.raw {
+        let stdout = std::io::stdout();
         handle
             .stream_output(|line| {
-                println!("{line}");
+                let _ = writeln!(stdout.lock(), "{line}");
                 let _ = writeln!(jsonl_writer, "{line}");
                 logger.log_file_only(line);
             })
@@ -124,7 +164,7 @@ pub fn execute(config: &Config, repo_root: &Path, opts: RunOptions) -> Result<Lo
             .stream_output(|line| {
                 let _ = writeln!(jsonl_writer, "{line}");
                 if let Some(formatted) = stream_fmt::format_line(&mut formatter, line) {
-                    println!("{formatted}");
+                    logger.display(&formatted);
                     logger.log_file_only(&formatted);
                 }
             })
@@ -135,33 +175,49 @@ pub fn execute(config: &Config, repo_root: &Path, opts: RunOptions) -> Result<Lo
 
     // 10. Wait for container exit
     let exit_code = handle.wait().map_err(RunError::Docker)?;
+    watcher_done.store(true, Ordering::Relaxed);
     logger.log(&format!("Container {container_name} finished (exit code {exit_code})."));
 
-    // 11. Update symlinks (latest.jsonl and latest.log)
+    // 11. Update symlinks atomically (latest.jsonl and latest.log)
     let latest_jsonl = log_dir.join("latest.jsonl");
     let latest_log = log_dir.join("latest.log");
-    let _ = fs::remove_file(&latest_jsonl);
-    let _ = fs::remove_file(&latest_log);
     #[cfg(unix)]
     {
-        let _ = std::os::unix::fs::symlink(&jsonl_filename, &latest_jsonl);
-        let _ = std::os::unix::fs::symlink(&log_filename, &latest_log);
+        atomic_symlink(&jsonl_filename, &latest_jsonl);
+        atomic_symlink(&log_filename, &latest_log);
     }
 
-    // 12. Clean up container
+    // 12. Extract updated Dockerfile from container (agent may have modified it)
+    if !opts.local {
+        let dockerfile_dest = repo_root.join(&config.dockerfile);
+        let container_path = format!("/home/runner/workspace/{}", config.dockerfile);
+        if DockerBuilder::copy_from_container(&container_name, &container_path, &dockerfile_dest) {
+            logger.log("Extracted updated Dockerfile from container.");
+        }
+    }
+
+    // 13. Clean up container
     DockerBuilder::remove_container(&container_name);
 
-    // 13. Post-run sync
+    // 14. Post-run sync
     logger.banner("POST-RUN");
 
     if !opts.local && file_remote_path.is_none() {
         logger.log("Pulling code changes from remote...");
-        let pull_status = Command::new("git")
+        let pull_output = Command::new("git")
             .args(["-C", &repo_root.to_string_lossy(), "pull", "--ff-only"])
-            .status();
-        match pull_status {
-            Ok(s) if s.success() => {}
-            _ => logger.log("No new commits to pull."),
+            .output();
+        match pull_output {
+            Ok(o) if o.status.success() => {}
+            Ok(o) => {
+                let stderr = String::from_utf8_lossy(&o.stderr);
+                if stderr.contains("Already up to date") || stderr.is_empty() {
+                    logger.log("No new commits to pull.");
+                } else {
+                    logger.log(&format!("Warning: git pull failed: {}", stderr.trim()));
+                }
+            }
+            Err(e) => logger.log(&format!("Warning: git pull failed: {e}")),
         }
     }
 
@@ -347,6 +403,19 @@ impl std::fmt::Display for RunError {
 }
 
 impl std::error::Error for RunError {}
+
+/// Atomically replace a symlink by creating a temp link and renaming over the target.
+#[cfg(unix)]
+fn atomic_symlink(target: &str, link_path: &std::path::PathBuf) {
+    use std::os::unix::fs as unix_fs;
+    let tmp = link_path.with_extension("tmp");
+    let _ = fs::remove_file(&tmp);
+    if unix_fs::symlink(target, &tmp).is_ok() {
+        if fs::rename(&tmp, link_path).is_err() {
+            let _ = fs::remove_file(&tmp);
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {

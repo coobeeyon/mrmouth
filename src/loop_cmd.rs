@@ -1,6 +1,5 @@
-use std::io::Write;
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::Command;
 
 use crate::config::Config;
 use crate::litebrite;
@@ -8,7 +7,10 @@ use crate::logger::Logger;
 use crate::reviewer;
 use crate::run::{self, RunOptions};
 use crate::shipper;
+use crate::stream_fmt::StreamFormatter;
+use crate::streaming::{self, StreamTarget};
 use crate::summary;
+use crate::tui::{TuiHandle, TuiSender};
 
 pub struct LoopOptions {
     pub delay: u32,
@@ -17,12 +19,22 @@ pub struct LoopOptions {
     pub model: String,
 }
 
-pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions) -> Result<(), LoopError> {
+/// Route a message to the TUI pane if available, otherwise stderr.
+fn emit(tui_tx: &Option<TuiSender>, msg: &str) {
+    match tui_tx {
+        Some(sender) => sender.send_line(msg),
+        None => eprintln!("{msg}"),
+    }
+}
+
+pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions, tui: Option<&TuiHandle>) -> Result<(), LoopError> {
+    let tui_tx = tui.map(|t| t.sender("LOOP"));
+
     // Cold-start: no git repo yet — init one and run in local (bind-mount) mode
     let bootstrap_mode = !repo_root.join(".git").exists();
     if bootstrap_mode {
-        eprintln!("{}", make_banner("BOOTSTRAP"));
-        eprintln!("No git repository found in {}. Running git init...", repo_root.display());
+        emit(&tui_tx, &make_banner("BOOTSTRAP"));
+        emit(&tui_tx, &format!("No git repository found in {}. Running git init...", repo_root.display()));
         let status = Command::new("git")
             .arg("init")
             .current_dir(repo_root)
@@ -77,7 +89,7 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions) -> Result<(
     let mut current_branch = if bootstrap_mode {
         parent_branch.clone()
     } else {
-        eprintln!("{}", make_banner("BRANCH SETUP"));
+        emit(&tui_tx, &make_banner("BRANCH SETUP"));
         let branch_name = shipper::generate_branch_name(repo_root, &config.loop_config.shipper_model, None)
             .map_err(|e| LoopError::BranchCreation(format!("failed to generate branch name: {e}")))?;
         shipper::create_and_push_branch(repo_root, &branch_name, None)
@@ -90,16 +102,22 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions) -> Result<(
     } else {
         opts.max_runs.to_string()
     };
-    eprintln!("Agent loop: {}s between runs, max={}, Ctrl-C to stop", opts.delay, max_label);
+    emit(&tui_tx, &format!("Agent loop: {}s between runs, max={}, Ctrl-C to stop", opts.delay, max_label));
 
     let mut run_number: u32 = 0;
 
     loop {
         run_number += 1;
 
+        // Check if TUI user cancelled
+        if tui.map_or(false, |t| t.is_cancelled()) {
+            emit(&tui_tx, &make_banner("LOOP CANCELLED BY USER"));
+            break;
+        }
+
         if opts.max_runs > 0 && run_number > opts.max_runs {
-            eprintln!();
-            eprintln!("{}", make_banner(&format!("LOOP COMPLETE  {} runs", opts.max_runs)));
+            emit(&tui_tx, "");
+            emit(&tui_tx, &make_banner(&format!("LOOP COMPLETE  {} runs", opts.max_runs)));
             break;
         }
 
@@ -115,14 +133,20 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions) -> Result<(
         let head_before = git_head(repo_root);
 
         // run::execute prints its own ITERATION banner with branch + timestamp
-        let run_result = run::execute(config, repo_root, run_opts);
+        let run_result = run::execute(config, repo_root, run_opts, tui);
         let logger_opt: Option<Logger> = match run_result {
             Ok(logger) => Some(logger),
             Err(e) => {
-                eprintln!("Run {run_number} failed: {e}");
+                emit(&tui_tx, &format!("Run {run_number} failed: {e}"));
                 None
             }
         };
+
+        // Check if TUI user cancelled during the run
+        if tui.map_or(false, |t| t.is_cancelled()) {
+            emit(&tui_tx, &make_banner("LOOP CANCELLED BY USER"));
+            break;
+        }
 
         // Sync litebrite so reviewer and decider see fresh task state
         litebrite::sync(repo_root);
@@ -134,13 +158,16 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions) -> Result<(
             && head_before.unwrap() != head_after.unwrap();
 
         if agent_made_commits {
+            let reviewer_logger = logger_opt.as_ref().map(|l| l.with_label("CODE REVIEW"));
             let reviewer_opts = reviewer::ReviewerOptions {
                 model: config.loop_config.reviewer_model.clone(),
                 current_branch: current_branch.clone(),
             };
-            if let Err(e) = reviewer::execute(repo_root, &reviewer_opts, logger_opt.as_ref()) {
+            if let Err(e) = reviewer::execute(config, repo_root, &reviewer_opts, reviewer_logger.as_ref()) {
                 crate::logger::log(logger_opt.as_ref(), &format!("Reviewer failed (non-fatal): {e}"));
             }
+            // Sync lb state pushed by reviewer container back to host
+            litebrite::sync(repo_root);
         } else {
             crate::logger::log(logger_opt.as_ref(), "Reviewer skipped: no new commits from this run.");
         }
@@ -150,7 +177,7 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions) -> Result<(
         let decision = std::thread::scope(|s| {
             if !opts.no_summary {
                 let log_file = format!("{}/latest.jsonl", config.log_dir);
-                let summary_logger = logger_opt.clone();
+                let summary_logger = logger_opt.as_ref().map(|l| l.with_label("SUMMARY"));
                 s.spawn(move || {
                     if let Err(e) = summary::execute(config, repo_root, &log_file, summary_logger.as_ref()) {
                         crate::logger::log(summary_logger.as_ref(), &format!("Summary generation failed: {e}"));
@@ -158,12 +185,15 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions) -> Result<(
                 });
             }
 
-            let decider_logger = logger_opt.clone();
+            let decider_logger = logger_opt.as_ref().map(|l| l.with_label("DECISION"));
             let decider_handle = s.spawn(move || {
                 should_continue(repo_root, &decider_model, decider_logger.as_ref())
             });
 
-            decider_handle.join().expect("decider thread panicked")
+            match decider_handle.join() {
+                Ok(result) => result,
+                Err(_) => Err(LoopError::Decider("decider thread panicked".into())),
+            }
         });
 
         match decision {
@@ -179,7 +209,7 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions) -> Result<(
                     parent_branch: parent_branch.clone(),
                 };
 
-                match shipper::execute(repo_root, &ship_opts, logger_opt.as_ref()) {
+                match shipper::execute(config, repo_root, &ship_opts, logger_opt.as_ref()) {
                     Ok(result) => {
                         crate::logger::log(logger_opt.as_ref(), &format!("Shipped! New branch: {}", result.new_branch));
                         current_branch = result.new_branch;
@@ -191,7 +221,7 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions) -> Result<(
             }
             Ok(Decision::Stop(reason)) => {
                 crate::logger::log(logger_opt.as_ref(), &format!("Decider: stop — {reason}"));
-                eprintln!("{}", make_banner(&format!("LOOP COMPLETE  {} runs", run_number)));
+                emit(&tui_tx, &make_banner(&format!("LOOP COMPLETE  {} runs", run_number)));
                 break;
             }
             Err(e) => {
@@ -199,8 +229,14 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions) -> Result<(
             }
         }
 
+        // Check if TUI user cancelled before sleeping
+        if tui.map_or(false, |t| t.is_cancelled()) {
+            emit(&tui_tx, &make_banner("LOOP CANCELLED BY USER"));
+            break;
+        }
+
         if opts.delay > 0 {
-            eprintln!("Waiting {}s until next run...", opts.delay);
+            emit(&tui_tx, &format!("Waiting {}s until next run...", opts.delay));
             std::thread::sleep(std::time::Duration::from_secs(opts.delay as u64));
         }
     }
@@ -236,61 +272,46 @@ fn should_continue(repo_root: &Path, decider_model: &str, logger: Option<&Logger
         - \"ship\": the current batch of work is complete and ready to merge; start a new branch for remaining work\n\
         - \"stop\": all work is done, no more runs needed";
 
-    let mut child = Command::new("claude")
-        .args([
-            "-p",
-            "--no-session-persistence",
-            "--model", decider_model,
-            "--allowedTools", "Read,Bash(git *),Bash(lb *)",
-            "--output-format", "json",
-            "--json-schema", schema,
-        ])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .current_dir(repo_root)
+    let mut cmd = streaming::claude_stream_cmd_with_schema(
+        repo_root,
+        decider_model,
+        "Read,Bash(git *),Bash(lb *)",
+        schema,
+    );
+
+    let mut child = cmd
         .spawn()
         .map_err(|e| LoopError::Decider(format!("failed to run claude CLI: {e}")))?;
 
-    if let Some(mut stdin) = child.stdin.take() {
-        let _ = stdin.write_all(prompt.as_bytes());
-    }
+    streaming::send_prompt(&mut child, prompt);
 
-    // Tee decider stderr
-    let tee_handle = child.stderr.take().map(|stderr| {
-        if let Some(l) = logger {
-            l.tee_stderr(stderr)
-        } else {
-            std::thread::spawn(move || {
-                use std::io::BufRead;
-                let reader = std::io::BufReader::new(stderr);
-                for line in reader.lines().map_while(Result::ok) {
-                    eprintln!("{line}");
-                }
-            })
-        }
-    });
+    let target = match logger.and_then(|l| l.tui_sender()) {
+        Some(tui) => StreamTarget::Tui(tui.with_label("DECISION")),
+        None => StreamTarget::Stderr,
+    };
 
-    let output = child
-        .wait_with_output()
-        .map_err(|e| LoopError::Decider(format!("failed to wait for claude CLI: {e}")))?;
+    let mut formatter = StreamFormatter::new(target.supports_color());
 
-    if let Some(h) = tee_handle { let _ = h.join(); }
+    let (result_text, exit_code) = streaming::run_streaming_claude(child, &mut formatter, logger, &target)
+        .map_err(|e| LoopError::Decider(format!("streaming error: {e}")))?;
 
-    if !output.status.success() {
+    if exit_code != 0 {
         return Err(LoopError::Decider(format!(
-            "claude CLI exited with code {}",
-            output.status.code().unwrap_or(-1)
+            "claude CLI exited with code {exit_code}"
         )));
     }
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let parsed: serde_json::Value = serde_json::from_str(stdout.trim())
-        .map_err(|e| LoopError::Decider(format!("failed to parse decider output: {e}")))?;
-
-    let structured = &parsed["structured_output"];
-    let action = structured["action"].as_str().unwrap_or("continue");
-    let reason = structured["reason"].as_str().unwrap_or("no reason given").to_string();
+    // Parse the structured result from the stream-json result event
+    let parsed: serde_json::Value = match serde_json::from_str(&result_text) {
+        Ok(v) => v,
+        Err(e) => {
+            crate::logger::log(logger, &format!("WARNING: decider returned invalid JSON (defaulting to 'continue'): {e}"));
+            crate::logger::log(logger, &format!("  raw output: {result_text}"));
+            return Ok(Decision::Continue("JSON parse failure — defaulting to continue".into()));
+        }
+    };
+    let action = parsed["action"].as_str().unwrap_or("continue");
+    let reason = parsed["reason"].as_str().unwrap_or("no reason given").to_string();
 
     match action {
         "ship" => Ok(Decision::Ship(reason)),

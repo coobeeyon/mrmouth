@@ -4,6 +4,7 @@ use std::process::Command;
 use crate::config::Config;
 use crate::litebrite;
 use crate::run::{self, RunOptions};
+use crate::tui::{TuiHandle, TuiSender};
 
 fn make_banner(label: &str) -> String {
     const WIDTH: usize = 80;
@@ -13,6 +14,14 @@ fn make_banner(label: &str) -> String {
     format!("{border}\n{empty}\n{text}\n{empty}\n{border}")
 }
 
+/// Route a message to the TUI pane if available, otherwise stderr.
+fn emit(tui_tx: &Option<TuiSender>, msg: &str) {
+    match tui_tx {
+        Some(sender) => sender.send_line(msg),
+        None => eprintln!("{msg}"),
+    }
+}
+
 pub struct EpicOptions {
     pub epic_id: String,
     pub timeout: u32,
@@ -20,21 +29,33 @@ pub struct EpicOptions {
     pub model: String,
 }
 
-pub fn execute(config: &Config, repo_root: &Path, opts: EpicOptions) -> Result<(), EpicError> {
+pub fn execute(config: &Config, repo_root: &Path, opts: EpicOptions, tui: Option<&TuiHandle>) -> Result<(), EpicError> {
+    let tui_tx = tui.map(|t| t.sender("EPIC"));
+
     // 1. Verify the epic exists
     let epic_info = lb_show(repo_root, &opts.epic_id)?;
-    eprintln!("{}", make_banner(&format!("EPIC: {}", epic_info)));
+    emit(&tui_tx, &make_banner(&format!("EPIC: {}", epic_info)));
 
     // 2. Create feature branch (if not already on one)
     let current_branch = git_current_branch(repo_root)?;
     let feature_branch = if current_branch == "main" || current_branch == "master" {
         let slug = make_slug(&epic_info);
         let branch_name = format!("{}-{}", opts.epic_id, slug);
-        eprintln!("Creating feature branch: {branch_name}");
+        emit(&tui_tx, &format!("Creating feature branch: {branch_name}"));
         git_checkout_new_branch(repo_root, &branch_name)?;
+        // Push the new branch so container can clone it
+        emit(&tui_tx, &format!("Pushing branch to remote..."));
+        let push_status = Command::new("git")
+            .args(["-C", &repo_root.to_string_lossy(), "push", "-u", "origin", &branch_name])
+            .status();
+        match push_status {
+            Ok(s) if s.success() => {}
+            Ok(s) => emit(&tui_tx, &format!("WARNING: git push exited with code {} — container may fail to clone this branch", s.code().unwrap_or(-1))),
+            Err(e) => emit(&tui_tx, &format!("WARNING: git push failed: {e} — container may fail to clone this branch")),
+        }
         branch_name
     } else {
-        eprintln!("Already on branch: {current_branch}");
+        emit(&tui_tx, &format!("Already on branch: {current_branch}"));
         current_branch
     };
 
@@ -43,16 +64,21 @@ pub fn execute(config: &Config, repo_root: &Path, opts: EpicOptions) -> Result<(
     let mut consecutive_failures: u32 = 0;
 
     loop {
+        // Check if TUI user cancelled
+        if tui.map_or(false, |t| t.is_cancelled()) {
+            emit(&tui_tx, "Epic cancelled by user.");
+            break;
+        }
+
         // Check remaining tasks
         let remaining = count_remaining_tasks(repo_root, &opts.epic_id);
         if remaining == 0 {
-            eprintln!();
-            eprintln!("All tasks in {} complete.", opts.epic_id);
+            emit(&tui_tx, &format!("All tasks in {} complete.", opts.epic_id));
             break;
         }
 
         task_num += 1;
-        eprintln!("{}", make_banner(&format!(
+        emit(&tui_tx, &make_banner(&format!(
             "TASK {}  ({} remaining)  {}",
             task_num, remaining, chrono::Local::now().format("%H:%M:%S")
         )));
@@ -75,41 +101,46 @@ pub fn execute(config: &Config, repo_root: &Path, opts: EpicOptions) -> Result<(
             branch: None,
         };
 
-        let run_result = run::execute(config, repo_root, run_opts);
+        let run_result = run::execute(config, repo_root, run_opts, tui);
 
         match run_result {
             Ok(_logger) => {
                 consecutive_failures = 0;
-                eprintln!("Task {task_num} succeeded, syncing...");
+                emit(&tui_tx, &format!("Task {task_num} succeeded, syncing..."));
                 sync_and_push(repo_root, &feature_branch);
             }
             Err(e) => {
                 consecutive_failures += 1;
-                eprintln!("--- Task {task_num} failed: {e}");
+                emit(&tui_tx, &format!("--- Task {task_num} failed: {e}"));
 
                 if consecutive_failures >= opts.max_failures {
-                    eprintln!();
-                    eprintln!(
+                    emit(&tui_tx, &format!(
                         "ERROR: {} consecutive failures — aborting",
                         opts.max_failures
-                    );
+                    ));
                     return Err(EpicError::TooManyFailures(opts.max_failures));
                 }
             }
         }
 
-        // Show current task state
-        let _ = Command::new("lb")
+        // Show current task state — capture output and route through TUI
+        if let Ok(output) = Command::new("lb")
             .args(["list", "--parent", &opts.epic_id])
             .current_dir(repo_root)
-            .status();
+            .output()
+        {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            for line in stdout.lines() {
+                emit(&tui_tx, line);
+            }
+        }
     }
 
     // Final sync
-    eprintln!("{}", make_banner("EPIC COMPLETE"));
-    eprintln!("Final push to remote...");
+    emit(&tui_tx, &make_banner("EPIC COMPLETE"));
+    emit(&tui_tx, "Final push to remote...");
     sync_and_push(repo_root, &feature_branch);
-    eprintln!("Done. Merge branch '{}' when ready.", feature_branch);
+    emit(&tui_tx, &format!("Done. Merge branch '{}' when ready.", feature_branch));
 
     Ok(())
 }
@@ -228,7 +259,12 @@ fn make_slug(title: &str) -> String {
     // Trim trailing dash and limit length
     let trimmed = result.trim_end_matches('-');
     if trimmed.len() > 50 {
-        trimmed[..50].trim_end_matches('-').to_string()
+        // Use char boundary to avoid panic on multibyte UTF-8
+        let mut end = 50;
+        while !trimmed.is_char_boundary(end) {
+            end -= 1;
+        }
+        trimmed[..end].trim_end_matches('-').to_string()
     } else {
         trimmed.to_string()
     }
@@ -294,5 +330,15 @@ mod tests {
     #[test]
     fn slug_all_special_chars() {
         assert_eq!(make_slug("!@#$%^&*()"), "");
+    }
+
+    #[test]
+    fn slug_multibyte_utf8_truncation() {
+        // Title with accented chars that produce multibyte UTF-8
+        let title = "é".repeat(60); // each é is 2 bytes
+        let slug = make_slug(&title);
+        assert!(slug.len() <= 50);
+        // Verify it's valid UTF-8 (would panic on bad boundary)
+        let _ = slug.chars().count();
     }
 }

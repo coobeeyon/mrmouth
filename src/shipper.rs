@@ -1,8 +1,12 @@
-use std::io::Write;
+use std::io::{IsTerminal, Write};
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::Command;
 
+use crate::config::Config;
+use crate::docker::{ContainerArgs, DockerBuilder};
 use crate::logger::Logger;
+use crate::stream_fmt::{self, StreamFormatter};
+use crate::streaming::{self, StreamTarget};
 
 pub struct ShipperOptions {
     pub model: String,
@@ -15,11 +19,11 @@ pub struct ShipResult {
 }
 
 /// Run the shipper agent: check readiness, merge branch, create next feature branch.
-pub fn execute(repo_root: &Path, opts: &ShipperOptions, logger: Option<&Logger>) -> Result<ShipResult, ShipperError> {
+pub fn execute(config: &Config, repo_root: &Path, opts: &ShipperOptions, logger: Option<&Logger>) -> Result<ShipResult, ShipperError> {
     crate::logger::banner(logger, &format!("SHIPPING  {} -> {}", opts.current_branch, opts.parent_branch));
 
     // 1. Check readiness
-    check_ready(repo_root, &opts.current_branch, logger)?;
+    check_ready(config, repo_root, &opts.current_branch, &opts.model, logger)?;
 
     // 2. Merge current branch into parent
     merge_branch(repo_root, &opts.current_branch, &opts.parent_branch, logger)?;
@@ -31,78 +35,158 @@ pub fn execute(repo_root: &Path, opts: &ShipperOptions, logger: Option<&Logger>)
     Ok(ShipResult { new_branch: branch_name })
 }
 
-fn tee_stderr_or_inherit(
-    child: &mut std::process::Child,
-    logger: Option<&Logger>,
-) -> Option<std::thread::JoinHandle<()>> {
-    child.stderr.take().map(|stderr| {
-        if let Some(l) = logger {
-            l.tee_stderr(stderr)
-        } else {
-            std::thread::spawn(move || {
-                use std::io::BufRead;
-                let reader = std::io::BufReader::new(stderr);
-                for line in reader.lines().map_while(Result::ok) {
-                    eprintln!("{line}");
-                }
-            })
-        }
-    })
-}
-
-fn check_ready(repo_root: &Path, current_branch: &str, logger: Option<&Logger>) -> Result<(), ShipperError> {
+fn check_ready(config: &Config, repo_root: &Path, current_branch: &str, model: &str, logger: Option<&Logger>) -> Result<(), ShipperError> {
     let schema = r#"{"type":"object","properties":{"status":{"type":"string","enum":["READY","BLOCKED"]},"reason":{"type":"string"}},"required":["status","reason"]}"#;
 
     let prompt = format!(
         "You are checking if branch '{}' is ready to ship. \
-        Check: (1) run 'lb list -s open' to see if there are open tasks that block shipping, \
-        (2) check if there are any obvious test failures. \
-        Return READY if the branch can be merged, BLOCKED if not.",
+        Check: (1) run 'lb list -s open' to confirm no open blocking tasks exist, \
+        (2) discover the project's build and test commands by examining the project \
+        structure (Makefile, package.json, Cargo.toml, etc.) and run them to verify \
+        everything compiles and all tests pass. \
+        Return READY only if both checks pass. Return BLOCKED if any tasks are open \
+        or any build/test fails, with a clear reason.",
         current_branch
     );
 
-    let mut child = Command::new("claude")
-        .args([
-            "-p",
-            "--no-session-persistence",
-            "--model", "haiku",
-            "--allowedTools", "Bash(lb *),Bash(cargo test *)",
-            "--output-format", "json",
-            "--json-schema", schema,
-        ])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .current_dir(repo_root)
-        .spawn()
-        .map_err(|e| ShipperError(format!("failed to run readiness check: {e}")))?;
+    let escaped_prompt = prompt.replace('\'', "'\\''");
+    let escaped_schema = schema.replace('\'', "'\\''");
 
-    if let Some(mut stdin) = child.stdin.take() {
-        let _ = stdin.write_all(prompt.as_bytes());
+    let script = format!(
+        r#"#!/usr/bin/env bash
+set -euo pipefail
+
+repo_url="${{REPO_URL:-}}"
+branch="${{BRANCH:-main}}"
+work_dir="$HOME/workspace"
+
+# Clone repo
+if [ ! -d "$work_dir/.git" ]; then
+  if [ -n "$repo_url" ]; then
+    echo "Cloning $repo_url (branch: $branch)..."
+    git clone --branch "$branch" "$repo_url" "$work_dir"
+  fi
+fi
+cd "$work_dir"
+git config --global --add safe.directory "$work_dir"
+
+# Initialize litebrite
+if [ -d "$work_dir/.git" ]; then
+  echo "Initializing litebrite..."
+  lb init
+  lb setup claude 2>/dev/null || true
+  lb sync 2>/dev/null || true
+fi
+
+# Restore .claude.json from persisted backup if missing
+claude_config="$HOME/.claude.json"
+if [ ! -f "$claude_config" ] && [ -d "$HOME/.claude/backups" ]; then
+  latest_backup=$(ls -t "$HOME/.claude/backups/.claude.json.backup."* 2>/dev/null | head -1)
+  if [ -n "$latest_backup" ]; then
+    cp "$latest_backup" "$claude_config"
+    echo "Restored .claude.json from backup."
+  fi
+fi
+
+# Run readiness check
+echo "Starting readiness check..."
+claude -p --dangerously-skip-permissions --verbose --output-format stream-json --model {model} --json-schema '{escaped_schema}' '{escaped_prompt}'
+echo "Readiness check complete."
+
+# Push lb state changes back so the host loop can sync them
+if [ -d "$work_dir/.git" ]; then
+  lb sync 2>/dev/null || true
+  git push 2>/dev/null || true
+fi
+"#
+    );
+
+    let mut tmp = tempfile::NamedTempFile::new()
+        .map_err(|e| ShipperError(format!("failed to create readiness script: {e}")))?;
+    tmp.write_all(script.as_bytes())
+        .map_err(|e| ShipperError(format!("failed to write readiness script: {e}")))?;
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let perms = std::fs::Permissions::from_mode(0o755);
+        std::fs::set_permissions(tmp.path(), perms)
+            .map_err(|e| ShipperError(format!("failed to set script permissions: {e}")))?;
     }
 
-    let tee_handle = tee_stderr_or_inherit(&mut child, logger);
+    let (repo_url, file_remote_path) = match git_remote_url(repo_root) {
+        Some(url) => (url, None),
+        None => ("file:///host-repo".to_string(), Some(repo_root.to_path_buf())),
+    };
 
-    let output = child
-        .wait_with_output()
-        .map_err(|e| ShipperError(format!("readiness check failed: {e}")))?;
+    let timestamp = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
+    let container_name = format!("readiness-{timestamp}");
+    let volume = config.effective_volume(repo_root);
 
-    if let Some(h) = tee_handle { let _ = h.join(); }
+    DockerBuilder::remove_container(&container_name);
 
-    if !output.status.success() {
+    let docker = DockerBuilder::new(&config.image);
+    let container_args = ContainerArgs {
+        name: container_name.clone(),
+        repo_url,
+        branch: current_branch.to_string(),
+        runner_script: tmp.path().to_path_buf(),
+        volume,
+        local: false,
+        file_remote_path,
+        timeout_secs: None,
+    };
+
+    let mut handle = docker
+        .run(&container_args)
+        .map_err(|e| ShipperError(format!("failed to start readiness container: {e}")))?;
+
+    let is_tty = logger.map_or(false, |l| l.has_tui()) || std::io::stdout().is_terminal();
+    let mut formatter = StreamFormatter::new(is_tty);
+    let mut result_text = String::new();
+
+    handle
+        .stream_output(|line| {
+            if let Ok(event) = serde_json::from_str::<serde_json::Value>(line) {
+                if event.get("type").and_then(|v| v.as_str()) == Some("result") {
+                    if let Some(r) = event.get("result").and_then(|v| v.as_str()) {
+                        result_text = r.to_string();
+                    }
+                }
+            }
+            if let Some(formatted) = stream_fmt::format_line(&mut formatter, line) {
+                match logger {
+                    Some(l) => {
+                        l.display(&formatted);
+                        l.log_file_only(&formatted);
+                    }
+                    None => eprintln!("{formatted}"),
+                }
+            }
+        })
+        .map_err(|e| ShipperError(format!("streaming error: {e}")))?;
+
+    let exit_code = handle
+        .wait()
+        .map_err(|e| ShipperError(format!("container wait failed: {e}")))?;
+
+    DockerBuilder::remove_container(&container_name);
+
+    if exit_code != 0 {
         return Err(ShipperError(format!(
-            "readiness check exited with code {}",
-            output.status.code().unwrap_or(-1)
+            "readiness check container exited with code {exit_code}"
         )));
     }
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let parsed: serde_json::Value = serde_json::from_str(stdout.trim())
-        .map_err(|e| ShipperError(format!("failed to parse readiness output: {e}")))?;
-
-    let structured = &parsed["structured_output"];
-    let status = structured["status"].as_str().unwrap_or("BLOCKED");
-    let reason = structured["reason"].as_str().unwrap_or("no reason given");
+    let parsed: serde_json::Value = match serde_json::from_str(&result_text) {
+        Ok(v) => v,
+        Err(e) => {
+            crate::logger::log(logger, &format!("WARNING: readiness check returned invalid JSON: {e}"));
+            return Err(ShipperError(format!("readiness check returned invalid JSON: {e}")));
+        }
+    };
+    let status = parsed["status"].as_str().unwrap_or("BLOCKED");
+    let reason = parsed["reason"].as_str().unwrap_or("no reason given");
 
     if status == "BLOCKED" {
         return Err(ShipperError(format!("branch not ready to ship: {reason}")));
@@ -110,6 +194,18 @@ fn check_ready(repo_root: &Path, current_branch: &str, logger: Option<&Logger>) 
 
     crate::logger::log(logger, &format!("Readiness check passed: {reason}"));
     Ok(())
+}
+
+fn git_remote_url(repo_root: &Path) -> Option<String> {
+    let output = Command::new("git")
+        .args(["-C", &repo_root.to_string_lossy(), "remote", "get-url", "origin"])
+        .output()
+        .ok()?;
+    if output.status.success() {
+        Some(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    } else {
+        None
+    }
 }
 
 fn merge_branch(
@@ -201,42 +297,43 @@ pub fn generate_branch_name(repo_root: &Path, model: &str, logger: Option<&Logge
         Examples: review-ship-flow, docker-caching, test-coverage. \
         Just the slug, no 'feat-' prefix.";
 
-    let mut child = Command::new("claude")
-        .args([
-            "-p",
-            "--no-session-persistence",
-            "--model", model,
-            "--allowedTools", "Read,Bash(lb *)",
-            "--output-format", "json",
-            "--json-schema", schema,
-        ])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .current_dir(repo_root)
+    let mut cmd = streaming::claude_stream_cmd_with_schema(
+        repo_root,
+        model,
+        "Read,Bash(lb *)",
+        schema,
+    );
+
+    let mut child = cmd
         .spawn()
         .map_err(|e| ShipperError(format!("failed to generate branch name: {e}")))?;
 
-    if let Some(mut stdin) = child.stdin.take() {
-        let _ = stdin.write_all(prompt.as_bytes());
-    }
+    streaming::send_prompt(&mut child, prompt);
 
-    let tee_handle = tee_stderr_or_inherit(&mut child, logger);
+    let target = match logger.and_then(|l| l.tui_sender()) {
+        Some(tui) => StreamTarget::Tui(tui.with_label("BRANCH NAME")),
+        None => StreamTarget::Stderr,
+    };
 
-    let output = child
-        .wait_with_output()
+    let mut formatter = StreamFormatter::new(target.supports_color());
+
+    let (result_text, exit_code) = streaming::run_streaming_claude(child, &mut formatter, logger, &target)
         .map_err(|e| ShipperError(format!("branch name generation failed: {e}")))?;
 
-    if let Some(h) = tee_handle { let _ = h.join(); }
-
-    if !output.status.success() {
+    if exit_code != 0 {
         let ts = chrono::Local::now().format("%Y%m%d-%H%M%S");
         return Ok(format!("feat-{ts}"));
     }
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let parsed: serde_json::Value = serde_json::from_str(stdout.trim()).unwrap_or_default();
-    let slug = parsed["structured_output"]["name"]
+    let parsed: serde_json::Value = match serde_json::from_str(&result_text) {
+        Ok(v) => v,
+        Err(e) => {
+            crate::logger::log(logger, &format!("WARNING: branch name generation returned invalid JSON (using timestamp fallback): {e}"));
+            let ts = chrono::Local::now().format("%Y%m%d-%H%M%S");
+            return Ok(format!("feat-{ts}"));
+        }
+    };
+    let slug = parsed["name"]
         .as_str()
         .unwrap_or("")
         .trim()
