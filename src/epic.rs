@@ -34,7 +34,7 @@ pub fn execute(config: &Config, repo_root: &Path, opts: EpicOptions, tui: Option
 
     // 1. Verify the epic exists
     let epic_info = lb_show(repo_root, &opts.epic_id)?;
-    emit(&tui_tx, &make_banner(&format!("EPIC: {}", epic_info)));
+    emit(&tui_tx, &make_banner(&format!("EPIC: {epic_info}")));
 
     // 2. Create feature branch (if not already on one)
     let current_branch = git_current_branch(repo_root)?;
@@ -44,7 +44,7 @@ pub fn execute(config: &Config, repo_root: &Path, opts: EpicOptions, tui: Option
         emit(&tui_tx, &format!("Creating feature branch: {branch_name}"));
         git_checkout_new_branch(repo_root, &branch_name)?;
         // Push the new branch so container can clone it
-        emit(&tui_tx, &format!("Pushing branch to remote..."));
+        emit(&tui_tx, "Pushing branch to remote...");
         let push_status = Command::new("git")
             .args(["-C", &repo_root.to_string_lossy(), "push", "-u", "origin", &branch_name])
             .status();
@@ -65,7 +65,7 @@ pub fn execute(config: &Config, repo_root: &Path, opts: EpicOptions, tui: Option
 
     loop {
         // Check if TUI user cancelled
-        if tui.map_or(false, |t| t.is_cancelled()) {
+        if tui.is_some_and(|t| t.is_cancelled()) {
             emit(&tui_tx, "Epic cancelled by user.");
             break;
         }
@@ -140,7 +140,7 @@ pub fn execute(config: &Config, repo_root: &Path, opts: EpicOptions, tui: Option
     emit(&tui_tx, &make_banner("EPIC COMPLETE"));
     emit(&tui_tx, "Final push to remote...");
     sync_and_push(repo_root, &feature_branch);
-    emit(&tui_tx, &format!("Done. Merge branch '{}' when ready.", feature_branch));
+    emit(&tui_tx, &format!("Done. Merge branch '{feature_branch}' when ready."));
 
     Ok(())
 }

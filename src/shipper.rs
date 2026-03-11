@@ -39,14 +39,13 @@ fn check_ready(config: &Config, repo_root: &Path, current_branch: &str, model: &
     let schema = r#"{"type":"object","properties":{"status":{"type":"string","enum":["READY","BLOCKED"]},"reason":{"type":"string"}},"required":["status","reason"]}"#;
 
     let prompt = format!(
-        "You are checking if branch '{}' is ready to ship. \
+        "You are checking if branch '{current_branch}' is ready to ship. \
         Check: (1) run 'lb list -s open' to confirm no open blocking tasks exist, \
         (2) discover the project's build and test commands by examining the project \
         structure (Makefile, package.json, Cargo.toml, etc.) and run them to verify \
         everything compiles and all tests pass. \
         Return READY only if both checks pass. Return BLOCKED if any tasks are open \
-        or any build/test fails, with a clear reason.",
-        current_branch
+        or any build/test fails, with a clear reason."
     );
 
     let escaped_prompt = prompt.replace('\'', "'\\''");
@@ -141,7 +140,7 @@ fi
         .run(&container_args)
         .map_err(|e| ShipperError(format!("failed to start readiness container: {e}")))?;
 
-    let is_tty = logger.map_or(false, |l| l.has_tui()) || std::io::stdout().is_terminal();
+    let is_tty = logger.is_some_and(|l| l.has_tui()) || std::io::stdout().is_terminal();
     let mut formatter = StreamFormatter::new(is_tty);
     let mut result_text = String::new();
 

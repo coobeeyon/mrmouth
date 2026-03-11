@@ -130,7 +130,7 @@ fi
         .run(&container_args)
         .map_err(|e| ReviewerError(format!("failed to start reviewer container: {e}")))?;
 
-    let is_tty = logger.map_or(false, |l| l.has_tui()) || std::io::stdout().is_terminal();
+    let is_tty = logger.is_some_and(|l| l.has_tui()) || std::io::stdout().is_terminal();
     let mut formatter = StreamFormatter::new(is_tty);
 
     handle

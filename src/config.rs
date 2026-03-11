@@ -157,7 +157,7 @@ impl std::fmt::Display for ConfigError {
             Self::Parse { path, source } => {
                 write!(f, "failed to parse {}: {}", path.display(), source)
             }
-            Self::Cwd(e) => write!(f, "failed to get current directory: {}", e),
+            Self::Cwd(e) => write!(f, "failed to get current directory: {e}"),
             Self::NotARepo => write!(f, "not inside a git repository"),
         }
     }

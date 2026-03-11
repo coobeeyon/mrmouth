@@ -57,11 +57,11 @@ pub fn execute(config: &Config, repo_root: &Path, opts: RunOptions, tui: Option<
         .or_else(|| config.branch.clone())
         .unwrap_or_else(|| git_current_branch(repo_root).unwrap_or_else(|_| "main".into()));
 
-    logger.banner(&format!("AGENT RUN  branch={}  {}", branch, timestamp));
+    logger.banner(&format!("AGENT RUN  branch={branch}  {timestamp}"));
 
     // 1. Preflight checks
     logger.log("Checking preflight conditions...");
-    preflight(repo_root, opts.local).map_err(|e| { logger.flush(); e })?;
+    preflight(repo_root, opts.local).inspect_err(|_| { logger.flush(); })?;
 
     // 2. Resolve repo URL
     let (repo_url, file_remote_path) = if opts.local {
@@ -106,7 +106,7 @@ pub fn execute(config: &Config, repo_root: &Path, opts: RunOptions, tui: Option<
     DockerBuilder::remove_container(&container_name);
 
     // 8. Start container
-    logger.banner(&format!("AGENT SESSION  container={}", container_name));
+    logger.banner(&format!("AGENT SESSION  container={container_name}"));
     logger.log(&format!("Branch: {branch}"));
 
     let container_args = ContainerArgs {
@@ -410,10 +410,8 @@ fn atomic_symlink(target: &str, link_path: &std::path::PathBuf) {
     use std::os::unix::fs as unix_fs;
     let tmp = link_path.with_extension("tmp");
     let _ = fs::remove_file(&tmp);
-    if unix_fs::symlink(target, &tmp).is_ok() {
-        if fs::rename(&tmp, link_path).is_err() {
-            let _ = fs::remove_file(&tmp);
-        }
+    if unix_fs::symlink(target, &tmp).is_ok() && fs::rename(&tmp, link_path).is_err() {
+        let _ = fs::remove_file(&tmp);
     }
 }
 

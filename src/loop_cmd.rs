@@ -110,7 +110,7 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions, tui: Option
         run_number += 1;
 
         // Check if TUI user cancelled
-        if tui.map_or(false, |t| t.is_cancelled()) {
+        if tui.is_some_and(|t| t.is_cancelled()) {
             emit(&tui_tx, &make_banner("LOOP CANCELLED BY USER"));
             break;
         }
@@ -143,7 +143,7 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions, tui: Option
         };
 
         // Check if TUI user cancelled during the run
-        if tui.map_or(false, |t| t.is_cancelled()) {
+        if tui.is_some_and(|t| t.is_cancelled()) {
             emit(&tui_tx, &make_banner("LOOP CANCELLED BY USER"));
             break;
         }
@@ -221,7 +221,7 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions, tui: Option
             }
             Ok(Decision::Stop(reason)) => {
                 crate::logger::log(logger_opt.as_ref(), &format!("Decider: stop — {reason}"));
-                emit(&tui_tx, &make_banner(&format!("LOOP COMPLETE  {} runs", run_number)));
+                emit(&tui_tx, &make_banner(&format!("LOOP COMPLETE  {run_number} runs")));
                 break;
             }
             Err(e) => {
@@ -230,7 +230,7 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions, tui: Option
         }
 
         // Check if TUI user cancelled before sleeping
-        if tui.map_or(false, |t| t.is_cancelled()) {
+        if tui.is_some_and(|t| t.is_cancelled()) {
             emit(&tui_tx, &make_banner("LOOP CANCELLED BY USER"));
             break;
         }

@@ -311,7 +311,7 @@ fn draw(
                 .enumerate()
                 .map(|(i, (name, _))| {
                     if i == state.active {
-                        format!("[{}]", name)
+                        format!("[{name}]")
                     } else {
                         name.clone()
                     }

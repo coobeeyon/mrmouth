@@ -313,7 +313,7 @@ impl Formatter {
             .and_then(|v| v.as_u64());
 
         let cost_str = cost
-            .map(|c| format!("${:.4}", c))
+            .map(|c| format!("${c:.4}"))
             .unwrap_or_else(|| "?".to_string());
         let turns_str = turns
             .map(|t| t.to_string())
