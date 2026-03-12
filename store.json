@@ -195,10 +195,10 @@
       "title": "Modify src/run.rs: wire TUI into agent session streaming",
       "description": "Changes to run::execute():\n\n1. Add tui: Option<&TuiHandle> parameter.\n\n2. Logger construction:\n   let logger = match tui {\n       Some(t) => Logger::with_tui(&log_path, t.sender(\"AGENT SESSION\"))?,\n       None => Logger::new(&log_path)?,\n   };\n\n3. In the stream_output closure, replace println!(\"{formatted}\") with logger.display(&formatted):\n   handle.stream_output(|line| {\n       let _ = writeln!(jsonl_writer, \"{line}\");\n       if let Some(formatted) = stream_fmt::format_line(&mut formatter, line) {\n           logger.display(&formatted);   // → TUI or stdout\n           logger.log_file_only(&formatted);\n       }\n   })\n\n4. For raw mode (opts.raw), similarly replace println!(\"{line}\") with logger.display(line).\n\n5. Return logger so loop_cmd can use it for subsequent stages (existing behavior).",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 1,
       "created_at": "2026-03-10T13:14:56.760541893Z",
-      "updated_at": "2026-03-10T13:14:56.760541893Z"
+      "updated_at": "2026-03-12T21:39:40.983905338Z"
     },
     "lb-oskn": {
       "id": "lb-oskn",
