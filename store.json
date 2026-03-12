@@ -180,6 +180,16 @@
       "created_at": "2026-03-10T13:14:38.810345525Z",
       "updated_at": "2026-03-10T14:27:04.432062125Z"
     },
+    "lb-9xsm": {
+      "id": "lb-9xsm",
+      "title": "UTF-8 unsafe string slicing in epic.rs branch name truncation",
+      "description": "epic.rs:262 uses byte-based slicing trimmed[..50] which will panic if the 50th byte falls in the middle of a multibyte UTF-8 character. Should use char-based truncation instead.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 1,
+      "created_at": "2026-03-10T17:13:12.622645931Z",
+      "updated_at": "2026-03-10T17:14:08.098983873Z"
+    },
     "lb-anmx": {
       "id": "lb-anmx",
       "title": "Create src/shipper.rs",
@@ -240,6 +250,16 @@
       "created_at": "2026-03-10T17:03:56.437475603Z",
       "updated_at": "2026-03-10T17:05:16.563684351Z"
     },
+    "lb-g6rz": {
+      "id": "lb-g6rz",
+      "title": "Misleading git pull failure message in run.rs",
+      "description": "run.rs treats all git pull failures (network error, merge conflict, etc.) as 'No new commits to pull'. Should differentiate error cases.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 2,
+      "created_at": "2026-03-10T17:13:13.458357465Z",
+      "updated_at": "2026-03-10T17:14:08.104427840Z"
+    },
     "lb-gipm": {
       "id": "lb-gipm",
       "title": "Fix --raw mode output goes to stderr instead of stdout",
@@ -279,6 +299,16 @@
       "priority": 2,
       "created_at": "2026-03-09T15:48:52.310349878Z",
       "updated_at": "2026-03-09T18:43:24.878167219Z"
+    },
+    "lb-imrg": {
+      "id": "lb-imrg",
+      "title": "Atomic symlink can leave dangling tmp file on rename failure",
+      "description": "run.rs atomic_symlink function doesn't clean up the tmp symlink if fs::rename fails.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 3,
+      "created_at": "2026-03-10T17:13:14.106194083Z",
+      "updated_at": "2026-03-10T17:14:08.109844927Z"
     },
     "lb-jf0a": {
       "id": "lb-jf0a",
