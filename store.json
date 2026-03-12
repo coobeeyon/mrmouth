@@ -20,6 +20,16 @@
       "created_at": "2026-03-08T21:47:00.082961738Z",
       "updated_at": "2026-03-08T21:48:10.649899511Z"
     },
+    "lb-21dd": {
+      "id": "lb-21dd",
+      "title": "Fix TUI terminal corruption",
+      "description": "Stop bypassing ratatui's rendering pipeline. Subprocesses and eprintln write directly to terminal while ratatui owns it in raw mode, causing staircase text, static elements scrolling away, and content not clearing.",
+      "item_type": "epic",
+      "status": "open",
+      "priority": 1,
+      "created_at": "2026-03-12T22:35:28.830167947Z",
+      "updated_at": "2026-03-12T22:35:28.830167947Z"
+    },
     "lb-2dra": {
       "id": "lb-2dra",
       "title": "Create src/tui.rs: TuiHandle, TuiSender, multi-pane render thread",
