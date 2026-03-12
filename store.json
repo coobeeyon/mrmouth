@@ -330,6 +330,16 @@
       "created_at": "2026-03-08T20:58:56.504066401Z",
       "updated_at": "2026-03-08T21:00:53.740269267Z"
     },
+    "lb-ys68": {
+      "id": "lb-ys68",
+      "title": "Split multi-line strings into individual lines on ingest",
+      "description": "In tui.rs push_line(), split incoming text on newlines and store each as a separate VecDeque entry. Currently multi-line strings (thinking blocks, tool results) are stored as single entries making MAX_LINES=500 count logical blocks not display lines, and requiring full re-parse of huge strings through ansi_to_tui on every render frame.",
+      "item_type": "task",
+      "status": "open",
+      "priority": 2,
+      "created_at": "2026-03-12T22:35:46.779477317Z",
+      "updated_at": "2026-03-12T22:35:46.779477317Z"
+    },
     "lb-yzzv": {
       "id": "lb-yzzv",
       "title": "Modify loop_cmd.rs::should_continue: switch decider to stream-json",
@@ -444,6 +454,11 @@
     },
     {
       "from_id": "lb-dl1f",
+      "to_id": "lb-21dd",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-ys68",
       "to_id": "lb-21dd",
       "dep_type": "parent"
     }
