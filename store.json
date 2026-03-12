@@ -40,16 +40,6 @@
       "created_at": "2026-03-10T13:14:29.882698719Z",
       "updated_at": "2026-03-10T14:25:05.382456602Z"
     },
-    "lb-2ow6": {
-      "id": "lb-2ow6",
-      "title": "Test task 1",
-      "description": "test child",
-      "item_type": "task",
-      "status": "open",
-      "priority": 2,
-      "created_at": "2026-03-12T17:52:53.450295461Z",
-      "updated_at": "2026-03-12T17:52:53.450295461Z"
-    },
     "lb-34j5": {
       "id": "lb-34j5",
       "title": "Fix runner script missing lb sync after init",
@@ -189,16 +179,6 @@
       "priority": 1,
       "created_at": "2026-03-10T13:14:38.810345525Z",
       "updated_at": "2026-03-10T14:27:04.432062125Z"
-    },
-    "lb-ak4l": {
-      "id": "lb-ak4l",
-      "title": "Test task 2",
-      "description": "test child 2",
-      "item_type": "task",
-      "status": "open",
-      "priority": 2,
-      "created_at": "2026-03-12T17:52:53.454277208Z",
-      "updated_at": "2026-03-12T17:52:53.454277208Z"
     },
     "lb-anmx": {
       "id": "lb-anmx",
@@ -399,16 +379,6 @@
       "priority": 2,
       "created_at": "2026-03-10T14:39:11.660452237Z",
       "updated_at": "2026-03-10T15:48:56.479006564Z"
-    },
-    "lb-q6tk": {
-      "id": "lb-q6tk",
-      "title": "Test Epic",
-      "description": "Test epic for debugging",
-      "item_type": "epic",
-      "status": "open",
-      "priority": 2,
-      "created_at": "2026-03-12T17:52:45.052475366Z",
-      "updated_at": "2026-03-12T17:52:45.052475366Z"
     },
     "lb-q88t": {
       "id": "lb-q88t",
@@ -640,16 +610,6 @@
     {
       "from_id": "lb-yzzv",
       "to_id": "lb-cmnc",
-      "dep_type": "parent"
-    },
-    {
-      "from_id": "lb-2ow6",
-      "to_id": "lb-q6tk",
-      "dep_type": "parent"
-    },
-    {
-      "from_id": "lb-ak4l",
-      "to_id": "lb-q6tk",
       "dep_type": "parent"
     }
   ]
