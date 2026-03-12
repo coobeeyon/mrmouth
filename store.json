@@ -245,10 +245,10 @@
       "title": "Extract run_streaming_claude helper for shared streaming logic",
       "description": "Create a shared helper (in src/agent.rs or as a private module-level function) for running a claude CLI subprocess with --output-format stream-json and routing output to a Logger/TUI pane.\n\nSignature:\n  fn run_streaming_claude(\n      child: Child,\n      formatter: &mut StreamFormatter,\n      logger: Option<&Logger>,\n  ) -> Result<String, io::Error>\n  // Returns: content of the final 'result' event (for structured output parsing)\n\nImplementation:\n  1. Tee child.stderr via logger.tee_stderr()\n  2. Read stdout JSONL line by line\n  3. For each line: route through stream_fmt::format_line() → logger.display()\n  4. Collect lines; find the event where type==\"result\", return its \"result\" field value\n  5. Wait for child exit, check status\n\nThis avoids duplication across reviewer, summary, decider, shipper. The returned result string is parsed as JSON by callers that need structured output (decider, check_ready, generate_branch_name). Callers that don't need structured output (reviewer) ignore the return value.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 1,
       "created_at": "2026-03-10T13:15:26.855969367Z",
-      "updated_at": "2026-03-10T13:15:26.855969367Z"
+      "updated_at": "2026-03-12T21:39:40.960944686Z"
     },
     "lb-uaey": {
       "id": "lb-uaey",
