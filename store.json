@@ -40,6 +40,16 @@
       "created_at": "2026-03-10T13:14:29.882698719Z",
       "updated_at": "2026-03-10T14:25:05.382456602Z"
     },
+    "lb-2ow6": {
+      "id": "lb-2ow6",
+      "title": "Test task 1",
+      "description": "test child",
+      "item_type": "task",
+      "status": "open",
+      "priority": 2,
+      "created_at": "2026-03-12T17:52:53.450295461Z",
+      "updated_at": "2026-03-12T17:52:53.450295461Z"
+    },
     "lb-34j5": {
       "id": "lb-34j5",
       "title": "Fix runner script missing lb sync after init",
@@ -620,6 +630,11 @@
     {
       "from_id": "lb-yzzv",
       "to_id": "lb-cmnc",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-2ow6",
+      "to_id": "lb-q6tk",
       "dep_type": "parent"
     }
   ]
