@@ -190,6 +190,16 @@
       "created_at": "2026-03-10T13:14:38.810345525Z",
       "updated_at": "2026-03-10T14:27:04.432062125Z"
     },
+    "lb-ak4l": {
+      "id": "lb-ak4l",
+      "title": "Test task 2",
+      "description": "test child 2",
+      "item_type": "task",
+      "status": "open",
+      "priority": 2,
+      "created_at": "2026-03-12T17:52:53.454277208Z",
+      "updated_at": "2026-03-12T17:52:53.454277208Z"
+    },
     "lb-anmx": {
       "id": "lb-anmx",
       "title": "Create src/shipper.rs",
@@ -634,6 +644,11 @@
     },
     {
       "from_id": "lb-2ow6",
+      "to_id": "lb-q6tk",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-ak4l",
       "to_id": "lb-q6tk",
       "dep_type": "parent"
     }
