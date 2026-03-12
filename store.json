@@ -125,10 +125,10 @@
       "title": "Modify src/reviewer.rs: switch to stream-json, use streaming helper",
       "description": "Currently reviewer uses --output-format json; its thinking/tool calls/text are invisible (only stderr chatter shown).\n\nChanges:\n1. Add --output-format stream-json to the claude CLI args (remove --output-format json if present; reviewer didn't have it explicitly, verify).\n2. Replace the manual stdout/stderr tee with run_streaming_claude(child, &mut formatter, logger).\n3. The reviewer doesn't need structured output — just success/failure — so ignore the returned result string.\n4. Remove the existing tee_stdout call (no longer needed).\n\nResult: users see the reviewer's thinking, what it reads (git diff, git log), what lb commands it runs, and its final assessment — all in the CODE REVIEW pane.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 1,
       "created_at": "2026-03-10T13:15:35.567464446Z",
-      "updated_at": "2026-03-10T13:15:35.567464446Z"
+      "updated_at": "2026-03-12T21:39:41.004799127Z"
     },
     "lb-eivs": {
       "id": "lb-eivs",
