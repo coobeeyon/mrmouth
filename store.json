@@ -535,11 +535,10 @@
       "title": "Docker build stderr swallowed on failure",
       "description": "docker build -q suppresses all output. When a build fails, the user only sees 'docker build failed (exit code N)' with no indication of what went wrong. Capture stderr and include it in the error message on failure.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 1,
-      "claimed_by": "agent-runner",
       "created_at": "2026-03-25T19:33:53.613215193Z",
-      "updated_at": "2026-03-25T19:34:02.259130115Z"
+      "updated_at": "2026-03-25T19:34:35.437216608Z"
     },
     "lb-mxo4": {
       "id": "lb-mxo4",
