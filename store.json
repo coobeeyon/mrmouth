@@ -555,11 +555,10 @@
       "title": "Remove dead code: run_stream_formatter and pub mod stream_fmt",
       "description": "run_stream_formatter in stream_fmt.rs reads stdin/writes stdout but is never called. The pub visibility on mod stream_fmt in main.rs is also unnecessary - only crate-internal modules use it.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 3,
-      "claimed_by": "agent-runner",
       "created_at": "2026-03-25T20:20:53.975024804Z",
-      "updated_at": "2026-03-25T20:20:57.918113527Z"
+      "updated_at": "2026-03-25T20:21:33.728671143Z"
     },
     "lb-jqg3": {
       "id": "lb-jqg3",
