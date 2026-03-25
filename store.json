@@ -35,10 +35,10 @@
       "title": "Fix TUI terminal corruption",
       "description": "Stop bypassing ratatui's rendering pipeline. Subprocesses and eprintln write directly to terminal while ratatui owns it in raw mode, causing staircase text, static elements scrolling away, and content not clearing.",
       "item_type": "epic",
-      "status": "open",
+      "status": "closed",
       "priority": 1,
       "created_at": "2026-03-12T22:35:28.830167947Z",
-      "updated_at": "2026-03-12T22:35:28.830167947Z"
+      "updated_at": "2026-03-25T18:48:47.241253730Z"
     },
     "lb-2dra": {
       "id": "lb-2dra",
@@ -265,10 +265,10 @@
       "title": "Replace tab characters in stream_fmt.rs format strings",
       "description": "The indent() function was fixed to use spaces but inline format strings still use literal tab chars that ratatui cannot expand. Replace \\t with two spaces in: line 125 (system init model=), line 175 (Grep pattern), line 184 (Glob pattern), line 206 (generic tool input), line 329 (done turns/cost).",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 2,
       "created_at": "2026-03-12T22:35:43.357880685Z",
-      "updated_at": "2026-03-12T22:35:43.357880685Z"
+      "updated_at": "2026-03-25T18:48:47.132352128Z"
     },
     "lb-ebpt": {
       "id": "lb-ebpt",
@@ -385,10 +385,10 @@
       "title": "Suppress subprocess stdio when TUI is active",
       "description": "Every .status() call that doesn't redirect stdout/stderr inherits the parent terminal, bypassing ratatui. Change to .output() or add Stdio::null()/Stdio::piped(). Files: docker.rs build() change .status()->.output() and route stderr through logger. epic.rs git push/checkout: capture or null. loop_cmd.rs git init/add/commit: capture or null. shipper.rs gh pr merge, git checkout/pull/merge/branch/push: capture or null. run.rs git diff/config: add Stdio::null().",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 1,
       "created_at": "2026-03-12T22:35:37.318369415Z",
-      "updated_at": "2026-03-12T22:35:37.318369415Z"
+      "updated_at": "2026-03-25T18:48:47.162041484Z"
     },
     "lb-l78i": {
       "id": "lb-l78i",
@@ -475,10 +475,10 @@
       "title": "Route litebrite and prompt errors through logger",
       "description": "litebrite.rs lines 26/28/32 use eprintln! directly which bypasses TUI. Change run_lb() and init_and_sync()/sync() to accept optional &Logger and route messages through it. Similarly prompt.rs line 46 uses eprintln! for warnings. Callers already have loggers available to pass in.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 2,
       "created_at": "2026-03-12T22:35:40.483359258Z",
-      "updated_at": "2026-03-12T22:35:40.483359258Z"
+      "updated_at": "2026-03-25T18:48:47.182194019Z"
     },
     "lb-q88t": {
       "id": "lb-q88t",
@@ -525,10 +525,10 @@
       "title": "Add text wrapping to body Paragraph",
       "description": "In tui.rs draw(), add .wrap(Wrap { trim: false }) to the body Paragraph widget. Without this, lines longer than terminal width are silently clipped. Import ratatui::widgets::Wrap.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 3,
       "created_at": "2026-03-12T22:35:48.848026922Z",
-      "updated_at": "2026-03-12T22:35:48.848026922Z"
+      "updated_at": "2026-03-25T18:48:47.222757078Z"
     },
     "lb-tso7": {
       "id": "lb-tso7",
@@ -635,10 +635,10 @@
       "title": "Split multi-line strings into individual lines on ingest",
       "description": "In tui.rs push_line(), split incoming text on newlines and store each as a separate VecDeque entry. Currently multi-line strings (thinking blocks, tool results) are stored as single entries making MAX_LINES=500 count logical blocks not display lines, and requiring full re-parse of huge strings through ansi_to_tui on every render frame.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 2,
       "created_at": "2026-03-12T22:35:46.779477317Z",
-      "updated_at": "2026-03-12T22:35:46.779477317Z"
+      "updated_at": "2026-03-25T18:48:47.202086102Z"
     },
     "lb-yzzv": {
       "id": "lb-yzzv",
