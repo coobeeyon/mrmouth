@@ -6,16 +6,6 @@ use std::thread::JoinHandle;
 
 use crate::tui::TuiSender;
 
-const WIDTH: usize = 80;
-
-fn make_banner_str(label: &str) -> String {
-    let border = "#".repeat(WIDTH);
-    let empty = format!("##{}##", " ".repeat(WIDTH - 4));
-    // "##  " (4) + label padded to (WIDTH-6) + "##" (2) = WIDTH
-    let text = format!("##  {:<width$}##", label, width = WIDTH - 6);
-    format!("{border}\n{empty}\n{text}\n{empty}\n{border}")
-}
-
 type SharedWriter = Arc<Mutex<BufWriter<File>>>;
 
 /// Tees all output to both a display target (TUI pane or terminal) and a log file.
@@ -41,14 +31,6 @@ impl Logger {
             writer: Arc::new(Mutex::new(BufWriter::new(file))),
             tui: Some(tui),
         })
-    }
-
-    /// Clone this Logger with a different TUI pane label, sharing the same file writer.
-    pub fn with_label(&self, label: &str) -> Self {
-        Self {
-            writer: Arc::clone(&self.writer),
-            tui: self.tui.as_ref().map(|t| t.with_label(label)),
-        }
     }
 
     /// Write `msg` to display (TUI or stderr) and to the log file.
@@ -79,11 +61,6 @@ impl Logger {
         if let Ok(mut w) = self.writer.lock() {
             let _ = writeln!(w, "{msg}");
         }
-    }
-
-    /// Print a 5-line stage banner to display and log file.
-    pub fn banner(&self, label: &str) {
-        self.log(&make_banner_str(label));
     }
 
     /// Spawn a thread that tees child stderr → display (TUI or stderr) + log file.
@@ -127,14 +104,5 @@ pub fn log(logger: Option<&Logger>, msg: &str) {
     match logger {
         Some(l) => l.log(msg),
         None => eprintln!("{msg}"),
-    }
-}
-
-/// Print a 5-line stage banner via `logger` if Some, otherwise to stderr.
-pub fn banner(logger: Option<&Logger>, label: &str) {
-    let s = make_banner_str(label);
-    match logger {
-        Some(l) => l.log(&s),
-        None => eprintln!("{s}"),
     }
 }

@@ -1,18 +1,10 @@
 use std::path::Path;
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 use crate::config::Config;
 use crate::litebrite;
 use crate::run::{self, RunOptions};
 use crate::tui::{TuiHandle, TuiSender};
-
-fn make_banner(label: &str) -> String {
-    const WIDTH: usize = 80;
-    let border = "#".repeat(WIDTH);
-    let empty = format!("##{}##", " ".repeat(WIDTH - 4));
-    let text = format!("##  {:<width$}##", label, width = WIDTH - 6);
-    format!("{border}\n{empty}\n{text}\n{empty}\n{border}")
-}
 
 /// Route a message to the TUI pane if available, otherwise stderr.
 fn emit(tui_tx: &Option<TuiSender>, msg: &str) {
@@ -30,11 +22,20 @@ pub struct EpicOptions {
 }
 
 pub fn execute(config: &Config, repo_root: &Path, opts: EpicOptions, tui: Option<&TuiHandle>) -> Result<(), EpicError> {
-    let tui_tx = tui.map(|t| t.sender("EPIC"));
+    let tui_tx = tui.map(|t| t.sender("AGENT SESSION"));
+
+    // Create an epic-level logger so litebrite/subprocess output routes through
+    // the TUI instead of falling back to eprintln.
+    let log_dir = repo_root.join(&config.log_dir);
+    let _ = std::fs::create_dir_all(&log_dir);
+    let epic_logger = match tui {
+        Some(t) => crate::logger::Logger::with_tui(&log_dir.join("epic.log"), t.sender("AGENT SESSION")),
+        None => crate::logger::Logger::new(&log_dir.join("epic.log")),
+    }.ok();
 
     // 1. Verify the epic exists
     let epic_info = lb_show(repo_root, &opts.epic_id)?;
-    emit(&tui_tx, &make_banner(&format!("EPIC: {epic_info}")));
+    emit(&tui_tx, &format!("EPIC: {epic_info}"));
 
     // 2. Create feature branch (if not already on one)
     let current_branch = git_current_branch(repo_root)?;
@@ -45,12 +46,12 @@ pub fn execute(config: &Config, repo_root: &Path, opts: EpicOptions, tui: Option
         git_checkout_new_branch(repo_root, &branch_name)?;
         // Push the new branch so container can clone it
         emit(&tui_tx, "Pushing branch to remote...");
-        let push_status = Command::new("git")
+        let push_output = Command::new("git")
             .args(["-C", &repo_root.to_string_lossy(), "push", "-u", "origin", &branch_name])
-            .status();
-        match push_status {
-            Ok(s) if s.success() => {}
-            Ok(s) => emit(&tui_tx, &format!("WARNING: git push exited with code {} — container may fail to clone this branch", s.code().unwrap_or(-1))),
+            .output();
+        match push_output {
+            Ok(o) if o.status.success() => {}
+            Ok(o) => emit(&tui_tx, &format!("WARNING: git push exited with code {} — container may fail to clone this branch", o.status.code().unwrap_or(-1))),
             Err(e) => emit(&tui_tx, &format!("WARNING: git push failed: {e} — container may fail to clone this branch")),
         }
         branch_name
@@ -78,10 +79,10 @@ pub fn execute(config: &Config, repo_root: &Path, opts: EpicOptions, tui: Option
         }
 
         task_num += 1;
-        emit(&tui_tx, &make_banner(&format!(
+        emit(&tui_tx, &format!(
             "TASK {}  ({} remaining)  {}",
             task_num, remaining, chrono::Local::now().format("%H:%M:%S")
-        )));
+        ));
 
         // Build epic-focused prompt
         let prompt = format!(
@@ -104,10 +105,10 @@ pub fn execute(config: &Config, repo_root: &Path, opts: EpicOptions, tui: Option
         let run_result = run::execute(config, repo_root, run_opts, tui);
 
         match run_result {
-            Ok(_logger) => {
+            Ok(ref run_logger) => {
                 consecutive_failures = 0;
                 emit(&tui_tx, &format!("Task {task_num} succeeded, syncing..."));
-                sync_and_push(repo_root, &feature_branch);
+                sync_and_push(repo_root, &feature_branch, Some(run_logger));
             }
             Err(e) => {
                 consecutive_failures += 1;
@@ -137,9 +138,9 @@ pub fn execute(config: &Config, repo_root: &Path, opts: EpicOptions, tui: Option
     }
 
     // Final sync
-    emit(&tui_tx, &make_banner("EPIC COMPLETE"));
+    emit(&tui_tx, "EPIC COMPLETE");
     emit(&tui_tx, "Final push to remote...");
-    sync_and_push(repo_root, &feature_branch);
+    sync_and_push(repo_root, &feature_branch, epic_logger.as_ref());
     emit(&tui_tx, &format!("Done. Merge branch '{feature_branch}' when ready."));
 
     Ok(())
@@ -204,12 +205,14 @@ fn git_current_branch(repo_root: &Path) -> Result<String, EpicError> {
 }
 
 fn git_checkout_new_branch(repo_root: &Path, branch: &str) -> Result<(), EpicError> {
-    let status = Command::new("git")
+    let output = Command::new("git")
         .args(["-C", &repo_root.to_string_lossy(), "checkout", "-b", branch])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
         .status()
         .map_err(|e| EpicError::Command(format!("failed to create branch: {e}")))?;
 
-    if !status.success() {
+    if !output.success() {
         return Err(EpicError::Command(format!(
             "git checkout -b {branch} failed"
         )));
@@ -218,8 +221,8 @@ fn git_checkout_new_branch(repo_root: &Path, branch: &str) -> Result<(), EpicErr
     Ok(())
 }
 
-fn sync_and_push(repo_root: &Path, branch: &str) {
-    litebrite::sync(repo_root);
+fn sync_and_push(repo_root: &Path, branch: &str, logger: Option<&crate::logger::Logger>) {
+    litebrite::sync(repo_root, logger);
 
     // Push to remote
     let _ = Command::new("git")
@@ -231,6 +234,8 @@ fn sync_and_push(repo_root: &Path, branch: &str) {
             "origin",
             branch,
         ])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
         .status();
 }
 

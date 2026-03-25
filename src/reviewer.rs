@@ -17,7 +17,7 @@ pub struct ReviewerOptions {
 /// vs SPEC.md, verifies the build and tests pass, and creates/closes litebrite
 /// items for issues found. Non-fatal — errors are logged but don't stop the loop.
 pub fn execute(config: &Config, repo_root: &Path, opts: &ReviewerOptions, logger: Option<&Logger>) -> Result<(), ReviewerError> {
-    crate::logger::banner(logger, &format!("CODE REVIEW  branch={}", opts.current_branch));
+    crate::logger::log(logger, &format!("CODE REVIEW  branch={}", opts.current_branch));
 
     let prompt = format!(
         "You are a code reviewer for this project. Review the changes on branch '{}' \

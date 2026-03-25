@@ -173,13 +173,6 @@ impl TuiSender {
         });
     }
 
-    /// Create a new sender with a different pane label, sharing the same channel.
-    pub fn with_label(&self, label: &str) -> Self {
-        Self {
-            label: label.to_string(),
-            tx: self.tx.clone(),
-        }
-    }
 }
 
 /// Main render loop running on the background thread.

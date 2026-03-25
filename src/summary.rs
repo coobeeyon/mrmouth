@@ -55,7 +55,7 @@ pub fn execute(config: &Config, repo_root: &Path, log_file: &str, logger: Option
         summary_file.display()
     );
 
-    crate::logger::banner(logger, "SUMMARY");
+    crate::logger::log(logger, "SUMMARY");
 
     let mut cmd = streaming::claude_stream_cmd(
         repo_root,
@@ -70,7 +70,7 @@ pub fn execute(config: &Config, repo_root: &Path, log_file: &str, logger: Option
     streaming::send_prompt(&mut child, &prompt);
 
     let target = match logger.and_then(|l| l.tui_sender()) {
-        Some(tui) => StreamTarget::Tui(tui.with_label("SUMMARY")),
+        Some(tui) => StreamTarget::Tui(tui.clone()),
         None => StreamTarget::Stdout,
     };
 

@@ -37,13 +37,14 @@ You have a limited context window. Use it wisely:
 "#;
 
 /// Load the agent prompt, checking for a custom override in `.mrmouth/prompt.md`.
-pub fn load_prompt(repo_root: &std::path::Path) -> String {
+/// Accepts an optional logger to avoid writing directly to stderr when the TUI is active.
+pub fn load_prompt(repo_root: &std::path::Path, logger: Option<&crate::logger::Logger>) -> String {
     let custom_path = repo_root.join(".mrmouth").join("prompt.md");
     if custom_path.exists() {
         match std::fs::read_to_string(&custom_path) {
             Ok(content) => return content,
             Err(e) => {
-                eprintln!("warning: failed to read {}: {e}", custom_path.display());
+                crate::logger::log(logger, &format!("warning: failed to read {}: {e}", custom_path.display()));
             }
         }
     }

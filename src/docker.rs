@@ -92,7 +92,7 @@ impl DockerBuilder {
         let uid = get_uid();
         let gid = get_gid();
 
-        let status = Command::new("docker")
+        let output = Command::new("docker")
             .args([
                 "build",
                 "-q",
@@ -106,11 +106,11 @@ impl DockerBuilder {
                 &actual_dockerfile.to_string_lossy(),
                 &repo_root.to_string_lossy(),
             ])
-            .status()
+            .output()
             .map_err(|e| DockerError::Io("running docker build".into(), e))?;
 
-        if !status.success() {
-            return Err(DockerError::BuildFailed(status.code().unwrap_or(-1)));
+        if !output.status.success() {
+            return Err(DockerError::BuildFailed(output.status.code().unwrap_or(-1)));
         }
 
         Ok(())

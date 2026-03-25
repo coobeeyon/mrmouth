@@ -1,6 +1,6 @@
 use std::io::{IsTerminal, Write};
 use std::path::Path;
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 use crate::config::Config;
 use crate::docker::{ContainerArgs, DockerBuilder};
@@ -20,7 +20,7 @@ pub struct ShipResult {
 
 /// Run the shipper agent: check readiness, merge branch, create next feature branch.
 pub fn execute(config: &Config, repo_root: &Path, opts: &ShipperOptions, logger: Option<&Logger>) -> Result<ShipResult, ShipperError> {
-    crate::logger::banner(logger, &format!("SHIPPING  {} -> {}", opts.current_branch, opts.parent_branch));
+    crate::logger::log(logger, &format!("SHIPPING  {} -> {}", opts.current_branch, opts.parent_branch));
 
     // 1. Check readiness
     check_ready(config, repo_root, &opts.current_branch, &opts.model, logger)?;
@@ -244,24 +244,30 @@ fn merge_branch(
         let pr_merge = Command::new("gh")
             .args(["pr", "merge", current_branch, "--merge", "--delete-branch"])
             .current_dir(repo_root)
-            .status()
+            .output()
             .map_err(|e| ShipperError(format!("failed to merge PR: {e}")))?;
 
-        if !pr_merge.success() {
+        if !pr_merge.status.success() {
             return Err(ShipperError("gh pr merge failed".into()));
         }
 
         let _ = Command::new("git")
             .args(["-C", &repo_root.to_string_lossy(), "checkout", parent_branch])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
             .status();
         let _ = Command::new("git")
             .args(["-C", &repo_root.to_string_lossy(), "pull", "--ff-only"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
             .status();
     } else {
         crate::logger::log(logger, &format!("Merging {current_branch} into {parent_branch} (no-ff)..."));
 
         let checkout = Command::new("git")
             .args(["-C", &repo_root.to_string_lossy(), "checkout", parent_branch])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
             .status()
             .map_err(|e| ShipperError(format!("failed to checkout {parent_branch}: {e}")))?;
         if !checkout.success() {
@@ -274,14 +280,16 @@ fn merge_branch(
                 "merge", "--no-ff", current_branch,
                 "-m", &format!("Merge branch '{current_branch}'"),
             ])
-            .status()
+            .output()
             .map_err(|e| ShipperError(format!("merge failed: {e}")))?;
-        if !merge.success() {
+        if !merge.status.success() {
             return Err(ShipperError(format!("merge of {current_branch} failed")));
         }
 
         let _ = Command::new("git")
             .args(["-C", &repo_root.to_string_lossy(), "branch", "-d", current_branch])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
             .status();
     }
 
@@ -310,7 +318,7 @@ pub fn generate_branch_name(repo_root: &Path, model: &str, logger: Option<&Logge
     streaming::send_prompt(&mut child, prompt);
 
     let target = match logger.and_then(|l| l.tui_sender()) {
-        Some(tui) => StreamTarget::Tui(tui.with_label("BRANCH NAME")),
+        Some(tui) => StreamTarget::Tui(tui.clone()),
         None => StreamTarget::Stderr,
     };
 
@@ -357,6 +365,8 @@ pub fn create_and_push_branch(repo_root: &Path, branch_name: &str, logger: Optio
             "--quiet",
             &format!("refs/heads/{branch_name}"),
         ])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
         .status()
         .map(|s| s.success())
         .unwrap_or(false);
@@ -371,6 +381,8 @@ pub fn create_and_push_branch(repo_root: &Path, branch_name: &str, logger: Optio
         .arg("-C")
         .arg(&*repo_root.to_string_lossy())
         .args(checkout_args)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
         .status()
         .map_err(|e| ShipperError(format!("failed to create branch {branch_name}: {e}")))?;
 
@@ -387,10 +399,10 @@ pub fn create_and_push_branch(repo_root: &Path, branch_name: &str, logger: Optio
     if has_remote {
         let push = Command::new("git")
             .args(["-C", &repo_root.to_string_lossy(), "push", "-u", "origin", branch_name])
-            .status()
+            .output()
             .map_err(|e| ShipperError(format!("failed to push branch: {e}")))?;
 
-        if !push.success() {
+        if !push.status.success() {
             crate::logger::log(logger, &format!("Warning: failed to push branch {branch_name} to origin"));
         }
     }

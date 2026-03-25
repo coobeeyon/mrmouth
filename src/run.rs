@@ -57,7 +57,7 @@ pub fn execute(config: &Config, repo_root: &Path, opts: RunOptions, tui: Option<
         .or_else(|| config.branch.clone())
         .unwrap_or_else(|| git_current_branch(repo_root).unwrap_or_else(|_| "main".into()));
 
-    logger.banner(&format!("AGENT RUN  branch={branch}  {timestamp}"));
+    logger.log(&format!("AGENT RUN  branch={branch}  {timestamp}"));
 
     // 1. Preflight checks
     logger.log("Checking preflight conditions...");
@@ -78,13 +78,13 @@ pub fn execute(config: &Config, repo_root: &Path, opts: RunOptions, tui: Option<
 
     // 3. Sync litebrite (best-effort)
     logger.log("Syncing litebrite...");
-    litebrite::init_and_sync(repo_root);
+    litebrite::init_and_sync(repo_root, Some(&logger));
 
     // 4. Write runner entrypoint script
-    let runner_script = write_runner_script(repo_root, &opts.model, opts.prompt_override.as_deref())?;
+    let runner_script = write_runner_script(repo_root, &opts.model, opts.prompt_override.as_deref(), Some(&logger))?;
 
     // 5. Build Docker image
-    logger.banner("DOCKER BUILD");
+    logger.log("Docker build starting...");
     let docker = DockerBuilder::new(&config.image);
     docker
         .build(repo_root, &config.dockerfile)
@@ -106,7 +106,7 @@ pub fn execute(config: &Config, repo_root: &Path, opts: RunOptions, tui: Option<
     DockerBuilder::remove_container(&container_name);
 
     // 8. Start container
-    logger.banner(&format!("AGENT SESSION  container={container_name}"));
+    logger.log(&format!("AGENT SESSION  container={container_name}"));
     logger.log(&format!("Branch: {branch}"));
 
     let container_args = ContainerArgs {
@@ -200,7 +200,7 @@ pub fn execute(config: &Config, repo_root: &Path, opts: RunOptions, tui: Option<
     DockerBuilder::remove_container(&container_name);
 
     // 14. Post-run sync
-    logger.banner("POST-RUN");
+    logger.log("Post-run sync...");
 
     if !opts.local && file_remote_path.is_none() {
         logger.log("Pulling code changes from remote...");
@@ -221,7 +221,7 @@ pub fn execute(config: &Config, repo_root: &Path, opts: RunOptions, tui: Option<
         }
     }
 
-    litebrite::init_and_sync(repo_root);
+    litebrite::init_and_sync(repo_root, Some(&logger));
     logger.log(&format!("Done. Log saved: {}", log_path.display()));
 
     if exit_code != 0 {
@@ -253,10 +253,14 @@ fn preflight(repo_root: &Path, local: bool) -> Result<(), RunError> {
     if !local {
         let diff_status = Command::new("git")
             .args(["-C", &repo_root.to_string_lossy(), "diff", "--quiet"])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
             .status()
             .map_err(|e| RunError::Io("checking git diff".into(), e))?;
         let cached_status = Command::new("git")
             .args(["-C", &repo_root.to_string_lossy(), "diff", "--cached", "--quiet"])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
             .status()
             .map_err(|e| RunError::Io("checking git diff --cached".into(), e))?;
 
@@ -285,6 +289,8 @@ fn git_remote_url(repo_root: &Path) -> Option<String> {
 fn configure_file_remote(repo_root: &Path) -> Result<(), RunError> {
     let status = Command::new("git")
         .args(["-C", &repo_root.to_string_lossy(), "config", "receive.denyCurrentBranch", "updateInstead"])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
         .status()
         .map_err(|e| RunError::Io("configuring git receive policy".into(), e))?;
     if !status.success() {
@@ -306,10 +312,11 @@ fn write_runner_script(
     repo_root: &Path,
     model: &str,
     prompt_override: Option<&str>,
+    logger: Option<&Logger>,
 ) -> Result<tempfile::NamedTempFile, RunError> {
     let prompt_text = match prompt_override {
         Some(p) => p.to_string(),
-        None => prompt::load_prompt(repo_root),
+        None => prompt::load_prompt(repo_root, logger),
     };
     let escaped_prompt = prompt_text.replace('\'', "'\\''");
 
@@ -423,7 +430,7 @@ mod tests {
     #[test]
     fn runner_script_contains_model() {
         let dir = tempfile::tempdir().unwrap();
-        let tmp = write_runner_script(dir.path(), "sonnet", None).unwrap();
+        let tmp = write_runner_script(dir.path(), "sonnet", None, None).unwrap();
         let mut content = String::new();
         File::open(tmp.path()).unwrap().read_to_string(&mut content).unwrap();
         assert!(content.contains("--model sonnet"));
@@ -432,7 +439,7 @@ mod tests {
     #[test]
     fn runner_script_contains_lb_sync() {
         let dir = tempfile::tempdir().unwrap();
-        let tmp = write_runner_script(dir.path(), "opus", None).unwrap();
+        let tmp = write_runner_script(dir.path(), "opus", None, None).unwrap();
         let mut content = String::new();
         File::open(tmp.path()).unwrap().read_to_string(&mut content).unwrap();
         let init_pos = content.find("lb init").unwrap();
@@ -443,7 +450,7 @@ mod tests {
     #[test]
     fn runner_script_uses_prompt_override() {
         let dir = tempfile::tempdir().unwrap();
-        let tmp = write_runner_script(dir.path(), "opus", Some("custom prompt here")).unwrap();
+        let tmp = write_runner_script(dir.path(), "opus", Some("custom prompt here"), None).unwrap();
         let mut content = String::new();
         File::open(tmp.path()).unwrap().read_to_string(&mut content).unwrap();
         assert!(content.contains("custom prompt here"));
@@ -452,7 +459,7 @@ mod tests {
     #[test]
     fn runner_script_escapes_single_quotes_in_prompt() {
         let dir = tempfile::tempdir().unwrap();
-        let tmp = write_runner_script(dir.path(), "opus", Some("don't break")).unwrap();
+        let tmp = write_runner_script(dir.path(), "opus", Some("don't break"), None).unwrap();
         let mut content = String::new();
         File::open(tmp.path()).unwrap().read_to_string(&mut content).unwrap();
         assert!(content.contains(r"don'\''t break"));
@@ -461,7 +468,7 @@ mod tests {
     #[test]
     fn runner_script_is_executable() {
         let dir = tempfile::tempdir().unwrap();
-        let tmp = write_runner_script(dir.path(), "opus", None).unwrap();
+        let tmp = write_runner_script(dir.path(), "opus", None, None).unwrap();
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
@@ -473,7 +480,7 @@ mod tests {
     #[test]
     fn runner_script_has_shebang() {
         let dir = tempfile::tempdir().unwrap();
-        let tmp = write_runner_script(dir.path(), "opus", None).unwrap();
+        let tmp = write_runner_script(dir.path(), "opus", None, None).unwrap();
         let mut content = String::new();
         File::open(tmp.path()).unwrap().read_to_string(&mut content).unwrap();
         assert!(content.starts_with("#!/usr/bin/env bash"));
