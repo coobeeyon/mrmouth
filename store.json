@@ -70,6 +70,16 @@
       "created_at": "2026-03-25T19:15:20.733364361Z",
       "updated_at": "2026-03-25T19:15:47.808798521Z"
     },
+    "lb-2x28": {
+      "id": "lb-2x28",
+      "title": "Fix misleading bootstrap comment in loop_cmd.rs",
+      "description": "Line 29 comment says 'run in local (bind-mount) mode' but the code actually uses local: false for all runs including bootstrap. The comment should be updated to match the actual behavior (file-remote fallback).",
+      "item_type": "task",
+      "status": "open",
+      "priority": 3,
+      "created_at": "2026-03-25T20:19:41.854783516Z",
+      "updated_at": "2026-03-25T20:19:41.854783516Z"
+    },
     "lb-2y2b": {
       "id": "lb-2y2b",
       "title": "Extract shared run harness from loop and epic",
