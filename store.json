@@ -246,11 +246,10 @@
       "title": "Decider thread panic payload is swallowed",
       "description": "loop_cmd.rs catches decider thread panics but ignores the panic payload, making debugging impossible.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 3,
-      "claimed_by": "agent-runner",
       "created_at": "2026-03-25T19:22:48.957247559Z",
-      "updated_at": "2026-03-25T19:23:23.683734328Z"
+      "updated_at": "2026-03-25T19:25:12.687027698Z"
     },
     "lb-9lnz": {
       "id": "lb-9lnz",
