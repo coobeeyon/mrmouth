@@ -375,11 +375,10 @@
       "title": "Loop delay sleep ignores TUI cancellation",
       "description": "In loop_cmd.rs, the delay between runs uses thread::sleep which blocks for the full duration. If user presses q/Ctrl+C during the delay, they must wait. Should check cancelled flag in small increments like the watchdog does.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 1,
-      "claimed_by": "agent-runner",
       "created_at": "2026-03-25T19:33:54.580123620Z",
-      "updated_at": "2026-03-25T19:34:44.480634915Z"
+      "updated_at": "2026-03-25T19:35:03.349639643Z"
     },
     "lb-g6rz": {
       "id": "lb-g6rz",
