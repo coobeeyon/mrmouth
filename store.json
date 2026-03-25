@@ -25,11 +25,10 @@
       "title": "Include stderr in shipper merge failure message",
       "description": "shipper.rs line 187: gh pr merge failure message says 'gh pr merge failed' but doesn't include stderr, making debugging hard.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 3,
-      "claimed_by": "agent-runner",
       "created_at": "2026-03-25T20:29:50.716202Z",
-      "updated_at": "2026-03-25T20:31:40.494105993Z"
+      "updated_at": "2026-03-25T20:32:45.442692957Z"
     },
     "lb-1zh1": {
       "id": "lb-1zh1",
