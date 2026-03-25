@@ -115,11 +115,10 @@
       "title": "Add per-run timeout to loop mode",
       "description": "Loop passes timeout: None to run::execute, meaning a hung run blocks the entire pipeline with no recovery. Add a configurable per-run timeout like epic has.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 2,
-      "claimed_by": "agent-runner",
       "created_at": "2026-03-25T18:59:17.162976740Z",
-      "updated_at": "2026-03-25T19:03:28.816152653Z"
+      "updated_at": "2026-03-25T19:04:09.885499658Z"
     },
     "lb-4nvs": {
       "id": "lb-4nvs",
