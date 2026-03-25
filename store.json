@@ -510,6 +510,16 @@
       "created_at": "2026-03-09T15:50:45.696492755Z",
       "updated_at": "2026-03-09T18:43:24.873621362Z"
     },
+    "lb-mgza": {
+      "id": "lb-mgza",
+      "title": "Docker build stderr swallowed on failure",
+      "description": "docker build -q suppresses all output. When a build fails, the user only sees 'docker build failed (exit code N)' with no indication of what went wrong. Capture stderr and include it in the error message on failure.",
+      "item_type": "task",
+      "status": "open",
+      "priority": 1,
+      "created_at": "2026-03-25T19:33:53.613215193Z",
+      "updated_at": "2026-03-25T19:33:53.613215193Z"
+    },
     "lb-mxo4": {
       "id": "lb-mxo4",
       "title": "Loop continues post-run AI stages after TUI cancellation",
@@ -885,6 +895,11 @@
     {
       "from_id": "lb-yzzv",
       "to_id": "lb-cmnc",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-mgza",
+      "to_id": "lb-dvhr",
       "dep_type": "parent"
     }
   ]
