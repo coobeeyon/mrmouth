@@ -95,11 +95,10 @@
       "title": "Fix misleading git pull error message in run.rs",
       "description": "In run.rs the git pull --ff-only error handler logs 'No new commits to pull' when stderr is empty and exit code is non-zero. An empty stderr with a failed exit code is a real failure, not 'no new commits'. Should report actual failure.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 3,
-      "claimed_by": "agent-runner",
       "created_at": "2026-03-25T20:19:42.643418957Z",
-      "updated_at": "2026-03-25T20:19:48.197462543Z"
+      "updated_at": "2026-03-25T20:20:19.026263451Z"
     },
     "lb-34j5": {
       "id": "lb-34j5",
