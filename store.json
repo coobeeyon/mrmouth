@@ -307,11 +307,10 @@
       "title": "Add --branch flag to mrmouth run CLI",
       "description": "Config supports branch field but there's no CLI flag to override it per-run. Add --branch to run subcommand.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 3,
-      "claimed_by": "agent-runner",
       "created_at": "2026-03-25T20:29:49.195566423Z",
-      "updated_at": "2026-03-25T20:29:55.853904239Z"
+      "updated_at": "2026-03-25T20:32:45.429413176Z"
     },
     "lb-8zzu": {
       "id": "lb-8zzu",
