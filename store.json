@@ -500,6 +500,16 @@
       "created_at": "2026-03-10T16:59:35.592755522Z",
       "updated_at": "2026-03-10T17:02:13.505722737Z"
     },
+    "lb-jqg3": {
+      "id": "lb-jqg3",
+      "title": "use-after-move in docker.rs ensure_volume chown_status — compile error",
+      "description": "In src/docker.rs ensure_volume(), the pattern 'if let Err(e) = chown_status { ... } else if let Ok(s) = chown_status { ... }' is a use-after-move compile error. chown_status is moved into the first if let expression; accessing it again in the else if let branch is invalid. Fix: use a match expression instead: 'match chown_status { Err(e) => eprintln\\!(...), Ok(s) if \\!s.success() => eprintln\\!(...), _ => {} }'. File: src/docker.rs lines 152-158. Introduced in commit 0f34a6d.",
+      "item_type": "task",
+      "status": "open",
+      "priority": 1,
+      "created_at": "2026-03-25T19:48:28.877996937Z",
+      "updated_at": "2026-03-25T19:48:28.877996937Z"
+    },
     "lb-k3be": {
       "id": "lb-k3be",
       "title": "Suppress subprocess stdio when TUI is active",
