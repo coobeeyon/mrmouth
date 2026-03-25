@@ -675,11 +675,10 @@
       "title": "Update README.md config defaults and missing loop flags",
       "description": "README config section shows wrong volume default (mrmouth-claude-home vs per-project), shows branch=main but default is current branch (None). Loop section in README is missing --max-failures and --timeout flags. Loop config missing reviewer_timeout and shipper_timeout.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 3,
-      "claimed_by": "agent-runner",
       "created_at": "2026-03-25T20:23:18.720902903Z",
-      "updated_at": "2026-03-25T20:23:21.557690354Z"
+      "updated_at": "2026-03-25T20:23:41.153789012Z"
     },
     "lb-o0x7": {
       "id": "lb-o0x7",
