@@ -657,11 +657,10 @@
       "title": "Add --model flag to mrmouth summary CLI",
       "description": "The summary subcommand always uses loop_config.summary_model with no CLI override. Add --model flag.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 3,
-      "claimed_by": "agent-runner",
       "created_at": "2026-03-25T20:29:49.712898047Z",
-      "updated_at": "2026-03-25T20:30:22.692936159Z"
+      "updated_at": "2026-03-25T20:32:45.436278873Z"
     },
     "lb-ljfl": {
       "id": "lb-ljfl",
