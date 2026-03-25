@@ -95,11 +95,10 @@
       "title": "Add failure circuit-breaker to loop mode",
       "description": "Loop has no consecutive failure detection — a broken environment can burn through runs forever. The decider can say stop but that's a completeness judgment, not a safety mechanism. Add max_failures tracking like epic has.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 2,
-      "claimed_by": "agent-runner",
       "created_at": "2026-03-25T18:59:15.982050769Z",
-      "updated_at": "2026-03-25T19:01:27.650889278Z"
+      "updated_at": "2026-03-25T19:03:05.397864268Z"
     },
     "lb-4c8v": {
       "id": "lb-4c8v",
