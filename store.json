@@ -517,8 +517,9 @@
       "item_type": "task",
       "status": "open",
       "priority": 2,
+      "claimed_by": "agent-runner",
       "created_at": "2026-03-25T18:59:14.191879750Z",
-      "updated_at": "2026-03-25T18:59:14.191879750Z"
+      "updated_at": "2026-03-25T19:04:38.391127857Z"
     },
     "lb-tipn": {
       "id": "lb-tipn",
