@@ -287,8 +287,9 @@
       "item_type": "task",
       "status": "open",
       "priority": 2,
+      "claimed_by": "agent-runner",
       "created_at": "2026-03-25T19:22:47.017215293Z",
-      "updated_at": "2026-03-25T19:22:47.017215293Z"
+      "updated_at": "2026-03-25T19:22:54.089748813Z"
     },
     "lb-cmnc": {
       "id": "lb-cmnc",
