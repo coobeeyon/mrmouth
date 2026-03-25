@@ -75,11 +75,10 @@
       "title": "Fix misleading bootstrap comment in loop_cmd.rs",
       "description": "Line 29 comment says 'run in local (bind-mount) mode' but the code actually uses local: false for all runs including bootstrap. The comment should be updated to match the actual behavior (file-remote fallback).",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 3,
-      "claimed_by": "agent-runner",
       "created_at": "2026-03-25T20:19:41.854783516Z",
-      "updated_at": "2026-03-25T20:19:46.539748705Z"
+      "updated_at": "2026-03-25T20:20:19.020426468Z"
     },
     "lb-2y2b": {
       "id": "lb-2y2b",
