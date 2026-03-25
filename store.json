@@ -370,6 +370,16 @@
       "created_at": "2026-03-10T17:03:56.437475603Z",
       "updated_at": "2026-03-10T17:05:16.563684351Z"
     },
+    "lb-fki2": {
+      "id": "lb-fki2",
+      "title": "Loop delay sleep ignores TUI cancellation",
+      "description": "In loop_cmd.rs, the delay between runs uses thread::sleep which blocks for the full duration. If user presses q/Ctrl+C during the delay, they must wait. Should check cancelled flag in small increments like the watchdog does.",
+      "item_type": "task",
+      "status": "open",
+      "priority": 1,
+      "created_at": "2026-03-25T19:33:54.580123620Z",
+      "updated_at": "2026-03-25T19:33:54.580123620Z"
+    },
     "lb-g6rz": {
       "id": "lb-g6rz",
       "title": "Misleading git pull failure message in run.rs",
@@ -899,6 +909,11 @@
     },
     {
       "from_id": "lb-mgza",
+      "to_id": "lb-dvhr",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-fki2",
       "to_id": "lb-dvhr",
       "dep_type": "parent"
     }
