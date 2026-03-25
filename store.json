@@ -15,11 +15,10 @@
       "title": "DockerError used as tuple struct in ensure_volume — compile error",
       "description": "docker.rs ensure_volume creates DockerError(format!(...)) but DockerError is an enum. Should use a proper variant. Added in e2ddecb.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 1,
-      "claimed_by": "agent-runner",
       "created_at": "2026-03-25T19:39:52.027798678Z",
-      "updated_at": "2026-03-25T19:39:56.485827070Z"
+      "updated_at": "2026-03-25T19:40:23.044061782Z"
     },
     "lb-1zh1": {
       "id": "lb-1zh1",
