@@ -375,11 +375,10 @@
       "title": "SPEC.md epic section missing reviewer step documentation",
       "description": "The epic subcommand now runs a reviewer agent after each successful task run (matching loop behavior), but SPEC.md step 2 under 'mrmouth epic' only says 'Run agent sessions focused on the epic, one task at a time' — it does not mention the reviewer step. The loop spec explicitly documents this at step 2. The epic spec should be updated to describe the post-run reviewer behavior (analogous to the loop spec step 2).",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 2,
-      "claimed_by": "Michael Daum",
       "created_at": "2026-03-25T20:39:07.807861885Z",
-      "updated_at": "2026-03-25T20:39:46.515257118Z"
+      "updated_at": "2026-03-25T20:41:19.572095257Z"
     },
     "lb-anmx": {
       "id": "lb-anmx",
