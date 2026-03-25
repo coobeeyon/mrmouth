@@ -595,10 +595,10 @@
       "title": "Split multi-line strings into individual lines on ingest",
       "description": "In tui.rs push_line(), split incoming text on newlines and store each as a separate VecDeque entry. Currently multi-line strings (thinking blocks, tool results) are stored as single entries making MAX_LINES=500 count logical blocks not display lines, and requiring full re-parse of huge strings through ansi_to_tui on every render frame.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 2,
       "created_at": "2026-03-12T22:35:46.779477317Z",
-      "updated_at": "2026-03-12T22:35:46.779477317Z"
+      "updated_at": "2026-03-25T18:48:47.202086102Z"
     },
     "lb-yzzv": {
       "id": "lb-yzzv",
