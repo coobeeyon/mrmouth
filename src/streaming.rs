@@ -111,6 +111,7 @@ pub fn claude_stream_cmd(
     let mut cmd = std::process::Command::new("claude");
     cmd.args([
         "-p",
+        "--verbose",
         "--no-session-persistence",
         "--model",
         model,
@@ -137,6 +138,7 @@ pub fn claude_stream_cmd_with_schema(
     let mut cmd = std::process::Command::new("claude");
     cmd.args([
         "-p",
+        "--verbose",
         "--no-session-persistence",
         "--model",
         model,
