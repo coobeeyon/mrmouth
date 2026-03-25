@@ -740,6 +740,16 @@
       "created_at": "2026-03-10T13:14:15.197155635Z",
       "updated_at": "2026-03-12T21:39:40.935812919Z"
     },
+    "lb-rv1t": {
+      "id": "lb-rv1t",
+      "title": "Update SPEC.md volume default to match per-project behavior",
+      "description": "SPEC says default volume is 'mrmouth-claude-home' but the code generates per-project volumes like 'mrmouth-claude-home-{repo-name}'. SPEC should document the actual behavior.",
+      "item_type": "task",
+      "status": "open",
+      "priority": 3,
+      "created_at": "2026-03-25T20:22:37.006555417Z",
+      "updated_at": "2026-03-25T20:22:37.006555417Z"
+    },
     "lb-seph": {
       "id": "lb-seph",
       "title": "Litebrite operations silently swallow all errors with no logging",
