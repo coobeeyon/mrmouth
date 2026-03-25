@@ -235,10 +235,10 @@
       "title": "Replace tab characters in stream_fmt.rs format strings",
       "description": "The indent() function was fixed to use spaces but inline format strings still use literal tab chars that ratatui cannot expand. Replace \\t with two spaces in: line 125 (system init model=), line 175 (Grep pattern), line 184 (Glob pattern), line 206 (generic tool input), line 329 (done turns/cost).",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 2,
       "created_at": "2026-03-12T22:35:43.357880685Z",
-      "updated_at": "2026-03-12T22:35:43.357880685Z"
+      "updated_at": "2026-03-25T18:48:47.132352128Z"
     },
     "lb-ebpt": {
       "id": "lb-ebpt",
