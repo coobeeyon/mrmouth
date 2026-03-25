@@ -15,7 +15,7 @@ use ratatui::backend::CrosstermBackend;
 use ratatui::layout::{Constraint, Layout};
 use ratatui::style::{Color, Style};
 use ratatui::text::Line;
-use ratatui::widgets::{Block, Borders, Paragraph};
+use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 use ratatui::Terminal;
 
 const MAX_LINES: usize = 500;
@@ -72,9 +72,11 @@ impl TuiState {
         self.ensure_pane(pane);
         if let Some((_, buf)) = self.panes.iter_mut().find(|(n, _)| n == pane) {
             let text = text.replace('\r', "");
-            buf.push_back(text);
-            if buf.len() > MAX_LINES {
-                buf.pop_front();
+            for line in text.split('\n') {
+                buf.push_back(line.to_string());
+                if buf.len() > MAX_LINES {
+                    buf.pop_front();
+                }
             }
         }
         // If the active pane received a line, reset scroll to follow
@@ -300,7 +302,8 @@ fn draw(
             .to_vec();
 
         let body = Paragraph::new(visible)
-            .block(Block::default().borders(Borders::NONE));
+            .block(Block::default().borders(Borders::NONE))
+            .wrap(Wrap { trim: false });
         frame.render_widget(body, chunks[1]);
 
         // Footer (only if multiple panes)
@@ -327,4 +330,85 @@ fn draw(
         }
     })?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn push_line_splits_on_newline() {
+        let mut state = TuiState::new();
+        state.push_line("test", "line1\nline2\nline3".to_string());
+        let lines = state.active_lines();
+        assert_eq!(lines.len(), 3);
+        assert_eq!(lines[0], "line1");
+        assert_eq!(lines[1], "line2");
+        assert_eq!(lines[2], "line3");
+    }
+
+    #[test]
+    fn push_line_strips_carriage_returns() {
+        let mut state = TuiState::new();
+        state.push_line("test", "hello\r\nworld\r".to_string());
+        let lines = state.active_lines();
+        assert_eq!(lines.len(), 2);
+        assert_eq!(lines[0], "hello");
+        assert_eq!(lines[1], "world");
+    }
+
+    #[test]
+    fn push_line_single_line_no_split() {
+        let mut state = TuiState::new();
+        state.push_line("test", "just one line".to_string());
+        let lines = state.active_lines();
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0], "just one line");
+    }
+
+    #[test]
+    fn push_line_respects_max_lines() {
+        let mut state = TuiState::new();
+        // Push more than MAX_LINES individual lines
+        for i in 0..MAX_LINES + 50 {
+            state.push_line("test", format!("line {i}"));
+        }
+        assert_eq!(state.active_lines().len(), MAX_LINES);
+        // Oldest lines should have been evicted
+        assert_eq!(state.active_lines()[0], "line 50");
+    }
+
+    #[test]
+    fn push_line_multiline_counts_toward_max() {
+        let mut state = TuiState::new();
+        // Fill to near capacity
+        for i in 0..MAX_LINES - 2 {
+            state.push_line("test", format!("line {i}"));
+        }
+        // Push a multi-line string that would exceed MAX_LINES
+        state.push_line("test", "a\nb\nc\nd\ne".to_string());
+        assert_eq!(state.active_lines().len(), MAX_LINES);
+    }
+
+    #[test]
+    fn push_line_resets_scroll_on_active_pane() {
+        let mut state = TuiState::new();
+        state.push_line("pane1", "hello".to_string());
+        state.scroll = 10;
+        state.push_line("pane1", "world".to_string());
+        assert_eq!(state.scroll, 0);
+    }
+
+    #[test]
+    fn next_pane_cycles() {
+        let mut state = TuiState::new();
+        state.push_line("A", "a".to_string());
+        state.push_line("B", "b".to_string());
+        // Active should be "B" (auto-switched to newest)
+        assert_eq!(state.active_name(), "B");
+        state.next_pane();
+        assert_eq!(state.active_name(), "A");
+        state.next_pane();
+        assert_eq!(state.active_name(), "B");
+    }
 }
