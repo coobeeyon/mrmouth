@@ -540,6 +540,16 @@
       "created_at": "2026-03-25T19:33:57.297852904Z",
       "updated_at": "2026-03-25T19:36:37.872688161Z"
     },
+    "lb-kwof": {
+      "id": "lb-kwof",
+      "title": "Add cargo fmt check to CI workflow",
+      "description": "CI runs clippy and tests but doesn't check formatting. Add cargo fmt -- --check step.",
+      "item_type": "task",
+      "status": "open",
+      "priority": 3,
+      "created_at": "2026-03-25T20:00:24.070228902Z",
+      "updated_at": "2026-03-25T20:00:24.070228902Z"
+    },
     "lb-l78i": {
       "id": "lb-l78i",
       "title": "Update loop_cmd: Decision enum, decider schema, branch management",
