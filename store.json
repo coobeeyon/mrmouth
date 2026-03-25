@@ -755,11 +755,10 @@
       "title": "Update SPEC.md with new --branch and --model flags",
       "description": "SPEC.md is missing documentation for: run --branch flag, summary --model flag",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 3,
-      "claimed_by": "agent-runner",
       "created_at": "2026-03-25T20:33:04.703920506Z",
-      "updated_at": "2026-03-25T20:33:09.788274559Z"
+      "updated_at": "2026-03-25T20:33:57.158493139Z"
     },
     "lb-oskn": {
       "id": "lb-oskn",
