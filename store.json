@@ -285,11 +285,10 @@
       "title": "Add timeout to reviewer and shipper containers",
       "description": "reviewer.rs and shipper.rs create ContainerArgs with timeout_secs: None. A hung container could block the loop indefinitely. Add a reasonable default timeout (e.g. 10 min reviewer, 5 min shipper readiness).",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 2,
-      "claimed_by": "agent-runner",
       "created_at": "2026-03-25T20:00:22.575673679Z",
-      "updated_at": "2026-03-25T20:00:27.952070842Z"
+      "updated_at": "2026-03-25T20:03:11.051915123Z"
     },
     "lb-9xsm": {
       "id": "lb-9xsm",
