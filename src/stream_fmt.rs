@@ -122,7 +122,7 @@ impl Formatter {
         if subtype == "init" {
             let model = event.get("model").and_then(|v| v.as_str()).unwrap_or("unknown");
             Some(format!(
-                "{}{}[init]{}\n\tmodel={model}",
+                "{}{}[init]{}\n  model={model}",
                 self.bold(),
                 self.cyan(),
                 self.reset()
@@ -172,7 +172,7 @@ impl Formatter {
                             let pattern =
                                 input.get("pattern").and_then(|v| v.as_str()).unwrap_or("");
                             format!(
-                                "{}[{name}]{}\n\t/{pattern}/",
+                                "{}[{name}]{}\n  /{pattern}/",
                                 self.yellow(),
                                 self.reset()
                             )
@@ -181,7 +181,7 @@ impl Formatter {
                             let pattern =
                                 input.get("pattern").and_then(|v| v.as_str()).unwrap_or("");
                             format!(
-                                "{}[{name}]{}\n\t{pattern}",
+                                "{}[{name}]{}\n  {pattern}",
                                 self.yellow(),
                                 self.reset()
                             )
@@ -203,7 +203,7 @@ impl Formatter {
                         }
                         _ => {
                             format!(
-                                "{}[{name}]{}\n\t{}",
+                                "{}[{name}]{}\n  {}",
                                 self.yellow(),
                                 self.reset(),
                                 input
@@ -326,7 +326,7 @@ impl Formatter {
         };
 
         Some(format!(
-            "\n{}{}[done]{}\n\tturns={turns_str} cost={cost_str}\n{}",
+            "\n{}{}[done]{}\n  turns={turns_str} cost={cost_str}\n{}",
             self.bold(),
             self.green(),
             self.reset(),
