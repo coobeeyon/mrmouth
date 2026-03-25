@@ -285,11 +285,10 @@
       "title": "docker ensure_volume silently ignores all errors",
       "description": "docker.rs ensure_volume() uses let _ = for volume create and ownership fix. Should propagate errors or at least warn.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 2,
-      "claimed_by": "agent-runner",
       "created_at": "2026-03-25T19:25:34.564958699Z",
-      "updated_at": "2026-03-25T19:25:39.425272741Z"
+      "updated_at": "2026-03-25T19:25:57.575038268Z"
     },
     "lb-c4kp": {
       "id": "lb-c4kp",
