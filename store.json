@@ -797,8 +797,9 @@
       "item_type": "task",
       "status": "open",
       "priority": 3,
+      "claimed_by": "agent-runner",
       "created_at": "2026-03-25T20:00:21.152186144Z",
-      "updated_at": "2026-03-25T20:00:21.152186144Z"
+      "updated_at": "2026-03-25T20:03:20.983462562Z"
     },
     "lb-vsce": {
       "id": "lb-vsce",
