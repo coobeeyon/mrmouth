@@ -485,10 +485,10 @@
       "title": "Add text wrapping to body Paragraph",
       "description": "In tui.rs draw(), add .wrap(Wrap { trim: false }) to the body Paragraph widget. Without this, lines longer than terminal width are silently clipped. Import ratatui::widgets::Wrap.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 3,
       "created_at": "2026-03-12T22:35:48.848026922Z",
-      "updated_at": "2026-03-12T22:35:48.848026922Z"
+      "updated_at": "2026-03-25T18:48:47.222757078Z"
     },
     "lb-tso7": {
       "id": "lb-tso7",
