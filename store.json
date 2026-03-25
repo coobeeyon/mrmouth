@@ -20,6 +20,16 @@
       "created_at": "2026-03-08T21:47:00.082961738Z",
       "updated_at": "2026-03-08T21:48:10.649899511Z"
     },
+    "lb-2095": {
+      "id": "lb-2095",
+      "title": "mrmouth summary starts TUI but routes output to raw stderr, hiding all output",
+      "description": "When 'mrmouth summary' is run on a TTY, TuiHandle::try_start() enters alternate screen mode on stderr. However, summary::execute is called with logger=None (main.rs), so run_streaming_claude uses StreamTarget::Stderr and all formatted output goes via eprintln\\! to raw stderr. In alternate screen mode this output is hidden/overwritten by TUI redraws, making summary output invisible. Fix: either (a) pass tui.as_ref() into summary::execute and add TUI routing there, or (b) skip TUI startup for the summary subcommand (add it to the use_raw check).",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 1,
+      "created_at": "2026-03-10T15:57:59.159157928Z",
+      "updated_at": "2026-03-10T16:00:31.913226179Z"
+    },
     "lb-21dd": {
       "id": "lb-21dd",
       "title": "Fix TUI terminal corruption",
@@ -60,6 +70,36 @@
       "created_at": "2026-03-08T20:59:00.887231581Z",
       "updated_at": "2026-03-08T20:59:43.845061038Z"
     },
+    "lb-3jju": {
+      "id": "lb-3jju",
+      "title": "TUI text_lines slice can panic on out-of-bounds index",
+      "description": "In tui.rs around line 296, text_lines[start..end] can panic if indices are invalid. Use safe indexing like .get(start..end).unwrap_or_default() instead.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 1,
+      "created_at": "2026-03-10T17:03:55.682295029Z",
+      "updated_at": "2026-03-10T17:04:23.770191324Z"
+    },
+    "lb-4c8v": {
+      "id": "lb-4c8v",
+      "title": "Extract updated Dockerfile from container after exit",
+      "description": "SPEC.md says: After the container exits, mrmouth extracts the updated Dockerfile back to .mrmouth/Dockerfile so changes persist. This is not implemented. Need to add docker cp to extract Dockerfile after container exit in run.rs.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 1,
+      "created_at": "2026-03-10T16:52:38.773121968Z",
+      "updated_at": "2026-03-10T16:54:08.429935529Z"
+    },
+    "lb-4nvs": {
+      "id": "lb-4nvs",
+      "title": "loop_cmd.rs uses raw eprintln bypassing TUI routing",
+      "description": "Same issue as lb-pmal but in src/loop_cmd.rs: ~12 direct eprintln! calls for bootstrap messages, loop status, and delay notifications bypass the TUI when it is active. Should route through a TuiSender like epic.rs now does.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 3,
+      "created_at": "2026-03-10T15:49:11.375644641Z",
+      "updated_at": "2026-03-10T15:54:04.661386232Z"
+    },
     "lb-5amv": {
       "id": "lb-5amv",
       "title": "Fix stream_fmt result text not indented",
@@ -80,6 +120,16 @@
       "created_at": "2026-03-10T13:15:44.665828228Z",
       "updated_at": "2026-03-12T21:39:41.012261356Z"
     },
+    "lb-60qe": {
+      "id": "lb-60qe",
+      "title": "Sub-agent formatter hardcodes is_tty=true, pollutes non-TTY output with ANSI codes",
+      "description": "In streaming.rs callers (reviewer.rs, shipper.rs, summary.rs, loop_cmd.rs), StreamFormatter::new(true) is always called regardless of whether stderr is a TTY. This means ANSI escape codes are embedded in output even in non-TTY environments (CI, piped logs). The main agent formatter in run.rs correctly checks stdout.is_terminal(). The fix: in run_streaming_claude or its callers, use io::stderr().is_terminal() || logger.has_tui() to decide is_tty.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 2,
+      "created_at": "2026-03-10T16:05:37.358803537Z",
+      "updated_at": "2026-03-10T16:09:11.739446482Z"
+    },
     "lb-68yw": {
       "id": "lb-68yw",
       "title": "Modify src/epic.rs: thread TUI into run::execute calls",
@@ -89,6 +139,36 @@
       "priority": 1,
       "created_at": "2026-03-10T13:15:15.779001414Z",
       "updated_at": "2026-03-12T21:39:40.990759353Z"
+    },
+    "lb-6fha": {
+      "id": "lb-6fha",
+      "title": "Fix relative path construction in loop_cmd.rs log_file",
+      "description": "Not a bug: summary::execute joins relative paths to repo_root. The format! path works correctly.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 2,
+      "created_at": "2026-03-10T16:52:40.255483883Z",
+      "updated_at": "2026-03-10T16:53:55.914462167Z"
+    },
+    "lb-6xo6": {
+      "id": "lb-6xo6",
+      "title": "loop_cmd.rs decider thread join uses .expect() instead of error handling",
+      "description": "In loop_cmd.rs:191, decider_handle.join().expect('decider thread panicked') will panic if the decider thread panics. Should use proper error handling (match on join result) to log the error and return a graceful failure instead of crashing.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 3,
+      "created_at": "2026-03-10T16:31:29.723677818Z",
+      "updated_at": "2026-03-10T16:38:44.108011058Z"
+    },
+    "lb-8zzu": {
+      "id": "lb-8zzu",
+      "title": "Fix local mode calling git_remote_url in violation of spec",
+      "description": "run.rs line 57-58 calls git_remote_url() when --local is set. SPEC.md line 188 says: 'run.rs must not call git_remote_url() when --local is set — there may be no remote.' Should use empty string directly instead.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 2,
+      "created_at": "2026-03-10T16:16:43.384115350Z",
+      "updated_at": "2026-03-10T16:17:02.229650803Z"
     },
     "lb-95nz": {
       "id": "lb-95nz",
@@ -109,6 +189,16 @@
       "priority": 1,
       "created_at": "2026-03-10T13:14:38.810345525Z",
       "updated_at": "2026-03-12T21:39:40.969080048Z"
+    },
+    "lb-9xsm": {
+      "id": "lb-9xsm",
+      "title": "UTF-8 unsafe string slicing in epic.rs branch name truncation",
+      "description": "epic.rs:262 uses byte-based slicing trimmed[..50] which will panic if the 50th byte falls in the middle of a multibyte UTF-8 character. Should use char-based truncation instead.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 1,
+      "created_at": "2026-03-10T17:13:12.622645931Z",
+      "updated_at": "2026-03-10T17:14:08.098983873Z"
     },
     "lb-anmx": {
       "id": "lb-anmx",
@@ -150,6 +240,16 @@
       "created_at": "2026-03-12T22:35:43.357880685Z",
       "updated_at": "2026-03-12T22:35:43.357880685Z"
     },
+    "lb-ebpt": {
+      "id": "lb-ebpt",
+      "title": "Symlink update in run.rs is non-atomic",
+      "description": "In run.rs, latest.jsonl symlink is removed then recreated. If process crashes between the two operations, the symlink is broken. Use a temp symlink + rename for atomicity.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 3,
+      "created_at": "2026-03-10T17:03:57.856654287Z",
+      "updated_at": "2026-03-10T17:05:58.770073186Z"
+    },
     "lb-eivs": {
       "id": "lb-eivs",
       "title": "Modify src/loop_cmd.rs: thread TUI, per-stage labels for concurrent stages",
@@ -159,6 +259,46 @@
       "priority": 1,
       "created_at": "2026-03-10T13:15:10.984337128Z",
       "updated_at": "2026-03-12T21:39:40.997658976Z"
+    },
+    "lb-eryu": {
+      "id": "lb-eryu",
+      "title": "Decider JSON parse failures silently default to continue",
+      "description": "In loop_cmd.rs, if Claude returns malformed JSON, serde_json::from_str falls back to default Value which causes the decider to default to continue. Should log a warning when JSON parsing fails.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 2,
+      "created_at": "2026-03-10T17:03:56.437475603Z",
+      "updated_at": "2026-03-10T17:05:16.563684351Z"
+    },
+    "lb-g6rz": {
+      "id": "lb-g6rz",
+      "title": "Misleading git pull failure message in run.rs",
+      "description": "run.rs treats all git pull failures (network error, merge conflict, etc.) as 'No new commits to pull'. Should differentiate error cases.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 2,
+      "created_at": "2026-03-10T17:13:13.458357465Z",
+      "updated_at": "2026-03-10T17:14:08.104427840Z"
+    },
+    "lb-gipm": {
+      "id": "lb-gipm",
+      "title": "Fix --raw mode output goes to stderr instead of stdout",
+      "description": "In run.rs raw mode, logger.display(line) routes to eprintln (stderr) in non-TUI mode. Previously this was println (stdout). Raw mode is intended for piping (e.g. mrmouth run --raw | jq), so output must reach stdout. The Logger::display docstring even says 'TUI or stdout' but display_line uses eprintln for the non-TUI case. Fix: add a stdout-routing variant to Logger and use it in the raw branch, or bypass Logger and write directly to stdout in the raw path.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 2,
+      "created_at": "2026-03-10T16:12:23.648585075Z",
+      "updated_at": "2026-03-10T16:14:53.734068015Z"
+    },
+    "lb-glnx": {
+      "id": "lb-glnx",
+      "title": "StreamFormatter created with is_tty=false for TUI targets in streaming.rs",
+      "description": "In src/streaming.rs, run_streaming_claude callers create StreamFormatter::new(logger.map_or(true, |l| !l.has_tui())). When TUI is active (has_tui()=true), this evaluates to is_tty=false, stripping all ANSI color codes. But the TUI uses ansi_to_tui to render ANSI-coded text, so it CAN display colors. The result is that reviewer, decider, shipper, and summary sub-agent output shows in the TUI without any colors. The flag should be true when the target is a TUI pane.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 2,
+      "created_at": "2026-03-10T14:39:16.687201300Z",
+      "updated_at": "2026-03-10T15:47:47.544060360Z"
     },
     "lb-h5wx": {
       "id": "lb-h5wx",
@@ -179,6 +319,36 @@
       "priority": 2,
       "created_at": "2026-03-09T15:48:52.310349878Z",
       "updated_at": "2026-03-09T18:43:24.878167219Z"
+    },
+    "lb-imrg": {
+      "id": "lb-imrg",
+      "title": "Atomic symlink can leave dangling tmp file on rename failure",
+      "description": "run.rs atomic_symlink function doesn't clean up the tmp symlink if fs::rename fails.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 3,
+      "created_at": "2026-03-10T17:13:14.106194083Z",
+      "updated_at": "2026-03-10T17:14:08.109844927Z"
+    },
+    "lb-jf0a": {
+      "id": "lb-jf0a",
+      "title": "run.rs StreamFormatter strips colors when TUI active but stdout redirected",
+      "description": "In run.rs:149, StreamFormatter is initialized with is_tty = std::io::stdout().is_terminal(). When TUI is active (stderr is a TTY) but stdout is redirected (e.g. mrmouth run > file.txt), is_tty is false and ANSI colors are stripped even though the TUI pane supports them via ansi-to-tui. All other callers in streaming.rs correctly use target.supports_color() which returns true for StreamTarget::Tui. Only run.rs bypasses this. Fix: change run.rs:137 to: let is_tty = logger.has_tui() || std::io::stdout().is_terminal();",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 3,
+      "created_at": "2026-03-10T16:28:19.225487388Z",
+      "updated_at": "2026-03-10T16:30:04.282411850Z"
+    },
+    "lb-jj12": {
+      "id": "lb-jj12",
+      "title": "process::exit in main.rs bypasses TuiHandle drop, leaving terminal in bad state",
+      "description": "In main.rs, the error handlers for run (line 144), loop (line 156), and epic (line 168) call std::process::exit(1) after TUI has already started. process::exit does not run destructors, so TuiHandle::drop is never called. The TUI render thread is not sent Quit, disable_raw_mode and LeaveAlternateScreen are never called, and the terminal is left in raw mode on the alternate screen. Fix: explicitly drop(tui) before calling process::exit(1), or restructure main to avoid process::exit by returning from a run() helper function.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 1,
+      "created_at": "2026-03-10T16:59:35.592755522Z",
+      "updated_at": "2026-03-10T17:02:13.505722737Z"
     },
     "lb-k3be": {
       "id": "lb-k3be",
@@ -220,6 +390,26 @@
       "created_at": "2026-03-09T15:50:45.696492755Z",
       "updated_at": "2026-03-09T18:43:24.873621362Z"
     },
+    "lb-mxo4": {
+      "id": "lb-mxo4",
+      "title": "Loop continues post-run AI stages after TUI cancellation",
+      "description": "When the user presses q/Ctrl+C in the TUI, the cancellation flag is set and the watcher thread stops the Docker container. However, loop_cmd.rs only checks is_cancelled() at the top of each loop iteration and before sleeping — not immediately after run::execute returns. This means after a user-requested cancel, the loop still runs litebrite::sync, the reviewer (if commits exist), and spawns summary+decider threads before checking cancellation again. Fix: add a cancellation check in loop_cmd::execute immediately after run::execute returns, before litebrite::sync and the post-run AI stages.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 2,
+      "created_at": "2026-03-10T16:22:48.890709459Z",
+      "updated_at": "2026-03-10T16:25:04.834856803Z"
+    },
+    "lb-o0x7": {
+      "id": "lb-o0x7",
+      "title": "mrmouth summary standalone command now outputs to stderr instead of stdout (spec deviation)",
+      "description": "SPEC.md says: 'Print summary to stdout'. Before this branch, summary.rs used tee_stdout (println\\!) to display Claude output. After this branch, it uses StreamTarget::Stderr -> eprintln\\!. Anyone piping 'mrmouth summary > file.md' now gets an empty file. Fix: for the standalone summary command, either use StreamTarget::Stdout (add a new variant) or keep using println\\! for the summary command path.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 2,
+      "created_at": "2026-03-10T16:05:43.465752389Z",
+      "updated_at": "2026-03-10T16:09:21.762474887Z"
+    },
     "lb-okra": {
       "id": "lb-okra",
       "title": "Modify src/run.rs: wire TUI into agent session streaming",
@@ -240,6 +430,16 @@
       "created_at": "2026-03-08T21:48:32.914164419Z",
       "updated_at": "2026-03-08T21:48:53.759661473Z"
     },
+    "lb-pmal": {
+      "id": "lb-pmal",
+      "title": "epic.rs uses raw eprintln bypassing TUI routing",
+      "description": "src/epic.rs has ~12 direct eprintln! calls throughout execute(). When TUI is active, stderr is in alternate screen mode (crossterm EnterAlternateScreen). Raw eprintln to stderr in this mode either corrupts TUI rendering or produces invisible output. epic.rs needs to receive a Logger or TuiHandle and route all its status output through it.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 2,
+      "created_at": "2026-03-10T14:39:11.660452237Z",
+      "updated_at": "2026-03-10T15:48:56.479006564Z"
+    },
     "lb-q2aw": {
       "id": "lb-q2aw",
       "title": "Route litebrite and prompt errors through logger",
@@ -259,6 +459,16 @@
       "priority": 1,
       "created_at": "2026-03-10T13:14:15.197155635Z",
       "updated_at": "2026-03-12T21:39:40.935812919Z"
+    },
+    "lb-seph": {
+      "id": "lb-seph",
+      "title": "Litebrite operations silently swallow all errors with no logging",
+      "description": "In litebrite.rs, all lb commands suppress stderr/stdout and ignore failures. While these are best-effort, there should be at least debug-level logging when they fail, to aid in troubleshooting issues where lb state gets out of sync.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 4,
+      "created_at": "2026-03-10T16:31:30.511025502Z",
+      "updated_at": "2026-03-10T16:38:44.119853551Z"
     },
     "lb-si5j": {
       "id": "lb-si5j",
@@ -289,6 +499,26 @@
       "priority": 2,
       "created_at": "2026-03-09T15:50:45.683044731Z",
       "updated_at": "2026-03-09T18:43:24.859337500Z"
+    },
+    "lb-tvkb": {
+      "id": "lb-tvkb",
+      "title": "Epic creates feature branch but doesn't push before first container run",
+      "description": "epic.rs creates a new feature branch locally via git checkout -b, but the first run::execute call will clone from remote using that branch name. Since it hasn't been pushed yet, the clone fails. Fix: push the new branch to remote after creating it.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 1,
+      "created_at": "2026-03-10T16:54:40.793650522Z",
+      "updated_at": "2026-03-10T16:55:01.121730511Z"
+    },
+    "lb-u4qp": {
+      "id": "lb-u4qp",
+      "title": "Cancel watcher thread leaks if run::execute errors after thread spawn",
+      "description": "In run.rs, the cancel watcher thread is spawned before the streaming/wait logic. If stream_output() or handle.wait() returns an error, run::execute returns early via ? without setting watcher_done=true. The _cancel_watcher JoinHandle drops (detaching the thread), leaving it spinning at 200ms intervals indefinitely (until TUI q is pressed or process exits). In a loop with repeated failures, multiple watcher threads accumulate. Fix: set watcher_done=true in a defer-style pattern (e.g. on Drop), or join/signal the thread on all exit paths.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 4,
+      "created_at": "2026-03-10T16:35:16.848386583Z",
+      "updated_at": "2026-03-10T16:38:44.114501464Z"
     },
     "lb-u9z2": {
       "id": "lb-u9z2",
@@ -329,6 +559,26 @@
       "priority": 1,
       "created_at": "2026-03-10T13:14:47.518545914Z",
       "updated_at": "2026-03-12T21:39:40.976778548Z"
+    },
+    "lb-xfzy": {
+      "id": "lb-xfzy",
+      "title": "TUI q/Ctrl+C exits via process::exit bypassing Docker cleanup",
+      "description": "In src/tui.rs render_loop(), pressing q or Ctrl+C calls std::process::exit(0) after cleanup_terminal(). This bypasses all cleanup in the main thread: running Docker containers are not stopped (orphan containers), litebrite state is not synced, and any other cleanup code (git pulls, etc.) is skipped. Should send a cancellation signal to the main thread instead of calling process::exit.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 1,
+      "created_at": "2026-03-10T14:39:09.544293746Z",
+      "updated_at": "2026-03-10T15:46:26.442127274Z"
+    },
+    "lb-xxgz": {
+      "id": "lb-xxgz",
+      "title": "Epic branch push failure should warn instead of silently continuing",
+      "description": "In epic.rs line 48-50, the initial push of the feature branch silently ignores failures. If push fails, the container will try to clone a branch that doesn't exist on the remote. Should log a warning or return an error.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 2,
+      "created_at": "2026-03-10T17:06:19.668395746Z",
+      "updated_at": "2026-03-10T17:06:40.092982684Z"
     },
     "lb-y354": {
       "id": "lb-y354",
@@ -393,6 +643,11 @@
       "dep_type": "parent"
     },
     {
+      "from_id": "lb-dl1f",
+      "to_id": "lb-21dd",
+      "dep_type": "parent"
+    },
+    {
       "from_id": "lb-eivs",
       "to_id": "lb-cmnc",
       "dep_type": "parent"
@@ -400,6 +655,11 @@
     {
       "from_id": "lb-h5wx",
       "to_id": "lb-hwg3",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-k3be",
+      "to_id": "lb-21dd",
       "dep_type": "parent"
     },
     {
@@ -418,8 +678,18 @@
       "dep_type": "parent"
     },
     {
+      "from_id": "lb-q2aw",
+      "to_id": "lb-21dd",
+      "dep_type": "parent"
+    },
+    {
       "from_id": "lb-q88t",
       "to_id": "lb-cmnc",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-tipn",
+      "to_id": "lb-21dd",
       "dep_type": "parent"
     },
     {
@@ -448,33 +718,13 @@
       "dep_type": "parent"
     },
     {
-      "from_id": "lb-yzzv",
-      "to_id": "lb-cmnc",
-      "dep_type": "parent"
-    },
-    {
-      "from_id": "lb-k3be",
-      "to_id": "lb-21dd",
-      "dep_type": "parent"
-    },
-    {
-      "from_id": "lb-q2aw",
-      "to_id": "lb-21dd",
-      "dep_type": "parent"
-    },
-    {
-      "from_id": "lb-dl1f",
-      "to_id": "lb-21dd",
-      "dep_type": "parent"
-    },
-    {
       "from_id": "lb-ys68",
       "to_id": "lb-21dd",
       "dep_type": "parent"
     },
     {
-      "from_id": "lb-tipn",
-      "to_id": "lb-21dd",
+      "from_id": "lb-yzzv",
+      "to_id": "lb-cmnc",
       "dep_type": "parent"
     }
   ]
