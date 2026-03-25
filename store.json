@@ -100,6 +100,16 @@
       "created_at": "2026-03-25T18:59:15.982050769Z",
       "updated_at": "2026-03-25T19:03:05.397864268Z"
     },
+    "lb-4bi1": {
+      "id": "lb-4bi1",
+      "title": "epic max_failures=0 aborts on first failure instead of never aborting",
+      "description": "In epic.rs line 124, the circuit-breaker check is missing the 'opts.max_failures > 0 &&' guard that loop_cmd.rs has correctly. When max_failures=0 (meaning never abort per spec), consecutive_failures (u32) starts at 1 after a failure, and 1 >= 0 is always true, so epic mode aborts on the very first failure. Fix: change the check to: if opts.max_failures > 0 && consecutive_failures >= opts.max_failures {",
+      "item_type": "task",
+      "status": "open",
+      "priority": 1,
+      "created_at": "2026-03-25T19:11:15.508317603Z",
+      "updated_at": "2026-03-25T19:11:15.508317603Z"
+    },
     "lb-4c8v": {
       "id": "lb-4c8v",
       "title": "Extract updated Dockerfile from container after exit",
