@@ -280,6 +280,16 @@
       "created_at": "2026-03-10T16:31:29.723677818Z",
       "updated_at": "2026-03-10T16:38:44.108011058Z"
     },
+    "lb-8t7x": {
+      "id": "lb-8t7x",
+      "title": "Add --branch flag to mrmouth run CLI",
+      "description": "Config supports branch field but there's no CLI flag to override it per-run. Add --branch to run subcommand.",
+      "item_type": "task",
+      "status": "open",
+      "priority": 3,
+      "created_at": "2026-03-25T20:29:49.195566423Z",
+      "updated_at": "2026-03-25T20:29:49.195566423Z"
+    },
     "lb-8zzu": {
       "id": "lb-8zzu",
       "title": "Fix local mode calling git_remote_url in violation of spec",
