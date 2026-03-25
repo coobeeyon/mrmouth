@@ -117,8 +117,9 @@
       "item_type": "task",
       "status": "open",
       "priority": 2,
+      "claimed_by": "agent-runner",
       "created_at": "2026-03-25T18:59:17.162976740Z",
-      "updated_at": "2026-03-25T18:59:17.162976740Z"
+      "updated_at": "2026-03-25T19:03:28.816152653Z"
     },
     "lb-4nvs": {
       "id": "lb-4nvs",
