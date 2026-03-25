@@ -287,11 +287,10 @@
       "title": "Reviewer ignores container crash - always returns Ok",
       "description": "reviewer.rs returns Ok(()) even when container exits non-zero. A reviewer crash is silently ignored.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 2,
-      "claimed_by": "agent-runner",
       "created_at": "2026-03-25T19:22:47.017215293Z",
-      "updated_at": "2026-03-25T19:22:54.089748813Z"
+      "updated_at": "2026-03-25T19:25:12.673241336Z"
     },
     "lb-cmnc": {
       "id": "lb-cmnc",
