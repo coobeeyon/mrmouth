@@ -10,6 +10,16 @@
       "created_at": "2026-03-08T21:01:20.055101475Z",
       "updated_at": "2026-03-08T21:01:44.694030354Z"
     },
+    "lb-1csb": {
+      "id": "lb-1csb",
+      "title": "DockerError used as tuple struct in ensure_volume — compile error",
+      "description": "docker.rs ensure_volume creates DockerError(format!(...)) but DockerError is an enum. Should use a proper variant. Added in e2ddecb.",
+      "item_type": "task",
+      "status": "open",
+      "priority": 1,
+      "created_at": "2026-03-25T19:39:52.027798678Z",
+      "updated_at": "2026-03-25T19:39:52.027798678Z"
+    },
     "lb-1zh1": {
       "id": "lb-1zh1",
       "title": "Add --model flag to loop and epic subcommands",
