@@ -455,11 +455,10 @@
       "title": "Loop --delay 0 cannot override non-zero config default",
       "description": "main.rs:155 uses 'if delay > 0' to decide CLI vs config value, making it impossible to explicitly set --delay 0. Should use Option<u32> like other flags.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 2,
-      "claimed_by": "agent-runner",
       "created_at": "2026-03-25T19:15:21.069024823Z",
-      "updated_at": "2026-03-25T19:15:27.637062834Z"
+      "updated_at": "2026-03-25T19:15:47.814148870Z"
     },
     "lb-o0x7": {
       "id": "lb-o0x7",
