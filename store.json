@@ -789,6 +789,16 @@
       "priority": 1,
       "created_at": "2026-03-10T13:15:54.771022003Z",
       "updated_at": "2026-03-12T21:39:41.026417206Z"
+    },
+    "lb-zcay": {
+      "id": "lb-zcay",
+      "title": "Deduplicate runner script boilerplate",
+      "description": "The clone/lb-init/.claude.json-restore preamble is duplicated verbatim in run.rs, reviewer.rs, and shipper.rs. Extract a shared function that generates the script boilerplate.",
+      "item_type": "task",
+      "status": "open",
+      "priority": 2,
+      "created_at": "2026-03-25T19:33:56.331811261Z",
+      "updated_at": "2026-03-25T19:33:56.331811261Z"
     }
   },
   "deps": [
@@ -914,6 +924,11 @@
     },
     {
       "from_id": "lb-fki2",
+      "to_id": "lb-dvhr",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-zcay",
       "to_id": "lb-dvhr",
       "dep_type": "parent"
     }
