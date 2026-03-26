@@ -1,5 +1,26 @@
 {
   "items": {
+    "lb-0uq3": {
+      "id": "lb-0uq3",
+      "title": "Pin alpine image version in docker.rs ensure_volume",
+      "description": "docker.rs:147 uses bare 'alpine' (no tag) for the chown step in ensure_volume. This means alpine:latest which can trigger unexpected pulls. Pin to alpine:3 for reliability.",
+      "item_type": "task",
+      "status": "open",
+      "priority": 3,
+      "claimed_by": "agent-runner",
+      "created_at": "2026-03-25T20:43:12.971834962Z",
+      "updated_at": "2026-03-25T20:43:17.741536155Z"
+    },
+    "lb-16m8": {
+      "id": "lb-16m8",
+      "title": "Fix structured_output parsing in shipper readiness check",
+      "description": "Parent epic for shipper.rs structured_output fix",
+      "item_type": "epic",
+      "status": "closed",
+      "priority": 1,
+      "created_at": "2026-03-26T03:18:25.635507194Z",
+      "updated_at": "2026-03-26T03:40:21.666644865Z"
+    },
     "lb-1brq": {
       "id": "lb-1brq",
       "title": "Fix Epic CLI args not distinguishing explicit vs default values",
@@ -10,6 +31,16 @@
       "created_at": "2026-03-08T21:01:20.055101475Z",
       "updated_at": "2026-03-08T21:01:44.694030354Z"
     },
+    "lb-1csb": {
+      "id": "lb-1csb",
+      "title": "DockerError used as tuple struct in ensure_volume — compile error",
+      "description": "docker.rs ensure_volume creates DockerError(format!(...)) but DockerError is an enum. Should use a proper variant. Added in e2ddecb.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 1,
+      "created_at": "2026-03-25T19:39:52.027798678Z",
+      "updated_at": "2026-03-25T19:40:23.044061782Z"
+    },
     "lb-1jfl": {
       "id": "lb-1jfl",
       "title": "Suppress expected litebrite command errors",
@@ -19,6 +50,16 @@
       "priority": 2,
       "created_at": "2026-03-26T12:00:40.450189015Z",
       "updated_at": "2026-03-26T12:00:40.450189015Z"
+    },
+    "lb-1x2u": {
+      "id": "lb-1x2u",
+      "title": "Include stderr in shipper merge failure message",
+      "description": "shipper.rs line 187: gh pr merge failure message says 'gh pr merge failed' but doesn't include stderr, making debugging hard.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 3,
+      "created_at": "2026-03-25T20:29:50.716202Z",
+      "updated_at": "2026-03-25T20:32:45.442692957Z"
     },
     "lb-1zh1": {
       "id": "lb-1zh1",
@@ -60,6 +101,46 @@
       "created_at": "2026-03-10T13:14:29.882698719Z",
       "updated_at": "2026-03-12T21:39:40.953069622Z"
     },
+    "lb-2hes": {
+      "id": "lb-2hes",
+      "title": "Epic abort message shows max_failures instead of consecutive_failures",
+      "description": "epic.rs:126 prints opts.max_failures in error message but should print consecutive_failures (the actual count). loop_cmd.rs does this correctly.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 2,
+      "created_at": "2026-03-25T19:15:20.733364361Z",
+      "updated_at": "2026-03-25T19:15:47.808798521Z"
+    },
+    "lb-2x28": {
+      "id": "lb-2x28",
+      "title": "Fix misleading bootstrap comment in loop_cmd.rs",
+      "description": "Line 29 comment says 'run in local (bind-mount) mode' but the code actually uses local: false for all runs including bootstrap. The comment should be updated to match the actual behavior (file-remote fallback).",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 3,
+      "created_at": "2026-03-25T20:19:41.854783516Z",
+      "updated_at": "2026-03-25T20:20:19.020426468Z"
+    },
+    "lb-2y2b": {
+      "id": "lb-2y2b",
+      "title": "Extract shared run harness from loop and epic",
+      "description": "Both loop_cmd.rs and epic.rs duplicate emit(), git_current_branch(), TUI sender setup, and logger creation. Extract a shared run harness module that both modes compose from.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 2,
+      "created_at": "2026-03-25T18:59:11.905689694Z",
+      "updated_at": "2026-03-25T19:07:56.471896329Z"
+    },
+    "lb-30xw": {
+      "id": "lb-30xw",
+      "title": "Fix misleading git pull error message in run.rs",
+      "description": "In run.rs the git pull --ff-only error handler logs 'No new commits to pull' when stderr is empty and exit code is non-zero. An empty stderr with a failed exit code is a real failure, not 'no new commits'. Should report actual failure.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 3,
+      "created_at": "2026-03-25T20:19:42.643418957Z",
+      "updated_at": "2026-03-25T20:20:19.026263451Z"
+    },
     "lb-34j5": {
       "id": "lb-34j5",
       "title": "Fix runner script missing lb sync after init",
@@ -90,6 +171,66 @@
       "created_at": "2026-03-10T17:03:55.682295029Z",
       "updated_at": "2026-03-10T17:04:23.770191324Z"
     },
+    "lb-3rmy": {
+      "id": "lb-3rmy",
+      "title": "Logger mutex poisoning: recover instead of silently dropping writes",
+      "description": "Logger's write_file uses if let Ok(mut w) = self.writer.lock() which silently drops all writes if the mutex becomes poisoned. Use unwrap_or_else to recover from poisoned locks.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 4,
+      "created_at": "2026-03-25T20:11:16.104410396Z",
+      "updated_at": "2026-03-25T20:11:39.147677832Z"
+    },
+    "lb-3wn1": {
+      "id": "lb-3wn1",
+      "title": "Git branch fallback silently defaults to main",
+      "description": "run.rs and loop_cmd.rs silently fall back to main if git branch detection fails. Should warn.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 3,
+      "created_at": "2026-03-25T19:22:49.414331862Z",
+      "updated_at": "2026-03-25T19:25:12.690855037Z"
+    },
+    "lb-3xkv": {
+      "id": "lb-3xkv",
+      "title": "Thread join failures silently ignored in docker.rs and streaming.rs",
+      "description": "Thread join results are silently discarded with let _ = handle.join(). Panics in stderr buffering threads go unnoticed. Should log thread panic info.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 4,
+      "created_at": "2026-03-25T20:11:16.671990114Z",
+      "updated_at": "2026-03-25T20:12:12.051108929Z"
+    },
+    "lb-472j": {
+      "id": "lb-472j",
+      "title": "Add failure circuit-breaker to loop mode",
+      "description": "Loop has no consecutive failure detection — a broken environment can burn through runs forever. The decider can say stop but that's a completeness judgment, not a safety mechanism. Add max_failures tracking like epic has.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 2,
+      "created_at": "2026-03-25T18:59:15.982050769Z",
+      "updated_at": "2026-03-25T19:03:05.397864268Z"
+    },
+    "lb-48av": {
+      "id": "lb-48av",
+      "title": "Deduplicate git_current_branch in run.rs",
+      "description": "run.rs has its own git_current_branch that duplicates harness::git_current_branch. Use the harness version and map the error.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 3,
+      "created_at": "2026-03-25T19:43:02.976609206Z",
+      "updated_at": "2026-03-25T19:43:44.358167741Z"
+    },
+    "lb-4bi1": {
+      "id": "lb-4bi1",
+      "title": "epic max_failures=0 aborts on first failure instead of never aborting",
+      "description": "In epic.rs line 124, the circuit-breaker check is missing the 'opts.max_failures > 0 &&' guard that loop_cmd.rs has correctly. When max_failures=0 (meaning never abort per spec), consecutive_failures (u32) starts at 1 after a failure, and 1 >= 0 is always true, so epic mode aborts on the very first failure. Fix: change the check to: if opts.max_failures > 0 && consecutive_failures >= opts.max_failures {",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 1,
+      "created_at": "2026-03-25T19:11:15.508317603Z",
+      "updated_at": "2026-03-25T19:13:19.104183947Z"
+    },
     "lb-4c8v": {
       "id": "lb-4c8v",
       "title": "Extract updated Dockerfile from container after exit",
@@ -99,6 +240,16 @@
       "priority": 1,
       "created_at": "2026-03-10T16:52:38.773121968Z",
       "updated_at": "2026-03-10T16:54:08.429935529Z"
+    },
+    "lb-4f7m": {
+      "id": "lb-4f7m",
+      "title": "Add per-run timeout to loop mode",
+      "description": "Loop passes timeout: None to run::execute, meaning a hung run blocks the entire pipeline with no recovery. Add a configurable per-run timeout like epic has.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 2,
+      "created_at": "2026-03-25T18:59:17.162976740Z",
+      "updated_at": "2026-03-25T19:04:09.885499658Z"
     },
     "lb-4nvs": {
       "id": "lb-4nvs",
@@ -180,6 +331,16 @@
       "created_at": "2026-03-10T16:31:29.723677818Z",
       "updated_at": "2026-03-10T16:38:44.108011058Z"
     },
+    "lb-7s17": {
+      "id": "lb-7s17",
+      "title": "Add .dockerignore to reduce Docker build context",
+      "description": "Docker build sends entire repo as context including logs/ and .git/. Create default .dockerignore to speed up builds.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 3,
+      "created_at": "2026-03-25T20:29:51.143733453Z",
+      "updated_at": "2026-03-25T20:32:45.448366837Z"
+    },
     "lb-8raq": {
       "id": "lb-8raq",
       "title": "Include stderr in DockerError::BuildFailed",
@@ -189,6 +350,16 @@
       "priority": 2,
       "created_at": "2026-03-26T12:00:36.249413594Z",
       "updated_at": "2026-03-26T12:00:36.249413594Z"
+    },
+    "lb-8t7x": {
+      "id": "lb-8t7x",
+      "title": "Add --branch flag to mrmouth run CLI",
+      "description": "Config supports branch field but there's no CLI flag to override it per-run. Add --branch to run subcommand.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 3,
+      "created_at": "2026-03-25T20:29:49.195566423Z",
+      "updated_at": "2026-03-25T20:32:45.429413176Z"
     },
     "lb-8zzu": {
       "id": "lb-8zzu",
@@ -210,6 +381,16 @@
       "created_at": "2026-03-08T21:49:43.709600051Z",
       "updated_at": "2026-03-08T21:50:00.988079113Z"
     },
+    "lb-9bod": {
+      "id": "lb-9bod",
+      "title": "Decider thread panic payload is swallowed",
+      "description": "loop_cmd.rs catches decider thread panics but ignores the panic payload, making debugging impossible.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 3,
+      "created_at": "2026-03-25T19:22:48.957247559Z",
+      "updated_at": "2026-03-25T19:25:12.687027698Z"
+    },
     "lb-9lnz": {
       "id": "lb-9lnz",
       "title": "Modify src/logger.rs: add TUI routing",
@@ -219,6 +400,16 @@
       "priority": 1,
       "created_at": "2026-03-10T13:14:38.810345525Z",
       "updated_at": "2026-03-12T21:39:40.969080048Z"
+    },
+    "lb-9x4r": {
+      "id": "lb-9x4r",
+      "title": "Add timeout to reviewer and shipper containers",
+      "description": "reviewer.rs and shipper.rs create ContainerArgs with timeout_secs: None. A hung container could block the loop indefinitely. Add a reasonable default timeout (e.g. 10 min reviewer, 5 min shipper readiness).",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 2,
+      "created_at": "2026-03-25T20:00:22.575673679Z",
+      "updated_at": "2026-03-25T20:03:11.051915123Z"
     },
     "lb-9xsm": {
       "id": "lb-9xsm",
@@ -230,6 +421,16 @@
       "created_at": "2026-03-10T17:13:12.622645931Z",
       "updated_at": "2026-03-10T17:14:08.098983873Z"
     },
+    "lb-ad2f": {
+      "id": "lb-ad2f",
+      "title": "SPEC.md epic section missing reviewer step documentation",
+      "description": "The epic subcommand now runs a reviewer agent after each successful task run (matching loop behavior), but SPEC.md step 2 under 'mrmouth epic' only says 'Run agent sessions focused on the epic, one task at a time' — it does not mention the reviewer step. The loop spec explicitly documents this at step 2. The epic spec should be updated to describe the post-run reviewer behavior (analogous to the loop spec step 2).",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 2,
+      "created_at": "2026-03-25T20:39:07.807861885Z",
+      "updated_at": "2026-03-25T20:41:19.572095257Z"
+    },
     "lb-anmx": {
       "id": "lb-anmx",
       "title": "Create src/shipper.rs",
@@ -239,6 +440,26 @@
       "priority": 2,
       "created_at": "2026-03-09T15:50:45.687857316Z",
       "updated_at": "2026-03-09T18:43:24.864301848Z"
+    },
+    "lb-aysm": {
+      "id": "lb-aysm",
+      "title": "docker ensure_volume silently ignores all errors",
+      "description": "docker.rs ensure_volume() uses let _ = for volume create and ownership fix. Should propagate errors or at least warn.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 2,
+      "created_at": "2026-03-25T19:25:34.564958699Z",
+      "updated_at": "2026-03-25T19:25:57.575038268Z"
+    },
+    "lb-c4kp": {
+      "id": "lb-c4kp",
+      "title": "Reviewer ignores container crash - always returns Ok",
+      "description": "reviewer.rs returns Ok(()) even when container exits non-zero. A reviewer crash is silently ignored.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 2,
+      "created_at": "2026-03-25T19:22:47.017215293Z",
+      "updated_at": "2026-03-25T19:25:12.673241336Z"
     },
     "lb-cmnc": {
       "id": "lb-cmnc",
@@ -269,6 +490,16 @@
       "priority": 2,
       "created_at": "2026-03-12T22:35:43.357880685Z",
       "updated_at": "2026-03-25T18:48:47.132352128Z"
+    },
+    "lb-dvhr": {
+      "id": "lb-dvhr",
+      "title": "Code quality and bug fixes",
+      "description": "Address code quality issues: duplicated code, hidden errors, and minor bugs",
+      "item_type": "epic",
+      "status": "closed",
+      "priority": 2,
+      "created_at": "2026-03-25T19:33:47.791165173Z",
+      "updated_at": "2026-03-25T19:39:05.930038075Z"
     },
     "lb-ebpt": {
       "id": "lb-ebpt",
@@ -310,6 +541,36 @@
       "created_at": "2026-03-26T12:00:38.699741787Z",
       "updated_at": "2026-03-26T12:00:38.699741787Z"
     },
+    "lb-fhpl": {
+      "id": "lb-fhpl",
+      "title": "Fix trailing blank line in TuiSender impl block",
+      "description": "tui.rs line 175 has a blank line before the closing brace of impl TuiSender. Would fail cargo fmt check.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 4,
+      "created_at": "2026-03-25T20:21:59.253913237Z",
+      "updated_at": "2026-03-25T20:22:17.554268625Z"
+    },
+    "lb-fki2": {
+      "id": "lb-fki2",
+      "title": "Loop delay sleep ignores TUI cancellation",
+      "description": "In loop_cmd.rs, the delay between runs uses thread::sleep which blocks for the full duration. If user presses q/Ctrl+C during the delay, they must wait. Should check cancelled flag in small increments like the watchdog does.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 1,
+      "created_at": "2026-03-25T19:33:54.580123620Z",
+      "updated_at": "2026-03-25T19:35:03.349639643Z"
+    },
+    "lb-g45o": {
+      "id": "lb-g45o",
+      "title": "Epic TooManyFailures error reports max_failures instead of consecutive_failures",
+      "description": "epic.rs line 130 passes opts.max_failures to TooManyFailures error instead of consecutive_failures. The error message says 'aborted after N consecutive failures' but N is the configured limit, not the actual count.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 4,
+      "created_at": "2026-03-25T20:34:33.859333493Z",
+      "updated_at": "2026-03-25T20:34:51.530469097Z"
+    },
     "lb-g6rz": {
       "id": "lb-g6rz",
       "title": "Misleading git pull failure message in run.rs",
@@ -319,6 +580,17 @@
       "priority": 2,
       "created_at": "2026-03-10T17:13:13.458357465Z",
       "updated_at": "2026-03-10T17:14:08.104427840Z"
+    },
+    "lb-ggzz": {
+      "id": "lb-ggzz",
+      "title": "Document epic reviewer config reuse from [loop] section",
+      "description": "Epic mode borrows reviewer_model and reviewer_timeout from config.loop_config. This coupling is undocumented — SPEC.md epic section should note that epic reviewer settings are configured under [loop].",
+      "item_type": "task",
+      "status": "open",
+      "priority": 4,
+      "claimed_by": "agent-runner",
+      "created_at": "2026-03-25T20:43:14.129705763Z",
+      "updated_at": "2026-03-25T20:43:21.002219953Z"
     },
     "lb-gipm": {
       "id": "lb-gipm",
@@ -339,6 +611,16 @@
       "priority": 2,
       "created_at": "2026-03-10T14:39:16.687201300Z",
       "updated_at": "2026-03-10T15:47:47.544060360Z"
+    },
+    "lb-gwz2": {
+      "id": "lb-gwz2",
+      "title": "Replace is_ok()+unwrap() anti-pattern for commit comparison",
+      "description": "epic.rs:103-105 and loop_cmd.rs:178-180 use is_ok() guard then unwrap(). Should use if-let or ok()+zip() instead.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 3,
+      "created_at": "2026-03-25T19:16:03.009026611Z",
+      "updated_at": "2026-03-25T19:16:29.176649907Z"
     },
     "lb-h5wx": {
       "id": "lb-h5wx",
@@ -370,6 +652,16 @@
       "created_at": "2026-03-10T17:13:14.106194083Z",
       "updated_at": "2026-03-10T17:14:08.109844927Z"
     },
+    "lb-j6dm": {
+      "id": "lb-j6dm",
+      "title": "Dockerfile extraction failure is silent",
+      "description": "run.rs silently ignores docker cp failure when extracting Dockerfile. Agent modifications to Dockerfile are lost without notification.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 2,
+      "created_at": "2026-03-25T19:22:47.125253313Z",
+      "updated_at": "2026-03-25T19:25:12.677565144Z"
+    },
     "lb-jf0a": {
       "id": "lb-jf0a",
       "title": "run.rs StreamFormatter strips colors when TUI active but stdout redirected",
@@ -390,6 +682,26 @@
       "created_at": "2026-03-10T16:59:35.592755522Z",
       "updated_at": "2026-03-10T17:02:13.505722737Z"
     },
+    "lb-jma3": {
+      "id": "lb-jma3",
+      "title": "Remove dead code: run_stream_formatter and pub mod stream_fmt",
+      "description": "run_stream_formatter in stream_fmt.rs reads stdin/writes stdout but is never called. The pub visibility on mod stream_fmt in main.rs is also unnecessary - only crate-internal modules use it.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 3,
+      "created_at": "2026-03-25T20:20:53.975024804Z",
+      "updated_at": "2026-03-25T20:21:33.728671143Z"
+    },
+    "lb-jqg3": {
+      "id": "lb-jqg3",
+      "title": "use-after-move in docker.rs ensure_volume chown_status — compile error",
+      "description": "In src/docker.rs ensure_volume(), the pattern 'if let Err(e) = chown_status { ... } else if let Ok(s) = chown_status { ... }' is a use-after-move compile error. chown_status is moved into the first if let expression; accessing it again in the else if let branch is invalid. Fix: use a match expression instead: 'match chown_status { Err(e) => eprintln\\!(...), Ok(s) if \\!s.success() => eprintln\\!(...), _ => {} }'. File: src/docker.rs lines 152-158. Introduced in commit 0f34a6d.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 1,
+      "created_at": "2026-03-25T19:48:28.877996937Z",
+      "updated_at": "2026-03-25T19:50:29.153382549Z"
+    },
     "lb-k3be": {
       "id": "lb-k3be",
       "title": "Suppress subprocess stdio when TUI is active",
@@ -400,6 +712,26 @@
       "created_at": "2026-03-12T22:35:37.318369415Z",
       "updated_at": "2026-03-25T18:48:47.162041484Z"
     },
+    "lb-kwd4": {
+      "id": "lb-kwd4",
+      "title": "Deduplicate git_remote_url function",
+      "description": "git_remote_url is copy-pasted identically in run.rs, reviewer.rs, and shipper.rs. Move to harness.rs.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 3,
+      "created_at": "2026-03-25T19:33:57.297852904Z",
+      "updated_at": "2026-03-25T19:36:37.872688161Z"
+    },
+    "lb-kwof": {
+      "id": "lb-kwof",
+      "title": "Add cargo fmt check to CI workflow",
+      "description": "CI runs clippy and tests but doesn't check formatting. Add cargo fmt -- --check step.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 3,
+      "created_at": "2026-03-25T20:00:24.070228902Z",
+      "updated_at": "2026-03-25T20:04:24.480077070Z"
+    },
     "lb-l78i": {
       "id": "lb-l78i",
       "title": "Update loop_cmd: Decision enum, decider schema, branch management",
@@ -409,6 +741,16 @@
       "priority": 2,
       "created_at": "2026-03-09T15:50:45.692248176Z",
       "updated_at": "2026-03-09T18:43:24.869000085Z"
+    },
+    "lb-l836": {
+      "id": "lb-l836",
+      "title": "Add --model flag to mrmouth summary CLI",
+      "description": "The summary subcommand always uses loop_config.summary_model with no CLI override. Add --model flag.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 3,
+      "created_at": "2026-03-25T20:29:49.712898047Z",
+      "updated_at": "2026-03-25T20:32:45.436278873Z"
     },
     "lb-ljfl": {
       "id": "lb-ljfl",
@@ -430,6 +772,16 @@
       "created_at": "2026-03-09T15:50:45.696492755Z",
       "updated_at": "2026-03-09T18:43:24.873621362Z"
     },
+    "lb-mgza": {
+      "id": "lb-mgza",
+      "title": "Docker build stderr swallowed on failure",
+      "description": "docker build -q suppresses all output. When a build fails, the user only sees 'docker build failed (exit code N)' with no indication of what went wrong. Capture stderr and include it in the error message on failure.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 1,
+      "created_at": "2026-03-25T19:33:53.613215193Z",
+      "updated_at": "2026-03-25T19:34:35.437216608Z"
+    },
     "lb-mke6": {
       "id": "lb-mke6",
       "title": "Fix loop bugs found in snowflake test",
@@ -450,6 +802,36 @@
       "created_at": "2026-03-10T16:22:48.890709459Z",
       "updated_at": "2026-03-10T16:25:04.834856803Z"
     },
+    "lb-n90u": {
+      "id": "lb-n90u",
+      "title": "Loop --delay 0 cannot override non-zero config default",
+      "description": "main.rs:155 uses 'if delay > 0' to decide CLI vs config value, making it impossible to explicitly set --delay 0. Should use Option<u32> like other flags.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 2,
+      "created_at": "2026-03-25T19:15:21.069024823Z",
+      "updated_at": "2026-03-25T19:15:47.814148870Z"
+    },
+    "lb-nu6d": {
+      "id": "lb-nu6d",
+      "title": "Readiness checker in shipper.rs fails to parse structured_output from Claude CLI",
+      "description": "The readiness check in shipper.rs uses --json-schema to get a structured READY/BLOCKED response from Claude CLI. It fails with 'readiness check returned invalid JSON: EOF while parsing a value at line 1 column 0'.\n\nRoot cause: same bug that was just fixed in streaming.rs for the decider. When Claude CLI is invoked with --json-schema, the JSONL result event puts the structured JSON in a 'structured_output' field, not 'result'. The 'result' field is an empty string.\n\nThe streaming.rs fix (commit from tonight) correctly handles this for the decider path. But the shipper.rs readiness checker does its own result parsing — it doesn't go through the streaming code path. It needs the same fix: check for structured_output first, serialize the object to a string, fall back to result for non-schema calls.\n\nThe readiness checker runs inside a Docker container and captures stdout. Look at how it parses the claude CLI output and apply the same structured_output handling that was applied to streaming.rs.\n\nReproduction: run mrmouth loop on any project with completed work. The decider will correctly say 'ship', but shipping will fail with the JSON parse error on the readiness check.\n\nFiles: src/shipper.rs (primary), src/streaming.rs (reference for the fix pattern)",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 1,
+      "created_at": "2026-03-26T02:45:26.758703699Z",
+      "updated_at": "2026-03-26T03:39:17.207287631Z"
+    },
+    "lb-nwd4": {
+      "id": "lb-nwd4",
+      "title": "Update README.md config defaults and missing loop flags",
+      "description": "README config section shows wrong volume default (mrmouth-claude-home vs per-project), shows branch=main but default is current branch (None). Loop section in README is missing --max-failures and --timeout flags. Loop config missing reviewer_timeout and shipper_timeout.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 3,
+      "created_at": "2026-03-25T20:23:18.720902903Z",
+      "updated_at": "2026-03-25T20:23:41.153789012Z"
+    },
     "lb-o0x7": {
       "id": "lb-o0x7",
       "title": "mrmouth summary standalone command now outputs to stderr instead of stdout (spec deviation)",
@@ -460,6 +842,16 @@
       "created_at": "2026-03-10T16:05:43.465752389Z",
       "updated_at": "2026-03-10T16:09:21.762474887Z"
     },
+    "lb-oj9p": {
+      "id": "lb-oj9p",
+      "title": "litebrite.rs uses which command — not portable",
+      "description": "has_lb() uses 'which lb' which is not available everywhere. Try running lb directly or use command -v instead.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 3,
+      "created_at": "2026-03-25T20:00:23.927125665Z",
+      "updated_at": "2026-03-25T20:04:01.109733363Z"
+    },
     "lb-okra": {
       "id": "lb-okra",
       "title": "Modify src/run.rs: wire TUI into agent session streaming",
@@ -469,6 +861,16 @@
       "priority": 1,
       "created_at": "2026-03-10T13:14:56.760541893Z",
       "updated_at": "2026-03-12T21:39:40.983905338Z"
+    },
+    "lb-ol2g": {
+      "id": "lb-ol2g",
+      "title": "Update SPEC.md with new --branch and --model flags",
+      "description": "SPEC.md is missing documentation for: run --branch flag, summary --model flag",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 3,
+      "created_at": "2026-03-25T20:33:04.703920506Z",
+      "updated_at": "2026-03-25T20:33:57.158493139Z"
     },
     "lb-oskn": {
       "id": "lb-oskn",
@@ -510,6 +912,16 @@
       "created_at": "2026-03-10T13:14:15.197155635Z",
       "updated_at": "2026-03-12T21:39:40.935812919Z"
     },
+    "lb-rv1t": {
+      "id": "lb-rv1t",
+      "title": "Update SPEC.md volume default to match per-project behavior",
+      "description": "SPEC says default volume is 'mrmouth-claude-home' but the code generates per-project volumes like 'mrmouth-claude-home-{repo-name}'. SPEC should document the actual behavior.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 3,
+      "created_at": "2026-03-25T20:22:37.006555417Z",
+      "updated_at": "2026-03-25T20:22:58.629976778Z"
+    },
     "lb-seph": {
       "id": "lb-seph",
       "title": "Litebrite operations silently swallow all errors with no logging",
@@ -529,6 +941,16 @@
       "priority": 2,
       "created_at": "2026-03-08T20:58:54.952121479Z",
       "updated_at": "2026-03-08T21:00:10.717950372Z"
+    },
+    "lb-skwk": {
+      "id": "lb-skwk",
+      "title": "Add reviewer step to epic mode",
+      "description": "Epic mode has no review step — it blindly trusts each run's output. Add reviewer invocation, probably at the end of the epic after all tasks complete, to catch bad commits before the branch is merged.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 2,
+      "created_at": "2026-03-25T18:59:14.191879750Z",
+      "updated_at": "2026-03-25T19:05:35.001205179Z"
     },
     "lb-tipn": {
       "id": "lb-tipn",
@@ -600,6 +1022,26 @@
       "created_at": "2026-03-09T15:50:45.672099761Z",
       "updated_at": "2026-03-09T18:43:24.848543554Z"
     },
+    "lb-un4s": {
+      "id": "lb-un4s",
+      "title": "git pull after container exit has no timeout",
+      "description": "run.rs git pull --ff-only has no timeout. If remote is unreachable, mrmouth hangs indefinitely.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 2,
+      "created_at": "2026-03-25T19:22:48.136683178Z",
+      "updated_at": "2026-03-25T19:25:12.682386510Z"
+    },
+    "lb-v1qa": {
+      "id": "lb-v1qa",
+      "title": "Epic should pass feature branch to RunOptions explicitly",
+      "description": "epic.rs creates RunOptions with branch: None, relying on run.rs to re-detect the current branch. Should pass the known feature_branch explicitly to avoid redundant detection and potential mismatch.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 3,
+      "created_at": "2026-03-25T20:00:21.152186144Z",
+      "updated_at": "2026-03-25T20:03:35.602227618Z"
+    },
     "lb-vsce": {
       "id": "lb-vsce",
       "title": "Modify src/main.rs: start TUI, thread into subcommands",
@@ -610,6 +1052,27 @@
       "created_at": "2026-03-10T13:14:47.518545914Z",
       "updated_at": "2026-03-12T21:39:40.976778548Z"
     },
+    "lb-wil9": {
+      "id": "lb-wil9",
+      "title": "SPEC.md missing --timeout for loop mode",
+      "description": "The --timeout flag was added to loop mode (commit 8d4453e 'Add per-run timeout to loop mode') but SPEC.md only documents --timeout under the epic subcommand (line 73). The loop subcommand flags section (lines 53-58) does not mention --timeout. SPEC.md should be updated to document this flag for loop mode.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 2,
+      "created_at": "2026-03-25T19:11:17.451611497Z",
+      "updated_at": "2026-03-25T19:13:19.109072166Z"
+    },
+    "lb-wla4": {
+      "id": "lb-wla4",
+      "title": "Quote model name in runner script shell command",
+      "description": "run.rs interpolates --model {model} directly into a shell script without quoting. If model string contains spaces or special chars, the shell command is malformed. Wrap in single quotes.",
+      "item_type": "task",
+      "status": "open",
+      "priority": 3,
+      "claimed_by": "agent-runner",
+      "created_at": "2026-03-25T20:43:13.568182875Z",
+      "updated_at": "2026-03-25T20:43:19.387471688Z"
+    },
     "lb-xfzy": {
       "id": "lb-xfzy",
       "title": "TUI q/Ctrl+C exits via process::exit bypassing Docker cleanup",
@@ -619,6 +1082,16 @@
       "priority": 1,
       "created_at": "2026-03-10T14:39:09.544293746Z",
       "updated_at": "2026-03-10T15:46:26.442127274Z"
+    },
+    "lb-xl9q": {
+      "id": "lb-xl9q",
+      "title": "Container name collision when runs overlap",
+      "description": "Container names use format 'run-{timestamp}' with second-level precision. If two mrmouth instances run from the same repo at the same second, they'll collide on container name. Low probability but could add a random suffix.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 3,
+      "created_at": "2026-03-25T20:05:00.003068403Z",
+      "updated_at": "2026-03-25T20:09:50.407511948Z"
     },
     "lb-xxgz": {
       "id": "lb-xxgz",
@@ -659,12 +1132,32 @@
       "priority": 1,
       "created_at": "2026-03-10T13:15:54.771022003Z",
       "updated_at": "2026-03-12T21:39:41.026417206Z"
+    },
+    "lb-zcay": {
+      "id": "lb-zcay",
+      "title": "Deduplicate runner script boilerplate",
+      "description": "The clone/lb-init/.claude.json-restore preamble is duplicated verbatim in run.rs, reviewer.rs, and shipper.rs. Extract a shared function that generates the script boilerplate.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 2,
+      "created_at": "2026-03-25T19:33:56.331811261Z",
+      "updated_at": "2026-03-25T19:38:55.170091394Z"
     }
   },
   "deps": [
     {
+      "from_id": "lb-1jfl",
+      "to_id": "lb-mke6",
+      "dep_type": "parent"
+    },
+    {
       "from_id": "lb-2dra",
       "to_id": "lb-cmnc",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-5e79",
+      "to_id": "lb-mke6",
       "dep_type": "parent"
     },
     {
@@ -675,6 +1168,11 @@
     {
       "from_id": "lb-68yw",
       "to_id": "lb-cmnc",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-8raq",
+      "to_id": "lb-mke6",
       "dep_type": "parent"
     },
     {
@@ -703,6 +1201,16 @@
       "dep_type": "parent"
     },
     {
+      "from_id": "lb-eu3o",
+      "to_id": "lb-mke6",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-fki2",
+      "to_id": "lb-dvhr",
+      "dep_type": "parent"
+    },
+    {
       "from_id": "lb-h5wx",
       "to_id": "lb-hwg3",
       "dep_type": "parent"
@@ -713,6 +1221,11 @@
       "dep_type": "parent"
     },
     {
+      "from_id": "lb-kwd4",
+      "to_id": "lb-dvhr",
+      "dep_type": "parent"
+    },
+    {
       "from_id": "lb-l78i",
       "to_id": "lb-hwg3",
       "dep_type": "parent"
@@ -720,6 +1233,16 @@
     {
       "from_id": "lb-m12l",
       "to_id": "lb-hwg3",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-mgza",
+      "to_id": "lb-dvhr",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-nu6d",
+      "to_id": "lb-16m8",
       "dep_type": "parent"
     },
     {
@@ -778,23 +1301,8 @@
       "dep_type": "parent"
     },
     {
-      "from_id": "lb-5e79",
-      "to_id": "lb-mke6",
-      "dep_type": "parent"
-    },
-    {
-      "from_id": "lb-8raq",
-      "to_id": "lb-mke6",
-      "dep_type": "parent"
-    },
-    {
-      "from_id": "lb-eu3o",
-      "to_id": "lb-mke6",
-      "dep_type": "parent"
-    },
-    {
-      "from_id": "lb-1jfl",
-      "to_id": "lb-mke6",
+      "from_id": "lb-zcay",
+      "to_id": "lb-dvhr",
       "dep_type": "parent"
     }
   ]
