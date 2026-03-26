@@ -276,22 +276,27 @@ fn should_continue(repo_root: &Path, decider_model: &str, logger: Option<&Logger
     let schema = r#"{"type":"object","properties":{"action":{"type":"string","enum":["continue","ship","stop"],"description":"continue = keep working, ship = merge current branch and start new one, stop = all done"},"reason":{"type":"string","description":"Brief explanation of the decision"}},"required":["action","reason"]}"#;
 
     let prompt = format!("## System\n\n{}\n\n\
-        You are the **Decider**. Your job is to read state and return a decision. \
-        You do NOT implement, review, or modify anything. Do not claim, create, close, \
-        or update litebrite items. Do not make git commits or push.\n\n\
+        You are the **Decider**. Your job is to assess project state and return a decision.\n\n\
+        ## Boundary\n\n\
+        You do NOT implement features, claim tasks, or make code changes. \
+        You MAY create litebrite items, edit the Dockerfile, and read any file.\n\n\
         ## Instructions\n\n\
-        The project is specified in SPEC.md. Check the litebrite task state to see what \
-        has been done and what remains, and compare this to the spec.\n\n\
+        1. Run `lb list` to check for open litebrite items.\n\
+        2. If open items exist, return **continue** — there is work for the runner to do.\n\
+        3. If NO open items exist, read SPEC.md and compare it against the current implementation.\n\
+           - If there are deficiencies or missing features, create litebrite tasks for them \
+             (and optionally edit `.mrmouth/Dockerfile` if tooling changes are needed), then return **continue**.\n\
+           - If the spec is fully satisfied, return **stop**.\n\n\
         Actions:\n\
-        - \"continue\": there is more work to do on the current feature branch\n\
+        - \"continue\": there is work remaining (open items exist or you just created new ones)\n\
         - \"ship\": the current batch of work is complete and ready to merge; start a new branch for remaining work\n\
-        - \"stop\": all work is done, no more runs needed",
+        - \"stop\": the spec is fully satisfied, no more runs needed",
         crate::prompt::SYSTEM_PREAMBLE);
 
     let mut cmd = streaming::claude_stream_cmd_with_schema(
         repo_root,
         decider_model,
-        "Read,Bash(git *),Bash(lb *)",
+        "Read,Edit,Write,Bash(git *),Bash(lb *)",
         schema,
     );
 
