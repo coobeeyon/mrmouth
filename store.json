@@ -536,10 +536,10 @@
       "title": "Fix summary agent file-writing failures on host",
       "description": "Summary agent prompt asks Claude to Write a file, but host-side Claude Code blocks new file creation. Fix: remove Write from allowed tools, change prompt to stdout-only output, capture the already-available result text from streaming, write summary file from Rust code.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 2,
       "created_at": "2026-03-26T12:00:38.699741787Z",
-      "updated_at": "2026-03-26T12:00:38.699741787Z"
+      "updated_at": "2026-03-26T12:03:08.645650807Z"
     },
     "lb-fhpl": {
       "id": "lb-fhpl",
