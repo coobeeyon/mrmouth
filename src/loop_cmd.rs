@@ -141,6 +141,53 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions, tui: Option
             break;
         }
 
+        // --- Decider (runs first; uses loop_logger since no run logger exists yet) ---
+        if let Some(t) = tui { t.set_stage("Deciding"); }
+        let decider_model = config.loop_config.decider_model.clone();
+        let decision = should_continue(repo_root, &decider_model, loop_logger.as_ref());
+
+        match decision {
+            Ok(Decision::Continue(reason)) => {
+                crate::logger::log(loop_logger.as_ref(), &format!("Decider: continue — {reason}"));
+            }
+            Ok(Decision::Ship(reason)) => {
+                crate::logger::log(loop_logger.as_ref(), &format!("Decider: ship — {reason}"));
+
+                if let Some(t) = tui { t.set_stage("Shipper"); }
+                let ship_opts = shipper::ShipperOptions {
+                    model: config.loop_config.shipper_model.clone(),
+                    current_branch: current_branch.clone(),
+                    parent_branch: parent_branch.clone(),
+                };
+
+                match shipper::execute(config, repo_root, &ship_opts, loop_logger.as_ref()) {
+                    Ok(result) => {
+                        crate::logger::log(loop_logger.as_ref(), &format!("Shipped! New branch: {}", result.new_branch));
+                        current_branch = result.new_branch;
+                    }
+                    Err(e) => {
+                        crate::logger::log(loop_logger.as_ref(), &format!("Ship failed (continuing on current branch): {e}"));
+                    }
+                }
+            }
+            Ok(Decision::Stop(reason)) => {
+                crate::logger::log(loop_logger.as_ref(), &format!("Decider: stop — {reason}"));
+                let completed = run_number - 1;
+                emit(&tui_tx, &format!("LOOP COMPLETE  {completed} runs"));
+                break;
+            }
+            Err(e) => {
+                crate::logger::log(loop_logger.as_ref(), &format!("Decider error (continuing anyway): {e}"));
+            }
+        }
+
+        // Check if TUI user cancelled after decider
+        if tui.is_some_and(|t| t.is_cancelled()) {
+            emit(&tui_tx, "LOOP CANCELLED BY USER");
+            break;
+        }
+
+        // --- Runner ---
         let run_opts = RunOptions {
             raw: false,
             model: opts.model.clone(),
@@ -162,7 +209,6 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions, tui: Option
             }
         };
         // Use the run's logger if available, otherwise fall back to the loop logger.
-        // This ensures output routes through the TUI even when a run fails.
         let logger_opt: Option<&Logger> = run_logger.as_ref().or(loop_logger.as_ref());
 
         // Check if TUI user cancelled during the run
@@ -171,10 +217,10 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions, tui: Option
             break;
         }
 
-        // Sync litebrite so reviewer and decider see fresh task state
+        // Sync litebrite so reviewer sees fresh task state
         litebrite::sync(repo_root, logger_opt);
 
-        // Only run reviewer if the agent actually committed something
+        // --- Reviewer (only if the agent actually committed something) ---
         let head_after = git_head(repo_root);
         let agent_made_commits = head_before.is_ok()
             && head_after.is_ok()
@@ -195,60 +241,11 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions, tui: Option
             crate::logger::log(logger_opt, "Reviewer skipped: no new commits from this run.");
         }
 
-        // Run summary and decider in parallel — they're independent
-        if let Some(t) = tui { t.set_stage("Deciding"); }
-        let decider_model = config.loop_config.decider_model.clone();
-        let decision = std::thread::scope(|s| {
-            if !opts.no_summary {
-                let log_file = format!("{}/latest.jsonl", config.log_dir);
-                s.spawn(move || {
-                    if let Err(e) = summary::execute(config, repo_root, &log_file, logger_opt) {
-                        crate::logger::log(logger_opt, &format!("Summary generation failed: {e}"));
-                    }
-                });
-            }
-
-            let decider_handle = s.spawn(move || {
-                should_continue(repo_root, &decider_model, logger_opt)
-            });
-
-            match decider_handle.join() {
-                Ok(result) => result,
-                Err(_) => Err(LoopError::Decider("decider thread panicked".into())),
-            }
-        });
-
-        match decision {
-            Ok(Decision::Continue(reason)) => {
-                crate::logger::log(logger_opt, &format!("Decider: continue — {reason}"));
-            }
-            Ok(Decision::Ship(reason)) => {
-                crate::logger::log(logger_opt, &format!("Decider: ship — {reason}"));
-
-                if let Some(t) = tui { t.set_stage("Shipper"); }
-                let ship_opts = shipper::ShipperOptions {
-                    model: config.loop_config.shipper_model.clone(),
-                    current_branch: current_branch.clone(),
-                    parent_branch: parent_branch.clone(),
-                };
-
-                match shipper::execute(config, repo_root, &ship_opts, logger_opt) {
-                    Ok(result) => {
-                        crate::logger::log(logger_opt, &format!("Shipped! New branch: {}", result.new_branch));
-                        current_branch = result.new_branch;
-                    }
-                    Err(e) => {
-                        crate::logger::log(logger_opt, &format!("Ship failed (continuing on current branch): {e}"));
-                    }
-                }
-            }
-            Ok(Decision::Stop(reason)) => {
-                crate::logger::log(logger_opt, &format!("Decider: stop — {reason}"));
-                emit(&tui_tx, &format!("LOOP COMPLETE  {run_number} runs"));
-                break;
-            }
-            Err(e) => {
-                crate::logger::log(logger_opt, &format!("Decider error (continuing anyway): {e}"));
+        // --- Summary (runs after reviewer) ---
+        if !opts.no_summary {
+            let log_file = format!("{}/latest.jsonl", config.log_dir);
+            if let Err(e) = summary::execute(config, repo_root, &log_file, logger_opt) {
+                crate::logger::log(logger_opt, &format!("Summary generation failed: {e}"));
             }
         }
 
