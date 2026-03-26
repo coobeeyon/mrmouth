@@ -767,11 +767,10 @@
       "title": "Readiness checker in shipper.rs fails to parse structured_output from Claude CLI",
       "description": "The readiness check in shipper.rs uses --json-schema to get a structured READY/BLOCKED response from Claude CLI. It fails with 'readiness check returned invalid JSON: EOF while parsing a value at line 1 column 0'.\n\nRoot cause: same bug that was just fixed in streaming.rs for the decider. When Claude CLI is invoked with --json-schema, the JSONL result event puts the structured JSON in a 'structured_output' field, not 'result'. The 'result' field is an empty string.\n\nThe streaming.rs fix (commit from tonight) correctly handles this for the decider path. But the shipper.rs readiness checker does its own result parsing — it doesn't go through the streaming code path. It needs the same fix: check for structured_output first, serialize the object to a string, fall back to result for non-schema calls.\n\nThe readiness checker runs inside a Docker container and captures stdout. Look at how it parses the claude CLI output and apply the same structured_output handling that was applied to streaming.rs.\n\nReproduction: run mrmouth loop on any project with completed work. The decider will correctly say 'ship', but shipping will fail with the JSON parse error on the readiness check.\n\nFiles: src/shipper.rs (primary), src/streaming.rs (reference for the fix pattern)",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 1,
-      "claimed_by": "agent-runner",
       "created_at": "2026-03-26T02:45:26.758703699Z",
-      "updated_at": "2026-03-26T03:38:32.759321645Z"
+      "updated_at": "2026-03-26T03:39:17.207287631Z"
     },
     "lb-nwd4": {
       "id": "lb-nwd4",
