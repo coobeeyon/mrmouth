@@ -947,11 +947,10 @@
       "title": "Rewrite decider prompt and permissions",
       "description": "Rewrite decider prompt: check lb list for open brites, if any exist return continue. If none, compare implementation to SPEC.md. If deficiencies found, create brites and optionally edit Dockerfile, return continue. If spec satisfied, return stop. Expand permissions to Read,Edit,Write,Bash(git *),Bash(lb *). Remove observer-only admonishment. Keep boundary: do not implement features or claim tasks.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 1,
-      "claimed_by": "agent-runner",
       "created_at": "2026-03-26T16:12:35.182482527Z",
-      "updated_at": "2026-03-26T20:15:59.873190596Z"
+      "updated_at": "2026-03-26T20:17:02.891295518Z"
     },
     "lb-rv1t": {
       "id": "lb-rv1t",
