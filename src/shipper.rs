@@ -148,7 +148,15 @@ fi
         .stream_output(|line| {
             if let Ok(event) = serde_json::from_str::<serde_json::Value>(line) {
                 if event.get("type").and_then(|v| v.as_str()) == Some("result") {
-                    if let Some(r) = event.get("result").and_then(|v| v.as_str()) {
+                    // structured_output (JSON object) takes priority over result (string)
+                    // when --json-schema is used
+                    if let Some(so) = event.get("structured_output") {
+                        if so.is_object() || so.is_array() {
+                            result_text = serde_json::to_string(so).unwrap_or_default();
+                        } else if let Some(s) = so.as_str() {
+                            result_text = s.to_string();
+                        }
+                    } else if let Some(r) = event.get("result").and_then(|v| v.as_str()) {
                         result_text = r.to_string();
                     }
                 }

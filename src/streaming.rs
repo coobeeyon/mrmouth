@@ -70,10 +70,18 @@ pub fn run_streaming_claude(
                 continue;
             }
 
-            // Check for the "result" event to capture its result field
+            // Check for the "result" event to capture its result field.
+            // When --json-schema is used, the structured output is in
+            // "structured_output" (a JSON object), not "result" (empty string).
             if let Ok(event) = serde_json::from_str::<serde_json::Value>(trimmed) {
                 if event.get("type").and_then(|v| v.as_str()) == Some("result") {
-                    if let Some(r) = event.get("result").and_then(|v| v.as_str()) {
+                    if let Some(so) = event.get("structured_output") {
+                        if so.is_object() || so.is_array() {
+                            result_text = serde_json::to_string(so).unwrap_or_default();
+                        } else if let Some(s) = so.as_str() {
+                            result_text = s.to_string();
+                        }
+                    } else if let Some(r) = event.get("result").and_then(|v| v.as_str()) {
                         result_text = r.to_string();
                     }
                 }
