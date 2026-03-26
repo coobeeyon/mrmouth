@@ -568,8 +568,9 @@
       "item_type": "feature",
       "status": "open",
       "priority": 2,
+      "claimed_by": "Mike Daum",
       "created_at": "2026-03-26T12:11:07.769456606Z",
-      "updated_at": "2026-03-26T12:11:07.769456606Z"
+      "updated_at": "2026-03-26T12:35:15.320297521Z"
     },
     "lb-g45o": {
       "id": "lb-g45o",
