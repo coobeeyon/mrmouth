@@ -290,6 +290,16 @@
       "created_at": "2026-03-10T17:03:56.437475603Z",
       "updated_at": "2026-03-10T17:05:16.563684351Z"
     },
+    "lb-eu3o": {
+      "id": "lb-eu3o",
+      "title": "Fix summary agent file-writing failures on host",
+      "description": "Summary agent prompt asks Claude to Write a file, but host-side Claude Code blocks new file creation. Fix: remove Write from allowed tools, change prompt to stdout-only output, capture the already-available result text from streaming, write summary file from Rust code.",
+      "item_type": "task",
+      "status": "open",
+      "priority": 2,
+      "created_at": "2026-03-26T12:00:38.699741787Z",
+      "updated_at": "2026-03-26T12:00:38.699741787Z"
+    },
     "lb-g6rz": {
       "id": "lb-g6rz",
       "title": "Misleading git pull failure message in run.rs",
@@ -764,6 +774,11 @@
     },
     {
       "from_id": "lb-8raq",
+      "to_id": "lb-mke6",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-eu3o",
       "to_id": "lb-mke6",
       "dep_type": "parent"
     }
