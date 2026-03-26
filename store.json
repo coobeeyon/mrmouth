@@ -942,6 +942,16 @@
       "created_at": "2026-03-10T13:14:15.197155635Z",
       "updated_at": "2026-03-12T21:39:40.935812919Z"
     },
+    "lb-qnpw": {
+      "id": "lb-qnpw",
+      "title": "Rewrite decider prompt and permissions",
+      "description": "Rewrite decider prompt: check lb list for open brites, if any exist return continue. If none, compare implementation to SPEC.md. If deficiencies found, create brites and optionally edit Dockerfile, return continue. If spec satisfied, return stop. Expand permissions to Read,Edit,Write,Bash(git *),Bash(lb *). Remove observer-only admonishment. Keep boundary: do not implement features or claim tasks.",
+      "item_type": "task",
+      "status": "open",
+      "priority": 1,
+      "created_at": "2026-03-26T16:12:35.182482527Z",
+      "updated_at": "2026-03-26T16:12:35.182482527Z"
+    },
     "lb-rv1t": {
       "id": "lb-rv1t",
       "title": "Update SPEC.md volume default to match per-project behavior",
@@ -1337,6 +1347,11 @@
     },
     {
       "from_id": "lb-1hfx",
+      "to_id": "lb-2rj3",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-qnpw",
       "to_id": "lb-2rj3",
       "dep_type": "parent"
     }
