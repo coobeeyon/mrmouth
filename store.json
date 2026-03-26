@@ -1171,6 +1171,11 @@
       "dep_type": "parent"
     },
     {
+      "from_id": "lb-nu6d",
+      "to_id": "lb-16m8",
+      "dep_type": "parent"
+    },
+    {
       "from_id": "lb-okra",
       "to_id": "lb-cmnc",
       "dep_type": "parent"
@@ -1228,11 +1233,6 @@
     {
       "from_id": "lb-zcay",
       "to_id": "lb-dvhr",
-      "dep_type": "parent"
-    },
-    {
-      "from_id": "lb-nu6d",
-      "to_id": "lb-16m8",
       "dep_type": "parent"
     }
   ]
