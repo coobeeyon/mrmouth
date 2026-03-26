@@ -122,11 +122,15 @@ fn main() {
     };
 
     // Start TUI unless --raw is set or stderr is not a TTY
+    let project_name = repo_root
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("mrmouth");
     let use_raw = matches!(cli.command, Commands::Run { raw: true, .. } | Commands::Summary { .. });
     let tui = if use_raw {
         None
     } else {
-        tui::TuiHandle::try_start()
+        tui::TuiHandle::try_start(project_name)
     };
 
     let result = match cli.command {

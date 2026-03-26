@@ -36,6 +36,7 @@ pub struct RunOptions {
 /// Execute one agent run. Returns the Logger so callers can continue writing to the same
 /// log file for subsequent stages (reviewer, decider, summary, etc.).
 pub fn execute(config: &Config, repo_root: &Path, opts: RunOptions, tui: Option<&TuiHandle>) -> Result<Logger, RunError> {
+    if let Some(t) = tui { t.set_status("Agent"); }
     // 0. Set up logging first so every stage is captured
     let log_dir = repo_root.join(&config.log_dir);
     fs::create_dir_all(&log_dir)

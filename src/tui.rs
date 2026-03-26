@@ -24,6 +24,7 @@ const POLL_TIMEOUT: Duration = Duration::from_millis(50);
 /// Messages sent to the TUI render thread.
 enum TuiMsg {
     Line { pane: String, text: String },
+    SetStatus(String),
     Quit,
 }
 
@@ -43,6 +44,10 @@ pub struct TuiSender {
 
 /// Internal state for all panes.
 struct TuiState {
+    /// Project name shown in the header.
+    project: String,
+    /// Current status shown in the header (e.g. "Run 3 | Agent").
+    status: String,
     /// Ordered map of pane name -> ring buffer of lines.
     panes: Vec<(String, VecDeque<String>)>,
     /// Index of the currently active (visible) pane.
@@ -52,8 +57,10 @@ struct TuiState {
 }
 
 impl TuiState {
-    fn new() -> Self {
+    fn new(project: String) -> Self {
         Self {
+            project,
+            status: String::new(),
             panes: Vec::new(),
             active: 0,
             scroll: 0,
@@ -94,6 +101,7 @@ impl TuiState {
         }
     }
 
+    #[cfg(test)]
     fn active_name(&self) -> &str {
         self.panes
             .get(self.active)
@@ -112,7 +120,7 @@ impl TuiState {
 
 impl TuiHandle {
     /// Start the TUI if stderr is a TTY. Returns None if not a TTY.
-    pub fn try_start() -> Option<Self> {
+    pub fn try_start(project: &str) -> Option<Self> {
         if !io::stderr().is_terminal() {
             return None;
         }
@@ -120,8 +128,9 @@ impl TuiHandle {
         let (tx, rx) = mpsc::channel();
         let cancelled = Arc::new(AtomicBool::new(false));
         let cancelled_clone = Arc::clone(&cancelled);
+        let project = project.to_string();
         let thread = std::thread::spawn(move || {
-            if let Err(e) = render_loop(rx, &cancelled_clone) {
+            if let Err(e) = render_loop(rx, &cancelled_clone, project) {
                 // Best effort: restore terminal and print error
                 let _ = disable_raw_mode();
                 let _ = execute!(io::stderr(), LeaveAlternateScreen);
@@ -144,6 +153,11 @@ impl TuiHandle {
     /// Returns a clone of the cancellation flag for use in watcher threads.
     pub fn cancelled_flag(&self) -> Arc<AtomicBool> {
         Arc::clone(&self.cancelled)
+    }
+
+    /// Update the status shown in the TUI header.
+    pub fn set_status(&self, status: &str) {
+        let _ = self.tx.send(TuiMsg::SetStatus(status.to_string()));
     }
 
     /// Create a TuiSender that tags lines with the given pane label.
@@ -176,7 +190,7 @@ impl TuiSender {
 }
 
 /// Main render loop running on the background thread.
-fn render_loop(rx: Receiver<TuiMsg>, cancelled: &AtomicBool) -> io::Result<()> {
+fn render_loop(rx: Receiver<TuiMsg>, cancelled: &AtomicBool, project: String) -> io::Result<()> {
     enable_raw_mode()?;
     let mut stderr = io::stderr();
     execute!(stderr, EnterAlternateScreen)?;
@@ -184,7 +198,7 @@ fn render_loop(rx: Receiver<TuiMsg>, cancelled: &AtomicBool) -> io::Result<()> {
     let backend = CrosstermBackend::new(stderr);
     let mut terminal = Terminal::new(backend)?;
     terminal.clear()?;
-    let mut state = TuiState::new();
+    let mut state = TuiState::new(project);
     let mut needs_redraw = true;
 
     loop {
@@ -193,6 +207,10 @@ fn render_loop(rx: Receiver<TuiMsg>, cancelled: &AtomicBool) -> io::Result<()> {
             match rx.try_recv() {
                 Ok(TuiMsg::Line { pane, text }) => {
                     state.push_line(&pane, text);
+                    needs_redraw = true;
+                }
+                Ok(TuiMsg::SetStatus(status)) => {
+                    state.status = status;
                     needs_redraw = true;
                 }
                 Ok(TuiMsg::Quit) => {
@@ -263,8 +281,11 @@ fn draw(
         .split(frame.area());
 
         // Header
-        let active = state.active_name();
-        let header_text = format!(" mrmouth | {} ", active.to_uppercase());
+        let header_text = if state.status.is_empty() {
+            format!(" {} ", state.project)
+        } else {
+            format!(" {} | {} ", state.project, state.status)
+        };
         let header = Paragraph::new(Line::from(header_text))
             .style(Style::default().fg(Color::Black).bg(Color::Cyan));
         frame.render_widget(header, chunks[0]);
@@ -331,7 +352,7 @@ mod tests {
 
     #[test]
     fn push_line_splits_on_newline() {
-        let mut state = TuiState::new();
+        let mut state = TuiState::new("test".into());
         state.push_line("test", "line1\nline2\nline3".to_string());
         let lines = state.active_lines();
         assert_eq!(lines.len(), 3);
@@ -342,7 +363,7 @@ mod tests {
 
     #[test]
     fn push_line_strips_carriage_returns() {
-        let mut state = TuiState::new();
+        let mut state = TuiState::new("test".into());
         state.push_line("test", "hello\r\nworld\r".to_string());
         let lines = state.active_lines();
         assert_eq!(lines.len(), 2);
@@ -352,7 +373,7 @@ mod tests {
 
     #[test]
     fn push_line_single_line_no_split() {
-        let mut state = TuiState::new();
+        let mut state = TuiState::new("test".into());
         state.push_line("test", "just one line".to_string());
         let lines = state.active_lines();
         assert_eq!(lines.len(), 1);
@@ -361,7 +382,7 @@ mod tests {
 
     #[test]
     fn push_line_respects_max_lines() {
-        let mut state = TuiState::new();
+        let mut state = TuiState::new("test".into());
         // Push more than MAX_LINES individual lines
         for i in 0..MAX_LINES + 50 {
             state.push_line("test", format!("line {i}"));
@@ -373,7 +394,7 @@ mod tests {
 
     #[test]
     fn push_line_multiline_counts_toward_max() {
-        let mut state = TuiState::new();
+        let mut state = TuiState::new("test".into());
         // Fill to near capacity
         for i in 0..MAX_LINES - 2 {
             state.push_line("test", format!("line {i}"));
@@ -385,7 +406,7 @@ mod tests {
 
     #[test]
     fn push_line_resets_scroll_on_active_pane() {
-        let mut state = TuiState::new();
+        let mut state = TuiState::new("test".into());
         state.push_line("pane1", "hello".to_string());
         state.scroll = 10;
         state.push_line("pane1", "world".to_string());
@@ -394,7 +415,7 @@ mod tests {
 
     #[test]
     fn next_pane_cycles() {
-        let mut state = TuiState::new();
+        let mut state = TuiState::new("test".into());
         state.push_line("A", "a".to_string());
         state.push_line("B", "b".to_string());
         // Active should be "B" (auto-switched to newest)
