@@ -1374,6 +1374,11 @@
       "from_id": "lb-1hfx",
       "to_id": "lb-qnpw",
       "dep_type": "blocks"
+    },
+    {
+      "from_id": "lb-1hfx",
+      "to_id": "lb-xkq6",
+      "dep_type": "blocks"
     }
   ]
 }
