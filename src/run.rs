@@ -115,7 +115,7 @@ pub fn execute(config: &Config, repo_root: &Path, opts: RunOptions, tui: Option<
         name: container_name.clone(),
         repo_url,
         branch: branch.clone(),
-        runner_script: runner_script.path().to_path_buf(),
+        runner_script: runner_script.to_path_buf(),
         volume,
         local: opts.local,
         file_remote_path: file_remote_path.clone(),
@@ -317,7 +317,7 @@ fn write_runner_script(
     dockerfile_content: &str,
     dockerfile_path: &str,
     logger: Option<&Logger>,
-) -> Result<tempfile::NamedTempFile, RunError> {
+) -> Result<tempfile::TempPath, RunError> {
     let prompt_text = match prompt_override {
         Some(p) => p.to_string(),
         None => prompt::load_prompt(repo_root, logger),
@@ -392,20 +392,25 @@ fi
         .replace("__DOCKERFILE_CONTENT__", dockerfile_content)
         .replace("__DOCKERFILE_REL_PATH__", dockerfile_path);
 
-    let mut tmp = tempfile::NamedTempFile::new()
+    let tmp = tempfile::NamedTempFile::new()
         .map_err(|e| RunError::Io("creating runner script".into(), e))?;
-    tmp.write_all(script.as_bytes())
+
+    // Close the write fd before mounting into Docker. Linux returns ETXTBSY when
+    // execve() targets an inode that any process holds open for writing.
+    // `into_temp_path()` closes the fd but keeps the deletion-on-drop guard.
+    let tmp_path = tmp.into_temp_path();
+    std::fs::write(&tmp_path, script.as_bytes())
         .map_err(|e| RunError::Io("writing runner script".into(), e))?;
 
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         let perms = std::fs::Permissions::from_mode(0o755);
-        std::fs::set_permissions(tmp.path(), perms)
+        std::fs::set_permissions(&tmp_path, perms)
             .map_err(|e| RunError::Io("setting runner script permissions".into(), e))?;
     }
 
-    Ok(tmp)
+    Ok(tmp_path)
 }
 
 #[derive(Debug)]
@@ -454,7 +459,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let tmp = write_runner_script(dir.path(), "sonnet", None, TEST_DOCKERFILE, TEST_DOCKERFILE_PATH, None).unwrap();
         let mut content = String::new();
-        File::open(tmp.path()).unwrap().read_to_string(&mut content).unwrap();
+        File::open(&tmp).unwrap().read_to_string(&mut content).unwrap();
         assert!(content.contains("--model sonnet"));
     }
 
@@ -463,7 +468,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let tmp = write_runner_script(dir.path(), "opus", None, TEST_DOCKERFILE, TEST_DOCKERFILE_PATH, None).unwrap();
         let mut content = String::new();
-        File::open(tmp.path()).unwrap().read_to_string(&mut content).unwrap();
+        File::open(&tmp).unwrap().read_to_string(&mut content).unwrap();
         let init_pos = content.find("lb init").unwrap();
         let sync_pos = content.find("lb sync 2>/dev/null || true").unwrap();
         assert!(sync_pos > init_pos, "lb sync should come after lb init");
@@ -474,7 +479,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let tmp = write_runner_script(dir.path(), "opus", Some("custom prompt here"), TEST_DOCKERFILE, TEST_DOCKERFILE_PATH, None).unwrap();
         let mut content = String::new();
-        File::open(tmp.path()).unwrap().read_to_string(&mut content).unwrap();
+        File::open(&tmp).unwrap().read_to_string(&mut content).unwrap();
         assert!(content.contains("custom prompt here"));
     }
 
@@ -483,7 +488,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let tmp = write_runner_script(dir.path(), "opus", Some("don't break"), TEST_DOCKERFILE, TEST_DOCKERFILE_PATH, None).unwrap();
         let mut content = String::new();
-        File::open(tmp.path()).unwrap().read_to_string(&mut content).unwrap();
+        File::open(&tmp).unwrap().read_to_string(&mut content).unwrap();
         assert!(content.contains(r"don'\''t break"));
     }
 
@@ -494,7 +499,7 @@ mod tests {
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            let perms = std::fs::metadata(tmp.path()).unwrap().permissions();
+            let perms = std::fs::metadata(&tmp).unwrap().permissions();
             assert_eq!(perms.mode() & 0o755, 0o755);
         }
     }
@@ -504,7 +509,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let tmp = write_runner_script(dir.path(), "opus", None, TEST_DOCKERFILE, TEST_DOCKERFILE_PATH, None).unwrap();
         let mut content = String::new();
-        File::open(tmp.path()).unwrap().read_to_string(&mut content).unwrap();
+        File::open(&tmp).unwrap().read_to_string(&mut content).unwrap();
         assert!(content.starts_with("#!/usr/bin/env bash"));
     }
 
@@ -514,7 +519,7 @@ mod tests {
         let dockerfile = "FROM node:22\nRUN echo hello\nARG HOST_UID=${HOST_UID}";
         let tmp = write_runner_script(dir.path(), "opus", None, dockerfile, ".mrmouth/Dockerfile", None).unwrap();
         let mut content = String::new();
-        File::open(tmp.path()).unwrap().read_to_string(&mut content).unwrap();
+        File::open(&tmp).unwrap().read_to_string(&mut content).unwrap();
         assert!(content.contains("MRMOUTH_DOCKERFILE_EOF"));
         assert!(content.contains("FROM node:22"));
         assert!(content.contains("ARG HOST_UID=${HOST_UID}"), "Docker ARG syntax must be preserved literally");

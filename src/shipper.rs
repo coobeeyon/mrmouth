@@ -38,8 +38,12 @@ pub fn execute(config: &Config, repo_root: &Path, opts: &ShipperOptions, logger:
 fn check_ready(config: &Config, repo_root: &Path, current_branch: &str, model: &str, logger: Option<&Logger>) -> Result<(), ShipperError> {
     let schema = r#"{"type":"object","properties":{"status":{"type":"string","enum":["READY","BLOCKED"]},"reason":{"type":"string"}},"required":["status","reason"]}"#;
 
+    let preamble = crate::prompt::SYSTEM_PREAMBLE;
     let prompt = format!(
-        "You are checking if branch '{current_branch}' is ready to ship. \
+        "## System\n\n{preamble}\n\n\
+        You are the **Shipper** (readiness check). Your only job is to verify the branch is ready to merge.\n\n\
+        ## Instructions\n\n\
+        Check if branch '{current_branch}' is ready to ship. \
         Check: (1) run 'lb list -s open' to confirm no open blocking tasks exist, \
         (2) discover the project's build and test commands by examining the project \
         structure (Makefile, package.json, Cargo.toml, etc.) and run them to verify \

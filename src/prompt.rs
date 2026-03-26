@@ -1,6 +1,13 @@
+/// Brief system description shared across all agent prompts.
+pub const SYSTEM_PREAMBLE: &str = "You are part of an automated loop with four agents:\n\
+    - **Runner** — implements tasks (writes code, commits)\n\
+    - **Reviewer** — reviews commits for bugs and spec deviations, files issues\n\
+    - **Decider** — reads spec + task state, decides whether to continue, ship, or stop\n\
+    - **Shipper** — merges the branch when a batch of work is complete";
+
 /// The default agent prompt embedded in the binary.
 /// This can be overridden by placing a `prompt.md` in `.mrmouth/`.
-pub const DEFAULT_PROMPT: &str = r#"You are ONE agent in a relay. Work on tasks until your context is filling up, then stop.
+pub const DEFAULT_PROMPT: &str = r#"You are the **Runner**. Your job is to implement existing tasks. You do NOT review, decide, or ship.
 
 ## Steps
 
@@ -63,5 +70,5 @@ pub fn load_prompt(repo_root: &std::path::Path, logger: Option<&crate::logger::L
             }
         }
     }
-    DEFAULT_PROMPT.to_string()
+    format!("## System\n\n{SYSTEM_PREAMBLE}\n\n{DEFAULT_PROMPT}")
 }

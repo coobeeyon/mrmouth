@@ -1,4 +1,4 @@
-use std::io::{IsTerminal, Write};
+use std::io::IsTerminal;
 use std::path::Path;
 use std::process::Command;
 
@@ -21,8 +21,12 @@ pub fn execute(config: &Config, repo_root: &Path, opts: &ReviewerOptions, logger
 
     let effective_dockerfile = crate::docker::effective_dockerfile_content(repo_root, &config.dockerfile);
 
+    let preamble = crate::prompt::SYSTEM_PREAMBLE;
     let prompt = format!(
-        "You are a code reviewer for this project. Review the changes on branch '{}' \
+        "## System\n\n{preamble}\n\n\
+        You are the **Reviewer**. Your job is to review code and file issues. You do NOT implement features, make architectural decisions, or decide whether the loop continues.\n\n\
+        ## Instructions\n\n\
+        Review the changes on branch '{}' \
         against the project spec (SPEC.md). Use git diff and git log to understand what changed. \
         Use lb commands to inspect task state.\n\n\
         First, verify the project builds and all tests pass. Discover the correct build/test \
@@ -111,16 +115,21 @@ fi
         .replace("__DOCKERFILE_CONTENT__", &effective_dockerfile)
         .replace("__DOCKERFILE_REL_PATH__", &config.dockerfile);
 
-    let mut tmp = tempfile::NamedTempFile::new()
+    let tmp = tempfile::NamedTempFile::new()
         .map_err(|e| ReviewerError(format!("failed to create reviewer script: {e}")))?;
-    tmp.write_all(script.as_bytes())
+
+    // Close the write fd before mounting into Docker. Linux returns ETXTBSY when
+    // execve() targets an inode that any process holds open for writing.
+    // `into_temp_path()` closes the fd but keeps the deletion-on-drop guard.
+    let tmp_path = tmp.into_temp_path();
+    std::fs::write(&tmp_path, script.as_bytes())
         .map_err(|e| ReviewerError(format!("failed to write reviewer script: {e}")))?;
 
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         let perms = std::fs::Permissions::from_mode(0o755);
-        std::fs::set_permissions(tmp.path(), perms)
+        std::fs::set_permissions(&tmp_path, perms)
             .map_err(|e| ReviewerError(format!("failed to set script permissions: {e}")))?;
     }
 
@@ -144,7 +153,7 @@ fi
         name: container_name.clone(),
         repo_url,
         branch: opts.current_branch.clone(),
-        runner_script: tmp.path().to_path_buf(),
+        runner_script: tmp_path.to_path_buf(),
         volume,
         local: false,
         file_remote_path,
@@ -187,6 +196,7 @@ fi
 
     if exit_code != 0 {
         crate::logger::log(logger, &format!("Reviewer container exited with code {exit_code}"));
+        return Err(ReviewerError(format!("reviewer container exited with code {exit_code}")));
     }
 
     crate::logger::log(logger, "Reviewer pass complete.");

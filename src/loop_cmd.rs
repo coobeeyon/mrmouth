@@ -278,14 +278,18 @@ fn should_continue(repo_root: &Path, decider_model: &str, logger: Option<&Logger
 
     let schema = r#"{"type":"object","properties":{"action":{"type":"string","enum":["continue","ship","stop"],"description":"continue = keep working, ship = merge current branch and start new one, stop = all done"},"reason":{"type":"string","description":"Brief explanation of the decision"}},"required":["action","reason"]}"#;
 
-    let prompt = "You are deciding what an AI agent loop should do next. \
-        The project is specified in SPEC.md. You can see in the lites what has been done \
-        and what remains to do, and you can compare this to the SPEC.md (which may have changed) \
-        in order to make your decision.\n\n\
+    let prompt = format!("## System\n\n{}\n\n\
+        You are the **Decider**. Your job is to read state and return a decision. \
+        You do NOT implement, review, or modify anything. Do not claim, create, close, \
+        or update litebrite items. Do not make git commits or push.\n\n\
+        ## Instructions\n\n\
+        The project is specified in SPEC.md. Check the litebrite task state to see what \
+        has been done and what remains, and compare this to the spec.\n\n\
         Actions:\n\
         - \"continue\": there is more work to do on the current feature branch\n\
         - \"ship\": the current batch of work is complete and ready to merge; start a new branch for remaining work\n\
-        - \"stop\": all work is done, no more runs needed";
+        - \"stop\": all work is done, no more runs needed",
+        crate::prompt::SYSTEM_PREAMBLE);
 
     let mut cmd = streaming::claude_stream_cmd_with_schema(
         repo_root,
@@ -298,7 +302,7 @@ fn should_continue(repo_root: &Path, decider_model: &str, logger: Option<&Logger
         .spawn()
         .map_err(|e| LoopError::Decider(format!("failed to run claude CLI: {e}")))?;
 
-    streaming::send_prompt(&mut child, prompt);
+    streaming::send_prompt(&mut child, &prompt);
 
     let target = match logger.and_then(|l| l.tui_sender()) {
         Some(tui) => StreamTarget::Tui(tui.clone()),
