@@ -566,11 +566,10 @@
       "title": "Dynamic TUI header: project name, run number, and stage",
       "description": "Header currently hardcodes 'mrmouth | AGENT SESSION'. Change to show project name (from repo dir), loop run number, and current stage (Agent, Reviewer, Summary, Decider, Shipper). E.g. 'snowflake | Run 3 | Agent'. Requires: TuiState gets project/status fields, TuiMsg::SetStatus variant, TuiHandle::try_start takes project name, TuiHandle::set_status method, header render uses new fields. Callers (main.rs, loop_cmd.rs, run.rs, epic.rs) updated to pass project name and set status at stage transitions.",
       "item_type": "feature",
-      "status": "open",
+      "status": "closed",
       "priority": 2,
-      "claimed_by": "Mike Daum",
       "created_at": "2026-03-26T12:11:07.769456606Z",
-      "updated_at": "2026-03-26T12:35:15.320297521Z"
+      "updated_at": "2026-03-26T12:39:56.599595531Z"
     },
     "lb-g45o": {
       "id": "lb-g45o",
