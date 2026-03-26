@@ -1128,11 +1128,10 @@
       "title": "Strip task-creation from runner prompt",
       "description": "In prompt.rs DEFAULT_PROMPT, remove steps 3 and 7 which tell the runner to create tasks. Runner should only pick existing tasks, implement, and commit. Task creation is now the decider's job.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 1,
-      "claimed_by": "agent-runner",
       "created_at": "2026-03-26T16:12:36.933983750Z",
-      "updated_at": "2026-03-26T20:17:42.506799432Z"
+      "updated_at": "2026-03-26T20:18:18.988088445Z"
     },
     "lb-xl9q": {
       "id": "lb-xl9q",
