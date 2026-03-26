@@ -276,10 +276,10 @@
       "title": "Guard Dockerfile extraction against DEFAULT_DOCKERFILE fallback",
       "description": "run.rs unconditionally extracts the container Dockerfile to .mrmouth/Dockerfile after each run. When run 1 used DEFAULT_DOCKERFILE (no user Dockerfile existed), the agent's incompatible Dockerfile overwrites the fallback path, breaking all subsequent Docker builds. Fix: record whether .mrmouth/Dockerfile existed before the run; only extract if it did.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 1,
       "created_at": "2026-03-26T12:00:34.443995781Z",
-      "updated_at": "2026-03-26T12:00:34.443995781Z"
+      "updated_at": "2026-03-26T12:03:08.621978095Z"
     },
     "lb-5yis": {
       "id": "lb-5yis",
