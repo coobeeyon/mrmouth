@@ -48,8 +48,9 @@
       "item_type": "task",
       "status": "open",
       "priority": 1,
+      "claimed_by": "agent-runner",
       "created_at": "2026-03-26T16:12:32.948734861Z",
-      "updated_at": "2026-03-26T16:12:32.948734861Z"
+      "updated_at": "2026-03-26T20:13:03.320089327Z"
     },
     "lb-1jfl": {
       "id": "lb-1jfl",
