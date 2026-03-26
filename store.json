@@ -11,6 +11,16 @@
       "created_at": "2026-03-25T20:43:12.971834962Z",
       "updated_at": "2026-03-25T20:43:17.741536155Z"
     },
+    "lb-16m8": {
+      "id": "lb-16m8",
+      "title": "Fix structured_output parsing in shipper readiness check",
+      "description": "Parent epic for shipper.rs structured_output fix",
+      "item_type": "epic",
+      "status": "open",
+      "priority": 1,
+      "created_at": "2026-03-26T03:18:25.635507194Z",
+      "updated_at": "2026-03-26T03:18:25.635507194Z"
+    },
     "lb-1brq": {
       "id": "lb-1brq",
       "title": "Fix Epic CLI args not distinguishing explicit vs default values",
