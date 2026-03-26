@@ -37,15 +37,29 @@ fn run_lb(repo_root: &Path, args: &[&str], logger: Option<&Logger>) {
     }
 }
 
+/// Check whether the repo has a git remote named "origin".
+fn has_git_remote(repo_root: &Path) -> bool {
+    Command::new("git")
+        .args(["-C", &repo_root.to_string_lossy(), "remote", "get-url", "origin"])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_ok_and(|s| s.success())
+}
+
 /// Full litebrite setup: init, setup claude, then sync.
 /// Used before/after agent runs where the repo state may need initialization.
 pub fn init_and_sync(repo_root: &Path, logger: Option<&Logger>) {
     if !has_lb() {
         return;
     }
-    run_lb(repo_root, &["init"], logger);
+    if !repo_root.join(".litebrite").exists() {
+        run_lb(repo_root, &["init"], logger);
+    }
     run_lb(repo_root, &["setup", "claude"], logger);
-    run_lb(repo_root, &["sync"], logger);
+    if has_git_remote(repo_root) {
+        run_lb(repo_root, &["sync"], logger);
+    }
 }
 
 /// Sync-only: just run `lb sync` to exchange state with remote.
@@ -54,5 +68,7 @@ pub fn sync(repo_root: &Path, logger: Option<&Logger>) {
     if !has_lb() {
         return;
     }
-    run_lb(repo_root, &["sync"], logger);
+    if has_git_remote(repo_root) {
+        run_lb(repo_root, &["sync"], logger);
+    }
 }

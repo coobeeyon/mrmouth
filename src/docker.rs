@@ -57,6 +57,18 @@ RUN git config --global user.name "agent-runner" && \
 ENTRYPOINT ["bash"]
 "#;
 
+/// Returns the effective Dockerfile content: reads from `repo_root/dockerfile_path`
+/// if it exists, otherwise returns DEFAULT_DOCKERFILE.
+pub fn effective_dockerfile_content(repo_root: &Path, dockerfile_path: &str) -> String {
+    let dockerfile = repo_root.join(dockerfile_path);
+    if dockerfile.exists() {
+        if let Ok(content) = std::fs::read_to_string(&dockerfile) {
+            return content;
+        }
+    }
+    DEFAULT_DOCKERFILE.to_string()
+}
+
 pub struct DockerBuilder {
     image_name: String,
 }
@@ -110,7 +122,8 @@ impl DockerBuilder {
             .map_err(|e| DockerError::Io("running docker build".into(), e))?;
 
         if !output.status.success() {
-            return Err(DockerError::BuildFailed(output.status.code().unwrap_or(-1)));
+            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+            return Err(DockerError::BuildFailed(output.status.code().unwrap_or(-1), stderr));
         }
 
         Ok(())
@@ -360,7 +373,7 @@ fn get_gid() -> u32 {
 #[derive(Debug)]
 pub enum DockerError {
     Io(String, std::io::Error),
-    BuildFailed(i32),
+    BuildFailed(i32, String),
     NoStdout,
     NoStderr,
 }
@@ -369,7 +382,14 @@ impl std::fmt::Display for DockerError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Io(ctx, e) => write!(f, "{ctx}: {e}"),
-            Self::BuildFailed(code) => write!(f, "docker build failed (exit code {code})"),
+            Self::BuildFailed(code, stderr) => {
+                write!(f, "docker build failed (exit code {code})")?;
+                let stderr = stderr.trim();
+                if !stderr.is_empty() {
+                    write!(f, "\n{stderr}")?;
+                }
+                Ok(())
+            }
             Self::NoStdout => write!(f, "failed to capture container stdout"),
             Self::NoStderr => write!(f, "failed to capture container stderr"),
         }

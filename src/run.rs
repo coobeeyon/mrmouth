@@ -36,7 +36,7 @@ pub struct RunOptions {
 /// Execute one agent run. Returns the Logger so callers can continue writing to the same
 /// log file for subsequent stages (reviewer, decider, summary, etc.).
 pub fn execute(config: &Config, repo_root: &Path, opts: RunOptions, tui: Option<&TuiHandle>) -> Result<Logger, RunError> {
-    if let Some(t) = tui { t.set_status("Agent"); }
+    if let Some(t) = tui { t.set_stage("Agent"); }
     // 0. Set up logging first so every stage is captured
     let log_dir = repo_root.join(&config.log_dir);
     fs::create_dir_all(&log_dir)
@@ -82,7 +82,8 @@ pub fn execute(config: &Config, repo_root: &Path, opts: RunOptions, tui: Option<
     litebrite::init_and_sync(repo_root, Some(&logger));
 
     // 4. Write runner entrypoint script
-    let runner_script = write_runner_script(repo_root, &opts.model, opts.prompt_override.as_deref(), Some(&logger))?;
+    let effective_dockerfile = crate::docker::effective_dockerfile_content(repo_root, &config.dockerfile);
+    let runner_script = write_runner_script(repo_root, &opts.model, opts.prompt_override.as_deref(), &effective_dockerfile, &config.dockerfile, Some(&logger))?;
 
     // 5. Build Docker image
     logger.log("Docker build starting...");
@@ -313,6 +314,8 @@ fn write_runner_script(
     repo_root: &Path,
     model: &str,
     prompt_override: Option<&str>,
+    dockerfile_content: &str,
+    dockerfile_path: &str,
     logger: Option<&Logger>,
 ) -> Result<tempfile::NamedTempFile, RunError> {
     let prompt_text = match prompt_override {
@@ -341,6 +344,16 @@ if [ ! -d "$work_dir/.git" ]; then
 fi
 cd "$work_dir"
 git config --global --add safe.directory "$work_dir"
+
+# --- Seed Dockerfile if absent (gives agent a file to read and modify) ---
+dockerfile_path="$work_dir/__DOCKERFILE_REL_PATH__"
+if [ ! -f "$dockerfile_path" ]; then
+  mkdir -p "$(dirname "$dockerfile_path")"
+  cat > "$dockerfile_path" << 'MRMOUTH_DOCKERFILE_EOF'
+__DOCKERFILE_CONTENT__
+MRMOUTH_DOCKERFILE_EOF
+  echo "Seeded Dockerfile into workspace."
+fi
 
 # --- Initialize litebrite (requires git repo) ---
 if [ -d "$work_dir/.git" ]; then
@@ -374,6 +387,10 @@ if [ -d "$work_dir/.git" ]; then
 fi
 "#
     );
+
+    let script = script
+        .replace("__DOCKERFILE_CONTENT__", dockerfile_content)
+        .replace("__DOCKERFILE_REL_PATH__", dockerfile_path);
 
     let mut tmp = tempfile::NamedTempFile::new()
         .map_err(|e| RunError::Io("creating runner script".into(), e))?;
@@ -426,12 +443,16 @@ fn atomic_symlink(target: &str, link_path: &std::path::PathBuf) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::docker;
     use std::io::Read as _;
+
+    const TEST_DOCKERFILE: &str = docker::DEFAULT_DOCKERFILE;
+    const TEST_DOCKERFILE_PATH: &str = ".mrmouth/Dockerfile";
 
     #[test]
     fn runner_script_contains_model() {
         let dir = tempfile::tempdir().unwrap();
-        let tmp = write_runner_script(dir.path(), "sonnet", None, None).unwrap();
+        let tmp = write_runner_script(dir.path(), "sonnet", None, TEST_DOCKERFILE, TEST_DOCKERFILE_PATH, None).unwrap();
         let mut content = String::new();
         File::open(tmp.path()).unwrap().read_to_string(&mut content).unwrap();
         assert!(content.contains("--model sonnet"));
@@ -440,7 +461,7 @@ mod tests {
     #[test]
     fn runner_script_contains_lb_sync() {
         let dir = tempfile::tempdir().unwrap();
-        let tmp = write_runner_script(dir.path(), "opus", None, None).unwrap();
+        let tmp = write_runner_script(dir.path(), "opus", None, TEST_DOCKERFILE, TEST_DOCKERFILE_PATH, None).unwrap();
         let mut content = String::new();
         File::open(tmp.path()).unwrap().read_to_string(&mut content).unwrap();
         let init_pos = content.find("lb init").unwrap();
@@ -451,7 +472,7 @@ mod tests {
     #[test]
     fn runner_script_uses_prompt_override() {
         let dir = tempfile::tempdir().unwrap();
-        let tmp = write_runner_script(dir.path(), "opus", Some("custom prompt here"), None).unwrap();
+        let tmp = write_runner_script(dir.path(), "opus", Some("custom prompt here"), TEST_DOCKERFILE, TEST_DOCKERFILE_PATH, None).unwrap();
         let mut content = String::new();
         File::open(tmp.path()).unwrap().read_to_string(&mut content).unwrap();
         assert!(content.contains("custom prompt here"));
@@ -460,7 +481,7 @@ mod tests {
     #[test]
     fn runner_script_escapes_single_quotes_in_prompt() {
         let dir = tempfile::tempdir().unwrap();
-        let tmp = write_runner_script(dir.path(), "opus", Some("don't break"), None).unwrap();
+        let tmp = write_runner_script(dir.path(), "opus", Some("don't break"), TEST_DOCKERFILE, TEST_DOCKERFILE_PATH, None).unwrap();
         let mut content = String::new();
         File::open(tmp.path()).unwrap().read_to_string(&mut content).unwrap();
         assert!(content.contains(r"don'\''t break"));
@@ -469,7 +490,7 @@ mod tests {
     #[test]
     fn runner_script_is_executable() {
         let dir = tempfile::tempdir().unwrap();
-        let tmp = write_runner_script(dir.path(), "opus", None, None).unwrap();
+        let tmp = write_runner_script(dir.path(), "opus", None, TEST_DOCKERFILE, TEST_DOCKERFILE_PATH, None).unwrap();
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
@@ -481,9 +502,22 @@ mod tests {
     #[test]
     fn runner_script_has_shebang() {
         let dir = tempfile::tempdir().unwrap();
-        let tmp = write_runner_script(dir.path(), "opus", None, None).unwrap();
+        let tmp = write_runner_script(dir.path(), "opus", None, TEST_DOCKERFILE, TEST_DOCKERFILE_PATH, None).unwrap();
         let mut content = String::new();
         File::open(tmp.path()).unwrap().read_to_string(&mut content).unwrap();
         assert!(content.starts_with("#!/usr/bin/env bash"));
+    }
+
+    #[test]
+    fn runner_script_seeds_dockerfile() {
+        let dir = tempfile::tempdir().unwrap();
+        let dockerfile = "FROM node:22\nRUN echo hello\nARG HOST_UID=${HOST_UID}";
+        let tmp = write_runner_script(dir.path(), "opus", None, dockerfile, ".mrmouth/Dockerfile", None).unwrap();
+        let mut content = String::new();
+        File::open(tmp.path()).unwrap().read_to_string(&mut content).unwrap();
+        assert!(content.contains("MRMOUTH_DOCKERFILE_EOF"));
+        assert!(content.contains("FROM node:22"));
+        assert!(content.contains("ARG HOST_UID=${HOST_UID}"), "Docker ARG syntax must be preserved literally");
+        assert!(content.contains(".mrmouth/Dockerfile"));
     }
 }

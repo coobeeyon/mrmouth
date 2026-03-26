@@ -24,7 +24,8 @@ const POLL_TIMEOUT: Duration = Duration::from_millis(50);
 /// Messages sent to the TUI render thread.
 enum TuiMsg {
     Line { pane: String, text: String },
-    SetStatus(String),
+    SetRun(Option<String>),
+    SetStage(String),
     Quit,
 }
 
@@ -46,8 +47,10 @@ pub struct TuiSender {
 struct TuiState {
     /// Project name shown in the header.
     project: String,
-    /// Current status shown in the header (e.g. "Run 3 | Agent").
-    status: String,
+    /// Current iteration label (e.g. "Run 3", "Task 2").
+    run: Option<String>,
+    /// Current stage shown in the header (e.g. "Agent", "Reviewer").
+    stage: String,
     /// Ordered map of pane name -> ring buffer of lines.
     panes: Vec<(String, VecDeque<String>)>,
     /// Index of the currently active (visible) pane.
@@ -60,11 +63,23 @@ impl TuiState {
     fn new(project: String) -> Self {
         Self {
             project,
-            status: String::new(),
+            run: None,
+            stage: String::new(),
             panes: Vec::new(),
             active: 0,
             scroll: 0,
         }
+    }
+
+    fn header_text(&self) -> String {
+        let mut parts = vec![self.project.clone()];
+        if let Some(ref label) = self.run {
+            parts.push(label.clone());
+        }
+        if !self.stage.is_empty() {
+            parts.push(self.stage.clone());
+        }
+        format!(" {} ", parts.join(" | "))
     }
 
     fn ensure_pane(&mut self, name: &str) {
@@ -155,9 +170,14 @@ impl TuiHandle {
         Arc::clone(&self.cancelled)
     }
 
-    /// Update the status shown in the TUI header.
-    pub fn set_status(&self, status: &str) {
-        let _ = self.tx.send(TuiMsg::SetStatus(status.to_string()));
+    /// Update the iteration label shown in the TUI header (e.g. "Run 3", "Task 2").
+    pub fn set_run(&self, label: Option<String>) {
+        let _ = self.tx.send(TuiMsg::SetRun(label));
+    }
+
+    /// Update the stage shown in the TUI header (e.g. "Agent", "Reviewer").
+    pub fn set_stage(&self, stage: &str) {
+        let _ = self.tx.send(TuiMsg::SetStage(stage.to_string()));
     }
 
     /// Create a TuiSender that tags lines with the given pane label.
@@ -209,8 +229,12 @@ fn render_loop(rx: Receiver<TuiMsg>, cancelled: &AtomicBool, project: String) ->
                     state.push_line(&pane, text);
                     needs_redraw = true;
                 }
-                Ok(TuiMsg::SetStatus(status)) => {
-                    state.status = status;
+                Ok(TuiMsg::SetRun(run)) => {
+                    state.run = run;
+                    needs_redraw = true;
+                }
+                Ok(TuiMsg::SetStage(stage)) => {
+                    state.stage = stage;
                     needs_redraw = true;
                 }
                 Ok(TuiMsg::Quit) => {
@@ -281,12 +305,7 @@ fn draw(
         .split(frame.area());
 
         // Header
-        let header_text = if state.status.is_empty() {
-            format!(" {} ", state.project)
-        } else {
-            format!(" {} | {} ", state.project, state.status)
-        };
-        let header = Paragraph::new(Line::from(header_text))
+        let header = Paragraph::new(Line::from(state.header_text()))
             .style(Style::default().fg(Color::Black).bg(Color::Cyan));
         frame.render_widget(header, chunks[0]);
 

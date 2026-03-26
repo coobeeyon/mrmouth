@@ -79,7 +79,7 @@ pub fn execute(config: &Config, repo_root: &Path, opts: EpicOptions, tui: Option
         }
 
         task_num += 1;
-        if let Some(t) = tui { t.set_status(&format!("Task {task_num}")); }
+        if let Some(t) = tui { t.set_run(Some(format!("Task {task_num}"))); }
         emit(&tui_tx, &format!(
             "TASK {}  ({} remaining)  {}",
             task_num, remaining, chrono::Local::now().format("%H:%M:%S")

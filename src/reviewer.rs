@@ -19,6 +19,8 @@ pub struct ReviewerOptions {
 pub fn execute(config: &Config, repo_root: &Path, opts: &ReviewerOptions, logger: Option<&Logger>) -> Result<(), ReviewerError> {
     crate::logger::log(logger, &format!("CODE REVIEW  branch={}", opts.current_branch));
 
+    let effective_dockerfile = crate::docker::effective_dockerfile_content(repo_root, &config.dockerfile);
+
     let prompt = format!(
         "You are a code reviewer for this project. Review the changes on branch '{}' \
         against the project spec (SPEC.md). Use git diff and git log to understand what changed. \
@@ -26,6 +28,11 @@ pub fn execute(config: &Config, repo_root: &Path, opts: &ReviewerOptions, logger
         First, verify the project builds and all tests pass. Discover the correct build/test \
         commands by examining the project structure (Makefile, package.json, Cargo.toml, etc.) \
         and run them. A build failure or test failure is a blocking issue that must be filed.\n\n\
+        If a build fails because a required tool is missing from the container \
+        (e.g., 'cargo: command not found', 'python3: not found'), this is a Dockerfile issue. \
+        Fix it by editing `.mrmouth/Dockerfile` to install the missing toolchain \
+        (add a RUN layer before the USER runner line), then commit and push. \
+        Do NOT create a litebrite task for missing-tool issues — fix the Dockerfile directly.\n\n\
         Context: You are one step in an automated loop with multiple checks and balances. \
         If you find real issues, another agent will fix them and you will review again. \
         This means you must not miss genuine problems — but you also must not invent them. \
@@ -59,6 +66,16 @@ fi
 cd "$work_dir"
 git config --global --add safe.directory "$work_dir"
 
+# Seed Dockerfile if absent (gives reviewer a file to read and modify)
+dockerfile_path="$work_dir/__DOCKERFILE_REL_PATH__"
+if [ ! -f "$dockerfile_path" ]; then
+  mkdir -p "$(dirname "$dockerfile_path")"
+  cat > "$dockerfile_path" << 'MRMOUTH_DOCKERFILE_EOF'
+__DOCKERFILE_CONTENT__
+MRMOUTH_DOCKERFILE_EOF
+  echo "Seeded Dockerfile into workspace."
+fi
+
 # Initialize litebrite
 if [ -d "$work_dir/.git" ]; then
   echo "Initializing litebrite..."
@@ -90,6 +107,10 @@ fi
 "#
     );
 
+    let script = script
+        .replace("__DOCKERFILE_CONTENT__", &effective_dockerfile)
+        .replace("__DOCKERFILE_REL_PATH__", &config.dockerfile);
+
     let mut tmp = tempfile::NamedTempFile::new()
         .map_err(|e| ReviewerError(format!("failed to create reviewer script: {e}")))?;
     tmp.write_all(script.as_bytes())
@@ -115,6 +136,10 @@ fi
     DockerBuilder::remove_container(&container_name);
 
     let docker = DockerBuilder::new(&config.image);
+    docker
+        .build(repo_root, &config.dockerfile)
+        .map_err(|e| ReviewerError(format!("failed to build reviewer image: {e}")))?;
+
     let container_args = ContainerArgs {
         name: container_name.clone(),
         repo_url,
@@ -150,6 +175,13 @@ fi
     let exit_code = handle
         .wait()
         .map_err(|e| ReviewerError(format!("container wait failed: {e}")))?;
+
+    // Extract updated Dockerfile from container (reviewer may have modified it)
+    let dockerfile_dest = repo_root.join(&config.dockerfile);
+    let container_path = format!("/home/runner/workspace/{}", config.dockerfile);
+    if DockerBuilder::copy_from_container(&container_name, &container_path, &dockerfile_dest) {
+        crate::logger::log(logger, "Extracted updated Dockerfile from reviewer container.");
+    }
 
     DockerBuilder::remove_container(&container_name);
 

@@ -44,15 +44,14 @@ pub fn execute(config: &Config, repo_root: &Path, log_file: &str, logger: Option
     let summary_file = summary_dir.join(format!("{log_name}.md"));
 
     let prompt = format!(
-        "Read the log file at {}. Write a concise markdown summary to {} covering:\n\
+        "Read the log file at {} and print a concise markdown summary to stdout covering:\n\
         - What tasks were worked on\n\
         - What was accomplished (files created/modified, commits)\n\
         - Whether the run succeeded or failed (and why)\n\
         - Any errors or notable events\n\
         \n\
-        Also print the summary to stdout.",
+        Do NOT write any files. Output the summary to stdout only.",
         log_path.display(),
-        summary_file.display()
     );
 
     crate::logger::log(logger, "SUMMARY");
@@ -60,7 +59,7 @@ pub fn execute(config: &Config, repo_root: &Path, log_file: &str, logger: Option
     let mut cmd = streaming::claude_stream_cmd(
         repo_root,
         &config.loop_config.summary_model,
-        "Read,Write",
+        "Read",
     );
 
     let mut child = cmd
@@ -76,7 +75,7 @@ pub fn execute(config: &Config, repo_root: &Path, log_file: &str, logger: Option
 
     let mut formatter = StreamFormatter::new(target.supports_color());
 
-    let (_result, exit_code) = streaming::run_streaming_claude(child, &mut formatter, logger, &target)
+    let (result, exit_code) = streaming::run_streaming_claude(child, &mut formatter, logger, &target)
         .map_err(|e| SummaryError(format!("streaming error: {e}")))?;
 
     if exit_code != 0 {
@@ -85,7 +84,14 @@ pub fn execute(config: &Config, repo_root: &Path, log_file: &str, logger: Option
         )));
     }
 
-    crate::logger::log(logger, &format!("Summary saved: {}", summary_file.display()));
+    if !result.trim().is_empty() {
+        std::fs::write(&summary_file, &result).map_err(|e| {
+            SummaryError(format!("failed to write summary file: {e}"))
+        })?;
+        crate::logger::log(logger, &format!("Summary saved: {}", summary_file.display()));
+    } else {
+        crate::logger::log(logger, "Summary agent produced no output; skipping file write.");
+    }
     Ok(())
 }
 

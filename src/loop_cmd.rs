@@ -152,8 +152,7 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions, tui: Option
 
         let head_before = git_head(repo_root);
 
-        // run::execute also sets "Agent" but we prepend the run number here
-        if let Some(t) = tui { t.set_status(&format!("Run {run_number} | Agent")); }
+        if let Some(t) = tui { t.set_run(Some(format!("Run {run_number}"))); }
         let run_result = run::execute(config, repo_root, run_opts, tui);
         let run_logger: Option<Logger> = match run_result {
             Ok(logger) => Some(logger),
@@ -182,7 +181,7 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions, tui: Option
             && head_before.unwrap() != head_after.unwrap();
 
         if agent_made_commits {
-            if let Some(t) = tui { t.set_status(&format!("Run {run_number} | Reviewer")); }
+            if let Some(t) = tui { t.set_stage("Reviewer"); }
             let reviewer_opts = reviewer::ReviewerOptions {
                 model: config.loop_config.reviewer_model.clone(),
                 current_branch: current_branch.clone(),
@@ -197,7 +196,7 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions, tui: Option
         }
 
         // Run summary and decider in parallel — they're independent
-        if let Some(t) = tui { t.set_status(&format!("Run {run_number} | Deciding")); }
+        if let Some(t) = tui { t.set_stage("Deciding"); }
         let decider_model = config.loop_config.decider_model.clone();
         let decision = std::thread::scope(|s| {
             if !opts.no_summary {
@@ -226,7 +225,7 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions, tui: Option
             Ok(Decision::Ship(reason)) => {
                 crate::logger::log(logger_opt, &format!("Decider: ship — {reason}"));
 
-                if let Some(t) = tui { t.set_status(&format!("Run {run_number} | Shipper")); }
+                if let Some(t) = tui { t.set_stage("Shipper"); }
                 let ship_opts = shipper::ShipperOptions {
                     model: config.loop_config.shipper_model.clone(),
                     current_branch: current_branch.clone(),

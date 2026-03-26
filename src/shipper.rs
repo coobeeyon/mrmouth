@@ -125,6 +125,10 @@ fi
     DockerBuilder::remove_container(&container_name);
 
     let docker = DockerBuilder::new(&config.image);
+    docker
+        .build(repo_root, &config.dockerfile)
+        .map_err(|e| ShipperError(format!("failed to build shipper image: {e}")))?;
+
     let container_args = ContainerArgs {
         name: container_name.clone(),
         repo_url,
