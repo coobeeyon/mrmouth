@@ -769,8 +769,9 @@
       "item_type": "task",
       "status": "open",
       "priority": 1,
+      "claimed_by": "agent-runner",
       "created_at": "2026-03-26T02:45:26.758703699Z",
-      "updated_at": "2026-03-26T03:18:25.642004391Z"
+      "updated_at": "2026-03-26T03:38:32.759321645Z"
     },
     "lb-nwd4": {
       "id": "lb-nwd4",
