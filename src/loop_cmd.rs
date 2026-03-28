@@ -281,21 +281,25 @@ fn should_continue(repo_root: &Path, decider_model: &str, logger: Option<&Logger
         You do NOT implement features, claim tasks, or make code changes. \
         You MAY create litebrite items, edit the Dockerfile, and read any file.\n\n\
         ## Instructions\n\n\
-        1. Run `lb list` to check for open litebrite items.\n\
-        2. Check whether the open items include **leaf tasks** (type=task with no children) that the runner can implement.\n\
+        1. Count commits on the current branch: `git rev-list --count HEAD --not main`.\n\
+        2. Run `lb list` to check for open litebrite items.\n\
+        3. Check whether the open items include **leaf tasks** (type=task with no children) that the runner can implement.\n\
            - Run `lb list --tree` to see the hierarchy.\n\
-           - If leaf tasks exist, return **continue**.\n\
+           - If leaf tasks exist **and** the branch has **5 or more commits**, return **ship** \
+             (merge what we have, remaining work continues on a fresh branch).\n\
+           - If leaf tasks exist and the branch has fewer than 5 commits, return **continue**.\n\
            - If the only open items are **epics or features with no child tasks**, decompose them: \
              create concrete child tasks with `lb create \"<title>\" -t task --parent <epic-id> -d \"<description>\"`, \
              then return **continue**.\n\
-        3. If NO open items exist, read SPEC.md and compare it against the current implementation.\n\
+        4. If NO open items exist, read SPEC.md and compare it against the current implementation.\n\
            - If there are deficiencies or missing features, create litebrite tasks for them \
              (and optionally edit `.mrmouth/Dockerfile` if tooling changes are needed), then return **continue**.\n\
-           - If the spec is fully satisfied, return **stop**.\n\n\
+           - If the spec is fully satisfied and the branch has 1 or more commits, return **ship**.\n\
+           - If the spec is fully satisfied and the branch has 0 commits, return **stop**.\n\n\
         Actions:\n\
-        - \"continue\": there is work remaining (open items exist or you just created new ones)\n\
-        - \"ship\": the current batch of work is complete and ready to merge; start a new branch for remaining work\n\
-        - \"stop\": the spec is fully satisfied, no more runs needed",
+        - \"continue\": there is work remaining and the branch is small enough to keep going\n\
+        - \"ship\": merge the current branch and start a fresh one (either because the branch is large enough, or all work is done)\n\
+        - \"stop\": the spec is fully satisfied AND there is nothing to merge",
         crate::prompt::SYSTEM_PREAMBLE);
 
     let mut cmd = streaming::claude_stream_cmd_with_schema(
