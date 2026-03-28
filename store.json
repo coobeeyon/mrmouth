@@ -526,11 +526,10 @@
       "title": "Dedicated log files and jsonl for decider, reviewer, and shipper",
       "description": "Runner gets per-run .log + .jsonl with full stream events (thinking, tool calls, results). Decider, reviewer, and shipper all dump formatted text into shared loop.log with no jsonl. Each agent needs its own timestamped log file and raw jsonl capture, same as the runner gets. Specifically:\n- Decider: decider-<timestamp>.log + decider-<timestamp>.jsonl (captures should_continue output in streaming.rs)\n- Reviewer: review-<timestamp>.log + review-<timestamp>.jsonl (captures reviewer container output in reviewer.rs)\n- Shipper: ship-<timestamp>.log + ship-<timestamp>.jsonl (captures shipper container/streaming output)\nThe jsonl is critical — without it we can't see thinking blocks, tool calls, or structured responses. Also fix the schema description which still says 'start new one' for ship — should match the prompt.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 1,
-      "claimed_by": "agent-runner",
       "created_at": "2026-03-28T15:31:36.053352615Z",
-      "updated_at": "2026-03-28T15:33:20.461349354Z"
+      "updated_at": "2026-03-28T15:40:50.837265458Z"
     },
     "lb-dl1f": {
       "id": "lb-dl1f",
