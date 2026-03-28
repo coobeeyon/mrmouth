@@ -1,4 +1,5 @@
-use std::io::IsTerminal;
+use std::fs::File;
+use std::io::{BufWriter, IsTerminal, Write};
 use std::path::Path;
 use std::process::Command;
 
@@ -142,6 +143,21 @@ fi
     let container_name = format!("review-{timestamp}");
     let volume = config.effective_volume(repo_root);
 
+    // Create dedicated review log + jsonl files
+    let log_dir = repo_root.join(&config.log_dir);
+    let _ = std::fs::create_dir_all(&log_dir);
+    let review_log_path = log_dir.join(format!("review-{timestamp}.log"));
+    let review_jsonl_path = log_dir.join(format!("review-{timestamp}.jsonl"));
+
+    let review_logger = match logger.and_then(|l| l.tui_sender()) {
+        Some(tui) => Logger::with_tui(&review_log_path, tui.clone()),
+        None => Logger::new(&review_log_path),
+    }.ok();
+
+    let mut jsonl_writer: Option<BufWriter<File>> = File::create(&review_jsonl_path)
+        .ok()
+        .map(BufWriter::new);
+
     DockerBuilder::remove_container(&container_name);
 
     let docker = DockerBuilder::new(&config.image);
@@ -169,17 +185,29 @@ fi
 
     handle
         .stream_output(|line| {
+            // Write raw JSONL to dedicated file
+            if let Some(w) = jsonl_writer.as_mut() {
+                let _ = writeln!(w, "{line}");
+            }
+
             if let Some(formatted) = stream_fmt::format_line(&mut formatter, line) {
+                // Display to TUI/stderr
                 match logger {
-                    Some(l) => {
-                        l.display(&formatted);
-                        l.log_file_only(&formatted);
-                    }
+                    Some(l) => l.display(&formatted),
                     None => eprintln!("{formatted}"),
+                }
+                // Write formatted text to dedicated review log
+                if let Some(rl) = review_logger.as_ref() {
+                    rl.log_file_only(&formatted);
                 }
             }
         })
         .map_err(|e| ReviewerError(format!("streaming error: {e}")))?;
+
+    // Flush dedicated JSONL writer
+    if let Some(w) = jsonl_writer.as_mut() {
+        let _ = w.flush();
+    }
 
     let exit_code = handle
         .wait()

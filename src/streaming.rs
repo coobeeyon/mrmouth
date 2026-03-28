@@ -1,4 +1,5 @@
-use std::io::{BufRead, BufReader, IsTerminal, Write};
+use std::fs::File;
+use std::io::{BufRead, BufReader, BufWriter, IsTerminal, Write};
 use std::process::{Child, Stdio};
 
 use crate::logger::Logger;
@@ -45,6 +46,7 @@ pub fn run_streaming_claude(
     formatter: &mut StreamFormatter,
     logger: Option<&Logger>,
     target: &StreamTarget,
+    jsonl_writer: &mut Option<BufWriter<File>>,
 ) -> Result<(String, i32), std::io::Error> {
     // Tee stderr
     let tee_handle = child.stderr.take().map(|stderr| {
@@ -68,6 +70,11 @@ pub fn run_streaming_claude(
             let trimmed = line.trim();
             if trimmed.is_empty() {
                 continue;
+            }
+
+            // Write raw JSONL to dedicated log file when available
+            if let Some(w) = jsonl_writer.as_mut() {
+                let _ = writeln!(w, "{trimmed}");
             }
 
             // Check for the "result" event to capture its result field.
@@ -95,6 +102,11 @@ pub fn run_streaming_claude(
                 }
             }
         }
+    }
+
+    // Flush JSONL writer
+    if let Some(w) = jsonl_writer.as_mut() {
+        let _ = w.flush();
     }
 
     // Wait for stderr drain

@@ -1,3 +1,5 @@
+use std::fs::File;
+use std::io::BufWriter;
 use std::path::Path;
 use std::process::{Command, Stdio};
 
@@ -144,7 +146,7 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions, tui: Option
         // --- Decider (runs first; uses loop_logger since no run logger exists yet) ---
         if let Some(t) = tui { t.set_stage("Deciding"); }
         let decider_model = config.loop_config.decider_model.clone();
-        let decision = should_continue(repo_root, &decider_model, loop_logger.as_ref());
+        let decision = should_continue(repo_root, &decider_model, loop_logger.as_ref(), &log_dir);
 
         match decision {
             Ok(Decision::Continue(reason)) => {
@@ -270,10 +272,24 @@ enum Decision {
     Stop(String),
 }
 
-fn should_continue(repo_root: &Path, decider_model: &str, logger: Option<&Logger>) -> Result<Decision, LoopError> {
+fn should_continue(repo_root: &Path, decider_model: &str, logger: Option<&Logger>, log_dir: &Path) -> Result<Decision, LoopError> {
     crate::logger::log(logger, "DECISION");
 
-    let schema = r#"{"type":"object","properties":{"action":{"type":"string","enum":["continue","ship","stop"],"description":"continue = keep working, ship = merge current branch and start new one, stop = all done"},"reason":{"type":"string","description":"Brief explanation of the decision"}},"required":["action","reason"]}"#;
+    // Create dedicated decider log + jsonl files
+    let timestamp = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
+    let decider_log_path = log_dir.join(format!("decider-{timestamp}.log"));
+    let decider_jsonl_path = log_dir.join(format!("decider-{timestamp}.jsonl"));
+
+    let decider_logger = match logger.and_then(|l| l.tui_sender()) {
+        Some(tui) => Logger::with_tui(&decider_log_path, tui.clone()),
+        None => Logger::new(&decider_log_path),
+    }.ok();
+
+    let mut jsonl_writer: Option<BufWriter<File>> = File::create(&decider_jsonl_path)
+        .ok()
+        .map(BufWriter::new);
+
+    let schema = r#"{"type":"object","properties":{"action":{"type":"string","enum":["continue","ship","stop"],"description":"continue = there is work remaining and the branch is small enough to keep going, ship = merge the current branch and start a fresh one, stop = the spec is fully satisfied AND there is nothing to merge"},"reason":{"type":"string","description":"Brief explanation of the decision"}},"required":["action","reason"]}"#;
 
     let prompt = format!("## System\n\n{}\n\n\
         You are the **Decider**. Your job is to assess project state and return a decision.\n\n\
@@ -322,7 +338,8 @@ fn should_continue(repo_root: &Path, decider_model: &str, logger: Option<&Logger
 
     let mut formatter = StreamFormatter::new(target.supports_color());
 
-    let (result_text, exit_code) = streaming::run_streaming_claude(child, &mut formatter, logger, &target)
+    let effective_logger = decider_logger.as_ref().or(logger);
+    let (result_text, exit_code) = streaming::run_streaming_claude(child, &mut formatter, effective_logger, &target, &mut jsonl_writer)
         .map_err(|e| LoopError::Decider(format!("streaming error: {e}")))?;
 
     if exit_code != 0 {
@@ -335,8 +352,8 @@ fn should_continue(repo_root: &Path, decider_model: &str, logger: Option<&Logger
     let parsed: serde_json::Value = match serde_json::from_str(&result_text) {
         Ok(v) => v,
         Err(e) => {
-            crate::logger::log(logger, &format!("WARNING: decider returned invalid JSON (defaulting to 'continue'): {e}"));
-            crate::logger::log(logger, &format!("  raw output: {result_text}"));
+            crate::logger::log(effective_logger, &format!("WARNING: decider returned invalid JSON (defaulting to 'continue'): {e}"));
+            crate::logger::log(effective_logger, &format!("  raw output: {result_text}"));
             return Ok(Decision::Continue("JSON parse failure — defaulting to continue".into()));
         }
     };
