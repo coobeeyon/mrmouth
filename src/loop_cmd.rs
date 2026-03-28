@@ -224,15 +224,17 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions, tui: Option
 
         // --- Reviewer (only if the agent actually committed something) ---
         let head_after = git_head(repo_root);
-        let agent_made_commits = head_before.is_ok()
-            && head_after.is_ok()
-            && head_before.unwrap() != head_after.unwrap();
+        let commit_range = match (&head_before, &head_after) {
+            (Ok(before), Ok(after)) if before != after => Some((before.clone(), after.clone())),
+            _ => None,
+        };
 
-        if agent_made_commits {
+        if commit_range.is_some() {
             if let Some(t) = tui { t.set_stage("Reviewer"); }
             let reviewer_opts = reviewer::ReviewerOptions {
                 model: config.loop_config.reviewer_model.clone(),
                 current_branch: current_branch.clone(),
+                commit_range,
             };
             if let Err(e) = reviewer::execute(config, repo_root, &reviewer_opts, logger_opt) {
                 crate::logger::log(logger_opt, &format!("Reviewer failed (non-fatal): {e}"));

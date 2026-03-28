@@ -11,6 +11,9 @@ use crate::stream_fmt::{self, StreamFormatter};
 pub struct ReviewerOptions {
     pub model: String,
     pub current_branch: String,
+    /// If set, the reviewer scopes its review to only the changes in this
+    /// commit range (before..after) instead of the entire branch.
+    pub commit_range: Option<(String, String)>,
 }
 
 /// Run a reviewer agent inside the project Docker container so it has access
@@ -23,13 +26,27 @@ pub fn execute(config: &Config, repo_root: &Path, opts: &ReviewerOptions, logger
     let effective_dockerfile = crate::docker::effective_dockerfile_content(repo_root, &config.dockerfile);
 
     let preamble = crate::prompt::SYSTEM_PREAMBLE;
+
+    let scope_instructions = match &opts.commit_range {
+        Some((before, after)) => format!(
+            "Review ONLY the changes between commits {before}..{after} on branch '{}'. \
+            Run `git diff {before}..{after}` to see what changed — do NOT review code outside this range. \
+            Use lb commands to inspect task state.",
+            opts.current_branch
+        ),
+        None => format!(
+            "Review the changes on branch '{}' \
+            against the project spec (SPEC.md). Use git diff and git log to understand what changed. \
+            Use lb commands to inspect task state.",
+            opts.current_branch
+        ),
+    };
+
     let prompt = format!(
         "## System\n\n{preamble}\n\n\
         You are the **Reviewer**. Your job is to review code and file issues. You do NOT implement features, make architectural decisions, or decide whether the loop continues.\n\n\
         ## Instructions\n\n\
-        Review the changes on branch '{}' \
-        against the project spec (SPEC.md). Use git diff and git log to understand what changed. \
-        Use lb commands to inspect task state.\n\n\
+        {scope_instructions}\n\n\
         First, verify the project builds and all tests pass. Discover the correct build/test \
         commands by examining the project structure (Makefile, package.json, Cargo.toml, etc.) \
         and run them. A build failure or test failure is a blocking issue that must be filed.\n\n\
@@ -47,7 +64,6 @@ pub fn execute(config: &Config, repo_root: &Path, opts: &ReviewerOptions, logger
         create litebrite items for them: lb create \"<title>\" -d \"<description>\"\n\n\
         If you see completed items that are still open, close them: lb close <id>\n\n\
         Be concise. Only flag real issues, not style nits.",
-        opts.current_branch
     );
 
     let escaped_prompt = prompt.replace('\'', "'\\''");
