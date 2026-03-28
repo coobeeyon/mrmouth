@@ -166,6 +166,7 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions, tui: Option
                     Ok(result) => {
                         crate::logger::log(loop_logger.as_ref(), &format!("Shipped! New branch: {}", result.new_branch));
                         current_branch = result.new_branch;
+                        continue;
                     }
                     Err(e) => {
                         crate::logger::log(loop_logger.as_ref(), &format!("Ship failed (continuing on current branch): {e}"));
@@ -291,7 +292,7 @@ fn should_continue(repo_root: &Path, decider_model: &str, logger: Option<&Logger
         .ok()
         .map(BufWriter::new);
 
-    let schema = r#"{"type":"object","properties":{"action":{"type":"string","enum":["continue","ship","stop"],"description":"continue = there is work remaining and the branch is small enough to keep going, ship = merge the current branch and start a fresh one, stop = the spec is fully satisfied AND there is nothing to merge"},"reason":{"type":"string","description":"Brief explanation of the decision"}},"required":["action","reason"]}"#;
+    let schema = r#"{"type":"object","properties":{"action":{"type":"string","enum":["continue","ship","stop"],"description":"continue = more work to do, ship = all done and ready to merge, stop = nothing to merge"},"reason":{"type":"string","description":"Brief explanation of the decision"}},"required":["action","reason"]}"#;
 
     let prompt = format!("## System\n\n{}\n\n\
         You are the **Decider**. Your job is to assess project state and return a decision.\n\n\
@@ -299,28 +300,26 @@ fn should_continue(repo_root: &Path, decider_model: &str, logger: Option<&Logger
         You do NOT implement features, claim tasks, or make code changes. \
         You MAY create litebrite items, edit the Dockerfile, and read any file.\n\n\
         ## Instructions\n\n\
-        1. Count commits on the current branch: `git rev-list --count HEAD --not main`.\n\
-        2. Run `lb list` to check for open litebrite items.\n\
-        3. Check whether the open items include **leaf tasks** (type=task with no children) that the runner can implement.\n\
+        1. Run `lb list` to check for open litebrite items.\n\
+        2. Check whether the open items include **leaf tasks** (type=task with no children) that the runner can implement.\n\
            - Run `lb list --tree` to see the hierarchy.\n\
-           - If leaf tasks exist **and** the branch has **5 or more commits**, return **ship** \
-             (merge what we have, remaining work continues on a fresh branch).\n\
-           - If leaf tasks exist and the branch has fewer than 5 commits, return **continue**.\n\
+           - If leaf tasks exist, return **continue**.\n\
            - If the only open items are **epics or features with no child tasks**, decompose them: \
              create concrete child tasks with `lb create \"<title>\" -t task --parent <epic-id> -d \"<description>\"`. \
              Also read `.mrmouth/Dockerfile` and SPEC.md — if the spec requires a toolchain \
              (e.g. Rust, Go, Python) that is not installed in the Dockerfile, add the necessary \
              `RUN` commands **before** the `USER runner` line so the runner has a working compiler/interpreter. \
              Then return **continue**.\n\
-        4. If NO open items exist, read SPEC.md and compare it against the current implementation.\n\
+        3. If NO open items exist, read SPEC.md and compare it against the current implementation.\n\
            - If there are deficiencies or missing features, create litebrite tasks for them \
              (and optionally edit `.mrmouth/Dockerfile` if tooling changes are needed), then return **continue**.\n\
-           - If the spec is fully satisfied and the branch has 1 or more commits, return **ship**.\n\
-           - If the spec is fully satisfied and the branch has 0 commits, return **stop**.\n\n\
+           - If the implementation fully satisfies the spec, return **ship**.\n\n\
+        **Ship** means: all litebrite items are closed and the implementation matches the spec. \
+        It merges the current branch and stops.\n\n\
         Actions:\n\
-        - \"continue\": there is work remaining and the branch is small enough to keep going\n\
-        - \"ship\": merge the current branch and start a fresh one (either because the branch is large enough, or all work is done)\n\
-        - \"stop\": the spec is fully satisfied AND there is nothing to merge",
+        - \"continue\": there is work remaining for the runner\n\
+        - \"ship\": all work is complete — merge the branch\n\
+        - \"stop\": nothing was done, nothing to merge",
         crate::prompt::SYSTEM_PREAMBLE);
 
     let mut cmd = streaming::claude_stream_cmd_with_schema(
