@@ -76,11 +76,10 @@
       "title": "Let runner create follow-up tasks discovered during implementation",
       "description": "Runner prompt now says 'task graph is managed by the decider' and prohibits creating tasks. But the runner is the agent closest to the code — it discovers bugs, missing pieces, and follow-up work during implementation. Allow the runner to create tasks for discovered work (but not initial decomposition). Something like: 'If you discover follow-up work during implementation, create a task for it. Do not decompose the spec or plan ahead — that is the decider's job.'",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 2,
-      "claimed_by": "agent-runner",
       "created_at": "2026-03-28T14:26:31.195816002Z",
-      "updated_at": "2026-03-28T14:32:50.560177139Z"
+      "updated_at": "2026-03-28T14:33:33.273127420Z"
     },
     "lb-1zh1": {
       "id": "lb-1zh1",
