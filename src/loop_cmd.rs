@@ -307,8 +307,11 @@ fn should_continue(repo_root: &Path, decider_model: &str, logger: Option<&Logger
              (merge what we have, remaining work continues on a fresh branch).\n\
            - If leaf tasks exist and the branch has fewer than 5 commits, return **continue**.\n\
            - If the only open items are **epics or features with no child tasks**, decompose them: \
-             create concrete child tasks with `lb create \"<title>\" -t task --parent <epic-id> -d \"<description>\"`, \
-             then return **continue**.\n\
+             create concrete child tasks with `lb create \"<title>\" -t task --parent <epic-id> -d \"<description>\"`. \
+             Also read `.mrmouth/Dockerfile` and SPEC.md — if the spec requires a toolchain \
+             (e.g. Rust, Go, Python) that is not installed in the Dockerfile, add the necessary \
+             `RUN` commands **before** the `USER runner` line so the runner has a working compiler/interpreter. \
+             Then return **continue**.\n\
         4. If NO open items exist, read SPEC.md and compare it against the current implementation.\n\
            - If there are deficiencies or missing features, create litebrite tasks for them \
              (and optionally edit `.mrmouth/Dockerfile` if tooling changes are needed), then return **continue**.\n\
