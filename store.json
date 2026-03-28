@@ -1082,6 +1082,16 @@
       "created_at": "2026-03-25T20:00:21.152186144Z",
       "updated_at": "2026-03-25T20:03:35.602227618Z"
     },
+    "lb-vfnx": {
+      "id": "lb-vfnx",
+      "title": "Decider: decompose epics into leaf tasks before returning continue",
+      "description": "The decider short-circuits on 'open items exist' without checking whether those items are implementable. If the only open items are epics with no child tasks, the runner has nothing to pick and the loop spins. Fix: after step 1 (lb list), if all open items are epics/non-leaf, the decider should decompose them into tasks before returning continue. Prompt needs to mention epics, --parent, and hierarchical structure.",
+      "item_type": "task",
+      "status": "open",
+      "priority": 1,
+      "created_at": "2026-03-28T14:26:18.482524375Z",
+      "updated_at": "2026-03-28T14:26:18.482524375Z"
+    },
     "lb-vsce": {
       "id": "lb-vsce",
       "title": "Modify src/main.rs: start TUI, thread into subcommands",
@@ -1378,6 +1388,11 @@
     {
       "from_id": "lb-zcay",
       "to_id": "lb-dvhr",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-vfnx",
+      "to_id": "lb-2rj3",
       "dep_type": "parent"
     }
   ]
