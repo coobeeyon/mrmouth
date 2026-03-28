@@ -651,6 +651,16 @@
       "created_at": "2026-03-10T17:13:13.458357465Z",
       "updated_at": "2026-03-10T17:14:08.104427840Z"
     },
+    "lb-ged3": {
+      "id": "lb-ged3",
+      "title": "Pass commit range to reviewer so it only reviews new code",
+      "description": "The loop already tracks head_before and head_after around each runner execution. Pass these to the reviewer prompt so it runs 'git diff <before>..<after>' instead of reviewing the entire branch. Currently the reviewer re-reads all code every iteration, which wastes context and causes it to re-file issues on old code. The reviewer prompt should say 'review the changes between <before> and <after>' and use that diff as its scope.",
+      "item_type": "task",
+      "status": "open",
+      "priority": 2,
+      "created_at": "2026-03-28T16:18:38.270917486Z",
+      "updated_at": "2026-03-28T16:18:38.270917486Z"
+    },
     "lb-ggzz": {
       "id": "lb-ggzz",
       "title": "Document epic reviewer config reuse from [loop] section",
@@ -1452,6 +1462,11 @@
     },
     {
       "from_id": "lb-3m77",
+      "to_id": "lb-2rj3",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-ged3",
       "to_id": "lb-2rj3",
       "dep_type": "parent"
     }
