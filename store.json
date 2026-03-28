@@ -206,11 +206,10 @@
       "title": "Decider: check Dockerfile against spec and install tooling on first decomposition",
       "description": "When the decider creates tasks from a fresh spec (step 3, no open items), it should also read .mrmouth/Dockerfile and check whether the required toolchain is installed. If the spec says 'Written in Rust' and the Dockerfile has no Rust, add it. This saves the runner from burning tool calls discovering missing tools and writing code blind without a compiler. The decider already has Edit/Write permissions and the prompt says it MAY edit the Dockerfile — it just needs an instruction to do so during initial decomposition.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 2,
-      "claimed_by": "agent-runner",
       "created_at": "2026-03-28T16:10:41.825358039Z",
-      "updated_at": "2026-03-28T17:13:15.111300701Z"
+      "updated_at": "2026-03-28T17:14:51.359185534Z"
     },
     "lb-3rmy": {
       "id": "lb-3rmy",
