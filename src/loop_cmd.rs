@@ -282,7 +282,12 @@ fn should_continue(repo_root: &Path, decider_model: &str, logger: Option<&Logger
         You MAY create litebrite items, edit the Dockerfile, and read any file.\n\n\
         ## Instructions\n\n\
         1. Run `lb list` to check for open litebrite items.\n\
-        2. If open items exist, return **continue** — there is work for the runner to do.\n\
+        2. Check whether the open items include **leaf tasks** (type=task with no children) that the runner can implement.\n\
+           - Run `lb list --tree` to see the hierarchy.\n\
+           - If leaf tasks exist, return **continue**.\n\
+           - If the only open items are **epics or features with no child tasks**, decompose them: \
+             create concrete child tasks with `lb create \"<title>\" -t task --parent <epic-id> -d \"<description>\"`, \
+             then return **continue**.\n\
         3. If NO open items exist, read SPEC.md and compare it against the current implementation.\n\
            - If there are deficiencies or missing features, create litebrite tasks for them \
              (and optionally edit `.mrmouth/Dockerfile` if tooling changes are needed), then return **continue**.\n\
