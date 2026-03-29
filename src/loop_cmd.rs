@@ -73,6 +73,15 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions, tui: Option
             }
         }
 
+        // Seed default Dockerfile so the decider has a base to add layers to
+        let dockerfile_path = repo_root.join(&config.dockerfile);
+        if !dockerfile_path.exists() {
+            if let Some(parent) = dockerfile_path.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            let _ = std::fs::write(&dockerfile_path, crate::docker::DEFAULT_DOCKERFILE);
+        }
+
         let add_status = Command::new("git")
             .args(["add", "-A"])
             .current_dir(repo_root)
