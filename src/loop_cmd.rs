@@ -193,10 +193,6 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions, tui: Option
             }
         }
 
-        // Commit any changes the decider made (e.g. Dockerfile edits) so the
-        // runner's preflight check doesn't fail on a dirty working tree.
-        commit_if_dirty(repo_root, "Decider updates", loop_logger.as_ref());
-
         // Check if TUI user cancelled after decider
         if tui.is_some_and(|t| t.is_cancelled()) {
             emit(&tui_tx, "LOOP CANCELLED BY USER");
@@ -327,6 +323,8 @@ fn should_continue(repo_root: &Path, decider_model: &str, logger: Option<&Logger
            - If there are deficiencies or missing features, create litebrite tasks for them \
              (and optionally edit `.mrmouth/Dockerfile` if tooling changes are needed), then return **continue**.\n\
            - If the implementation fully satisfies the spec, return **ship**.\n\n\
+        **Important:** If you edit any files (e.g. `.mrmouth/Dockerfile`), you MUST commit and push \
+        before returning your decision: `git add -A && git commit -m \"<message>\" && git push`.\n\n\
         **Ship** means: all litebrite items are closed and the implementation matches the spec. \
         It merges the current branch and stops.\n\n\
         Actions:\n\
@@ -407,36 +405,6 @@ fn git_current_branch(repo_root: &Path) -> Result<String, LoopError> {
         Ok("main".into())
     } else {
         Ok(branch)
-    }
-}
-
-/// Commit all changes in the working tree if it is dirty.
-fn commit_if_dirty(repo_root: &Path, message: &str, logger: Option<&Logger>) {
-    let dirty = Command::new("git")
-        .args(["-C", &repo_root.to_string_lossy(), "status", "--porcelain"])
-        .output()
-        .map(|o| !o.stdout.is_empty())
-        .unwrap_or(false);
-    if !dirty {
-        return;
-    }
-    let _ = Command::new("git")
-        .args(["-C", &repo_root.to_string_lossy(), "add", "-A"])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status();
-    let status = Command::new("git")
-        .args(["-C", &repo_root.to_string_lossy(), "commit", "-m", message])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status();
-    match status {
-        Ok(s) if s.success() => {
-            crate::logger::log(logger, &format!("Committed decider changes: {message}"));
-        }
-        _ => {
-            crate::logger::log(logger, "Warning: failed to commit decider changes");
-        }
     }
 }
 
