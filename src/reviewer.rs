@@ -80,6 +80,7 @@ work_dir="$HOME/workspace"
 # Clone repo
 if [ ! -d "$work_dir/.git" ]; then
   if [ -n "$repo_url" ]; then
+    git config --global --add safe.directory /host-repo
     echo "Cloning $repo_url (branch: $branch)..."
     git clone --branch "$branch" "$repo_url" "$work_dir"
   fi
