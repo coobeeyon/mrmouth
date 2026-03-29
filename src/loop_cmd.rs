@@ -322,7 +322,9 @@ fn should_continue(repo_root: &Path, decider_model: &str, logger: Option<&Logger
         3. If NO open items exist, read SPEC.md and compare it against the current implementation.\n\
            - If there are deficiencies or missing features, create litebrite tasks for them \
              (and optionally edit `.mrmouth/Dockerfile` if tooling changes are needed), then return **continue**.\n\
-           - If the implementation fully satisfies the spec, return **ship**.\n\n\
+           - If the implementation fully satisfies the spec, check if the current branch has commits \
+             ahead of main: `git rev-list --count HEAD --not main`. If > 0, return **ship**. \
+             If 0, return **stop** (nothing to merge).\n\n\
         **Important:** If you edit any files (e.g. `.mrmouth/Dockerfile`), you MUST commit and push \
         before returning your decision: `git add -A && git commit -m \"<message>\" && git push`.\n\n\
         **Ship** means: all litebrite items are closed and the implementation matches the spec. \
