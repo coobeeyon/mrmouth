@@ -1270,8 +1270,9 @@
       "item_type": "task",
       "status": "open",
       "priority": 2,
+      "claimed_by": "agent-runner",
       "created_at": "2026-03-30T04:00:00.420246913Z",
-      "updated_at": "2026-03-30T04:00:00.420246913Z"
+      "updated_at": "2026-03-30T04:04:31.529900545Z"
     },
     "lb-xfzy": {
       "id": "lb-xfzy",
