@@ -1147,10 +1147,10 @@
       "title": "Fails on pre-initialized empty repo",
       "description": "When the target repo has already had 'git init' and 'lb init' run manually before mrmouth starts, mrmouth skips its own init but nobody makes the first commit. It then creates a feature branch (e.g. feat-pty-passthrough) and tries to clone it into Docker, which fails because the branch has zero commits: 'fatal: Remote branch feat-pty-passthrough not found in upstream origin'. The decider loops retrying indefinitely. Fix: detect when the repo has no commits and make a seed commit before creating feature branches.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 2,
       "created_at": "2026-03-29T23:39:10.908125688Z",
-      "updated_at": "2026-03-29T23:39:10.908125688Z"
+      "updated_at": "2026-03-30T00:01:10.245862508Z"
     },
     "lb-vsce": {
       "id": "lb-vsce",
