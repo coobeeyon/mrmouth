@@ -30,6 +30,36 @@
       "created_at": "2026-03-25T19:39:52.027798678Z",
       "updated_at": "2026-03-25T19:40:23.044061782Z"
     },
+    "lb-1ebq": {
+      "id": "lb-1ebq",
+      "title": "Shipper should not create a new branch after merging",
+      "description": "After merging a feature branch into the parent, the shipper unconditionally generates and creates a new feature branch (shipper.rs lines 36-37). This wastes a cycle: the decider must run again just to say 'stop' on an empty branch. The loop already handles branch creation at the top (loop_cmd.rs lines 162-171), so the shipper should just merge and return to main. Remove branch creation from shipper::execute() and update ShipResult accordingly.",
+      "item_type": "task",
+      "status": "open",
+      "priority": 2,
+      "created_at": "2026-03-30T03:36:27.993698502Z",
+      "updated_at": "2026-03-30T03:36:27.993698502Z"
+    },
+    "lb-1hfx": {
+      "id": "lb-1hfx",
+      "title": "Reorder loop body: decider before runner",
+      "description": "In loop_cmd.rs, move the decider to run first each iteration, then runner, then reviewer. Summary can run in parallel after reviewer. Use loop_logger for the decider since the runner's logger doesn't exist yet.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 1,
+      "created_at": "2026-03-26T16:12:32.948734861Z",
+      "updated_at": "2026-03-26T20:15:19.678250775Z"
+    },
+    "lb-1jfl": {
+      "id": "lb-1jfl",
+      "title": "Suppress expected litebrite command errors",
+      "description": "lb init logs 'already initialized' and lb sync logs 'no remote configured' on every iteration. Fix: skip lb init when .litebrite/ exists, skip lb sync when no git remote configured (add has_git_remote helper).",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 2,
+      "created_at": "2026-03-26T12:00:40.450189015Z",
+      "updated_at": "2026-03-26T12:03:08.658388738Z"
+    },
     "lb-1x2u": {
       "id": "lb-1x2u",
       "title": "Include stderr in shipper merge failure message",
@@ -39,6 +69,16 @@
       "priority": 3,
       "created_at": "2026-03-25T20:29:50.716202Z",
       "updated_at": "2026-03-25T20:32:45.442692957Z"
+    },
+    "lb-1yo3": {
+      "id": "lb-1yo3",
+      "title": "Let runner create follow-up tasks discovered during implementation",
+      "description": "Runner prompt now says 'task graph is managed by the decider' and prohibits creating tasks. But the runner is the agent closest to the code — it discovers bugs, missing pieces, and follow-up work during implementation. Allow the runner to create tasks for discovered work (but not initial decomposition). Something like: 'If you discover follow-up work during implementation, create a task for it. Do not decompose the spec or plan ahead — that is the decider's job.'",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 2,
+      "created_at": "2026-03-28T14:26:31.195816002Z",
+      "updated_at": "2026-03-28T14:33:33.273127420Z"
     },
     "lb-1zh1": {
       "id": "lb-1zh1",
@@ -89,6 +129,16 @@
       "priority": 2,
       "created_at": "2026-03-25T19:15:20.733364361Z",
       "updated_at": "2026-03-25T19:15:47.808798521Z"
+    },
+    "lb-2rj3": {
+      "id": "lb-2rj3",
+      "title": "Reorder loop: Decider → Runner → Reviewer",
+      "description": "Move decider to run first in the loop so it's the sole authority on whether work exists. Decider checks brites, compares implementation to spec, creates tasks if needed, stops when spec is met. Runner stripped of task-creation. Fixes runaway gold-plating observed in snowflake test.",
+      "item_type": "epic",
+      "status": "closed",
+      "priority": 1,
+      "created_at": "2026-03-26T16:12:27.507981777Z",
+      "updated_at": "2026-03-29T23:43:12.858951910Z"
     },
     "lb-2x28": {
       "id": "lb-2x28",
@@ -149,6 +199,16 @@
       "priority": 1,
       "created_at": "2026-03-10T17:03:55.682295029Z",
       "updated_at": "2026-03-10T17:04:23.770191324Z"
+    },
+    "lb-3m77": {
+      "id": "lb-3m77",
+      "title": "Decider: check Dockerfile against spec and install tooling on first decomposition",
+      "description": "When the decider creates tasks from a fresh spec (step 3, no open items), it should also read .mrmouth/Dockerfile and check whether the required toolchain is installed. If the spec says 'Written in Rust' and the Dockerfile has no Rust, add it. This saves the runner from burning tool calls discovering missing tools and writing code blind without a compiler. The decider already has Edit/Write permissions and the prompt says it MAY edit the Dockerfile — it just needs an instruction to do so during initial decomposition.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 2,
+      "created_at": "2026-03-28T16:10:41.825358039Z",
+      "updated_at": "2026-03-28T17:14:51.359185534Z"
     },
     "lb-3rmy": {
       "id": "lb-3rmy",
@@ -250,6 +310,16 @@
       "created_at": "2026-03-08T21:46:59.180761897Z",
       "updated_at": "2026-03-08T21:47:28.159597776Z"
     },
+    "lb-5e79": {
+      "id": "lb-5e79",
+      "title": "Guard Dockerfile extraction against DEFAULT_DOCKERFILE fallback",
+      "description": "run.rs unconditionally extracts the container Dockerfile to .mrmouth/Dockerfile after each run. When run 1 used DEFAULT_DOCKERFILE (no user Dockerfile existed), the agent's incompatible Dockerfile overwrites the fallback path, breaking all subsequent Docker builds. Fix: record whether .mrmouth/Dockerfile existed before the run; only extract if it did.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 1,
+      "created_at": "2026-03-26T12:00:34.443995781Z",
+      "updated_at": "2026-03-26T12:03:08.621978095Z"
+    },
     "lb-5yis": {
       "id": "lb-5yis",
       "title": "Modify src/summary.rs: switch to stream-json, use streaming helper",
@@ -310,6 +380,16 @@
       "created_at": "2026-03-10T16:31:29.723677818Z",
       "updated_at": "2026-03-10T16:38:44.108011058Z"
     },
+    "lb-731u": {
+      "id": "lb-731u",
+      "title": "Rename epic.rs to do_cmd.rs and update types",
+      "description": "Rename src/epic.rs to src/do_cmd.rs (do is a Rust keyword). Rename EpicOptions→DoOptions (epic_id→item_id), EpicError→DoError (EpicNotFound→ItemNotFound). In main.rs: mod epic→mod do_cmd, Commands::Epic→Commands::Do (epic_id→item_id), dispatch to do_cmd::execute(). In config.rs: EpicConfig→DoConfig with #[serde(rename=\"epic\")] for TOML backward compat, Config field epic→do_config with same serde rename. Update all tests referencing these types. Preserve all existing slug tests.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 2,
+      "created_at": "2026-03-30T04:00:10.132735429Z",
+      "updated_at": "2026-03-30T04:04:00.332484872Z"
+    },
     "lb-7s17": {
       "id": "lb-7s17",
       "title": "Add .dockerignore to reduce Docker build context",
@@ -319,6 +399,16 @@
       "priority": 3,
       "created_at": "2026-03-25T20:29:51.143733453Z",
       "updated_at": "2026-03-25T20:32:45.448366837Z"
+    },
+    "lb-8raq": {
+      "id": "lb-8raq",
+      "title": "Include stderr in DockerError::BuildFailed",
+      "description": "BuildFailed(i32) only carries the exit code, discarding stderr. Change to BuildFailed(i32, String) and include the docker build stderr so failures are diagnosable. Update Display impl to show stderr when non-empty.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 2,
+      "created_at": "2026-03-26T12:00:36.249413594Z",
+      "updated_at": "2026-03-26T12:03:08.631117238Z"
     },
     "lb-8t7x": {
       "id": "lb-8t7x",
@@ -340,6 +430,16 @@
       "created_at": "2026-03-10T16:16:43.384115350Z",
       "updated_at": "2026-03-10T16:17:02.229650803Z"
     },
+    "lb-95np": {
+      "id": "lb-95np",
+      "title": "Add ready command",
+      "description": "New file src/ready.rs. ReadyOptions { timeout, max_failures, model }. ReadyError { Command(String), TooManyFailures(u32) }. execute(): (1) create feature branch ready-{YYYYMMDD-HHMMSS}, (2) loop: run lb ready and parse first item ID (break if none), capture HEAD before, build task-focused prompt, run::execute() with prompt_override, capture HEAD after, if new commits run reviewer::execute() with commit_range, sync_and_push(), track consecutive failures and abort if >= max_failures, (3) final sync. Add lb_ready() helper that runs lb ready and parses the first item ID. In main.rs: add Commands::Ready with --timeout --max-failures --model flags, add mod ready, dispatch to ready::execute(). Import shared helpers from do_cmd (sync_and_push, git_current_branch, git_checkout_new_branch).",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 2,
+      "created_at": "2026-03-30T04:00:48.109558951Z",
+      "updated_at": "2026-03-30T04:12:24.328435761Z"
+    },
     "lb-95nz": {
       "id": "lb-95nz",
       "title": "Fix loop decider allowed tools to include lb commands",
@@ -349,6 +449,16 @@
       "priority": 2,
       "created_at": "2026-03-08T21:49:43.709600051Z",
       "updated_at": "2026-03-08T21:50:00.988079113Z"
+    },
+    "lb-9bjb": {
+      "id": "lb-9bjb",
+      "title": "Make ship decision reachable in decider prompt",
+      "description": "The decider instruction algorithm has no path to 'ship'. Steps lead to continue or stop only. Either add an explicit condition for ship (e.g. current branch has N+ commits and remaining work exists) or remove ship from the decider's action enum and the loop body handling if it's intentionally deprecated.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 2,
+      "created_at": "2026-03-28T14:26:24.830992934Z",
+      "updated_at": "2026-03-28T14:32:19.748371342Z"
     },
     "lb-9bod": {
       "id": "lb-9bod",
@@ -460,6 +570,16 @@
       "created_at": "2026-03-10T13:15:35.567464446Z",
       "updated_at": "2026-03-12T21:39:41.004799127Z"
     },
+    "lb-dbfv": {
+      "id": "lb-dbfv",
+      "title": "Dedicated log files and jsonl for decider, reviewer, and shipper",
+      "description": "Runner gets per-run .log + .jsonl with full stream events (thinking, tool calls, results). Decider, reviewer, and shipper all dump formatted text into shared loop.log with no jsonl. Each agent needs its own timestamped log file and raw jsonl capture, same as the runner gets. Specifically:\n- Decider: decider-<timestamp>.log + decider-<timestamp>.jsonl (captures should_continue output in streaming.rs)\n- Reviewer: review-<timestamp>.log + review-<timestamp>.jsonl (captures reviewer container output in reviewer.rs)\n- Shipper: ship-<timestamp>.log + ship-<timestamp>.jsonl (captures shipper container/streaming output)\nThe jsonl is critical — without it we can't see thinking blocks, tool calls, or structured responses. Also fix the schema description which still says 'start new one' for ship — should match the prompt.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 1,
+      "created_at": "2026-03-28T15:31:36.053352615Z",
+      "updated_at": "2026-03-28T15:40:50.837265458Z"
+    },
     "lb-dl1f": {
       "id": "lb-dl1f",
       "title": "Replace tab characters in stream_fmt.rs format strings",
@@ -510,6 +630,16 @@
       "created_at": "2026-03-10T17:03:56.437475603Z",
       "updated_at": "2026-03-10T17:05:16.563684351Z"
     },
+    "lb-eu3o": {
+      "id": "lb-eu3o",
+      "title": "Fix summary agent file-writing failures on host",
+      "description": "Summary agent prompt asks Claude to Write a file, but host-side Claude Code blocks new file creation. Fix: remove Write from allowed tools, change prompt to stdout-only output, capture the already-available result text from streaming, write summary file from Rust code.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 2,
+      "created_at": "2026-03-26T12:00:38.699741787Z",
+      "updated_at": "2026-03-26T12:03:08.645650807Z"
+    },
     "lb-fhpl": {
       "id": "lb-fhpl",
       "title": "Fix trailing blank line in TuiSender impl block",
@@ -530,6 +660,16 @@
       "created_at": "2026-03-25T19:33:54.580123620Z",
       "updated_at": "2026-03-25T19:35:03.349639643Z"
     },
+    "lb-fn11": {
+      "id": "lb-fn11",
+      "title": "Dynamic TUI header: project name, run number, and stage",
+      "description": "Header currently hardcodes 'mrmouth | AGENT SESSION'. Change to show project name (from repo dir), loop run number, and current stage (Agent, Reviewer, Summary, Decider, Shipper). E.g. 'snowflake | Run 3 | Agent'. Requires: TuiState gets project/status fields, TuiMsg::SetStatus variant, TuiHandle::try_start takes project name, TuiHandle::set_status method, header render uses new fields. Callers (main.rs, loop_cmd.rs, run.rs, epic.rs) updated to pass project name and set status at stage transitions.",
+      "item_type": "feature",
+      "status": "closed",
+      "priority": 2,
+      "created_at": "2026-03-26T12:11:07.769456606Z",
+      "updated_at": "2026-03-26T12:39:56.599595531Z"
+    },
     "lb-g45o": {
       "id": "lb-g45o",
       "title": "Epic TooManyFailures error reports max_failures instead of consecutive_failures",
@@ -549,6 +689,16 @@
       "priority": 2,
       "created_at": "2026-03-10T17:13:13.458357465Z",
       "updated_at": "2026-03-10T17:14:08.104427840Z"
+    },
+    "lb-ged3": {
+      "id": "lb-ged3",
+      "title": "Pass commit range to reviewer so it only reviews new code",
+      "description": "The loop already tracks head_before and head_after around each runner execution. Pass these to the reviewer prompt so it runs 'git diff <before>..<after>' instead of reviewing the entire branch. Currently the reviewer re-reads all code every iteration, which wastes context and causes it to re-file issues on old code. The reviewer prompt should say 'review the changes between <before> and <after>' and use that diff as its scope.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 2,
+      "created_at": "2026-03-28T16:18:38.270917486Z",
+      "updated_at": "2026-03-28T17:12:41.535926688Z"
     },
     "lb-gipm": {
       "id": "lb-gipm",
@@ -670,6 +820,16 @@
       "created_at": "2026-03-12T22:35:37.318369415Z",
       "updated_at": "2026-03-25T18:48:47.162041484Z"
     },
+    "lb-kl4s": {
+      "id": "lb-kl4s",
+      "title": "Add individual task support to do command",
+      "description": "In do_cmd.rs, add ItemInfo { title, item_type } struct. Enhance lb_show() to parse the Type: line from lb show output, returning ItemInfo instead of just a String. Add type-based dispatch in execute(): if item_type is 'task' (or no children found), run a single agent session with a task-focused prompt ('Work on task {id}. lb show, claim, implement, commit, close, lb sync, git push.'), then run reviewer on the diff. If item_type is 'epic', use the existing children loop. Extract shared helpers as pub(crate): sync_and_push(), git_current_branch(), git_checkout_new_branch(), make_slug().",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 2,
+      "created_at": "2026-03-30T04:00:20.537638462Z",
+      "updated_at": "2026-03-30T04:07:43.604776813Z"
+    },
     "lb-kwd4": {
       "id": "lb-kwd4",
       "title": "Deduplicate git_remote_url function",
@@ -689,6 +849,16 @@
       "priority": 3,
       "created_at": "2026-03-25T20:00:24.070228902Z",
       "updated_at": "2026-03-25T20:04:24.480077070Z"
+    },
+    "lb-l5j3": {
+      "id": "lb-l5j3",
+      "title": "Rename epic to do, add ready command, restrict lb create to reviewer",
+      "description": "The mrmouth epic command only works with epics. Rename it to 'do' so it handles both epics and individual tasks. Add a new 'ready' command that picks up whatever lb ready items are available. Both are simple runner+reviewer loops (no decider, no shipper). Remove lb create from the runner prompt so only the reviewer can add brites.",
+      "item_type": "epic",
+      "status": "open",
+      "priority": 2,
+      "created_at": "2026-03-30T03:55:56.217205938Z",
+      "updated_at": "2026-03-30T03:55:56.217205938Z"
     },
     "lb-l78i": {
       "id": "lb-l78i",
@@ -739,6 +909,16 @@
       "priority": 1,
       "created_at": "2026-03-25T19:33:53.613215193Z",
       "updated_at": "2026-03-25T19:34:35.437216608Z"
+    },
+    "lb-mke6": {
+      "id": "lb-mke6",
+      "title": "Fix loop bugs found in snowflake test",
+      "description": "Running mrmouth loop on a fresh project revealed 3 bugs: Dockerfile extraction breaks subsequent runs, summary agent can't write files on host, and litebrite commands produce log noise.",
+      "item_type": "epic",
+      "status": "closed",
+      "priority": 1,
+      "created_at": "2026-03-26T12:00:29.380086332Z",
+      "updated_at": "2026-03-26T12:03:12.343921664Z"
     },
     "lb-mkeq": {
       "id": "lb-mkeq",
@@ -799,6 +979,16 @@
       "priority": 2,
       "created_at": "2026-03-10T16:05:43.465752389Z",
       "updated_at": "2026-03-10T16:09:21.762474887Z"
+    },
+    "lb-o60w": {
+      "id": "lb-o60w",
+      "title": "Add reviewer pass to do command",
+      "description": "Add reviewer integration to do_cmd.rs. For task path: capture HEAD before/after the single run, call reviewer::execute() with commit_range if commits were made. For epic path: capture HEAD before the children loop starts and after it ends, then run one reviewer pass at the end covering the entire epic's diff (no reviewer per child). Use ReviewerOptions { model: config.loop_config.reviewer_model, current_branch, commit_range }.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 2,
+      "created_at": "2026-03-30T04:00:28.790343546Z",
+      "updated_at": "2026-03-30T04:09:27.901832495Z"
     },
     "lb-oj9p": {
       "id": "lb-oj9p",
@@ -870,6 +1060,16 @@
       "created_at": "2026-03-10T13:14:15.197155635Z",
       "updated_at": "2026-03-12T21:39:40.935812919Z"
     },
+    "lb-qnpw": {
+      "id": "lb-qnpw",
+      "title": "Rewrite decider prompt and permissions",
+      "description": "Rewrite decider prompt: check lb list for open brites, if any exist return continue. If none, compare implementation to SPEC.md. If deficiencies found, create brites and optionally edit Dockerfile, return continue. If spec satisfied, return stop. Expand permissions to Read,Edit,Write,Bash(git *),Bash(lb *). Remove observer-only admonishment. Keep boundary: do not implement features or claim tasks.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 1,
+      "created_at": "2026-03-26T16:12:35.182482527Z",
+      "updated_at": "2026-03-26T20:17:02.891295518Z"
+    },
     "lb-rv1t": {
       "id": "lb-rv1t",
       "title": "Update SPEC.md volume default to match per-project behavior",
@@ -909,6 +1109,16 @@
       "priority": 2,
       "created_at": "2026-03-25T18:59:14.191879750Z",
       "updated_at": "2026-03-25T19:05:35.001205179Z"
+    },
+    "lb-t7nw": {
+      "id": "lb-t7nw",
+      "title": "Decider should close parent epics before shipping",
+      "description": "When the decider determines all child tasks of an epic are closed and the implementation satisfies the spec, it should close the parent epic before returning 'ship'. Currently it leaves the epic open, which causes the shipper readiness check to fail ('Open item exists'), wasting a full decider+runner+reviewer cycle. Fix: add instruction to the decider prompt to close epics whose children are all closed before returning ship.",
+      "item_type": "task",
+      "status": "open",
+      "priority": 2,
+      "created_at": "2026-03-30T03:36:26.563853784Z",
+      "updated_at": "2026-03-30T03:36:26.563853784Z"
     },
     "lb-tipn": {
       "id": "lb-tipn",
@@ -1000,6 +1210,26 @@
       "created_at": "2026-03-25T20:00:21.152186144Z",
       "updated_at": "2026-03-25T20:03:35.602227618Z"
     },
+    "lb-vfnx": {
+      "id": "lb-vfnx",
+      "title": "Decider: decompose epics into leaf tasks before returning continue",
+      "description": "The decider short-circuits on 'open items exist' without checking whether those items are implementable. If the only open items are epics with no child tasks, the runner has nothing to pick and the loop spins. Fix: after step 1 (lb list), if all open items are epics/non-leaf, the decider should decompose them into tasks before returning continue. Prompt needs to mention epics, --parent, and hierarchical structure.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 1,
+      "created_at": "2026-03-28T14:26:18.482524375Z",
+      "updated_at": "2026-03-28T14:30:23.906606047Z"
+    },
+    "lb-vjkj": {
+      "id": "lb-vjkj",
+      "title": "Fails on pre-initialized empty repo",
+      "description": "When the target repo has already had 'git init' and 'lb init' run manually before mrmouth starts, mrmouth skips its own init but nobody makes the first commit. It then creates a feature branch (e.g. feat-pty-passthrough) and tries to clone it into Docker, which fails because the branch has zero commits: 'fatal: Remote branch feat-pty-passthrough not found in upstream origin'. The decider loops retrying indefinitely. Fix: detect when the repo has no commits and make a seed commit before creating feature branches.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 2,
+      "created_at": "2026-03-29T23:39:10.908125688Z",
+      "updated_at": "2026-03-30T00:01:10.245862508Z"
+    },
     "lb-vsce": {
       "id": "lb-vsce",
       "title": "Modify src/main.rs: start TUI, thread into subcommands",
@@ -1020,6 +1250,16 @@
       "created_at": "2026-03-30T21:11:24.119030309Z",
       "updated_at": "2026-03-30T21:11:24.119030309Z"
     },
+    "lb-wi67": {
+      "id": "lb-wi67",
+      "title": "Update docs for do and ready commands",
+      "description": "In README.md: replace the 'mrmouth epic' section with 'mrmouth do <id>' documenting that it works on both epics (loops through children, reviewer at end) and individual tasks (single run + reviewer). Add 'mrmouth ready' section documenting it picks up lb ready items, creates a feature branch, runs runner+reviewer per item. In SPEC.md: same updates to the epic/do section and add ready command spec. Update config.toml examples if they reference [epic].",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 2,
+      "created_at": "2026-03-30T04:00:55.535058030Z",
+      "updated_at": "2026-03-30T04:14:36.153091282Z"
+    },
     "lb-wil9": {
       "id": "lb-wil9",
       "title": "SPEC.md missing --timeout for loop mode",
@@ -1030,6 +1270,16 @@
       "created_at": "2026-03-25T19:11:17.451611497Z",
       "updated_at": "2026-03-25T19:13:19.109072166Z"
     },
+    "lb-x5un": {
+      "id": "lb-x5un",
+      "title": "Remove lb create from runner prompt",
+      "description": "In src/prompt.rs, delete the line: '- If you discover follow-up work during implementation (bugs, missing pieces, edge cases), create a task for it with `lb create`.' The reviewer (reviewer.rs) already has lb create permission. No other files need changes for this.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 2,
+      "created_at": "2026-03-30T04:00:00.420246913Z",
+      "updated_at": "2026-03-30T04:04:47.237971240Z"
+    },
     "lb-xfzy": {
       "id": "lb-xfzy",
       "title": "TUI q/Ctrl+C exits via process::exit bypassing Docker cleanup",
@@ -1039,6 +1289,16 @@
       "priority": 1,
       "created_at": "2026-03-10T14:39:09.544293746Z",
       "updated_at": "2026-03-10T15:46:26.442127274Z"
+    },
+    "lb-xkq6": {
+      "id": "lb-xkq6",
+      "title": "Strip task-creation from runner prompt",
+      "description": "In prompt.rs DEFAULT_PROMPT, remove steps 3 and 7 which tell the runner to create tasks. Runner should only pick existing tasks, implement, and commit. Task creation is now the decider's job.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 1,
+      "created_at": "2026-03-26T16:12:36.933983750Z",
+      "updated_at": "2026-03-26T20:18:18.988088445Z"
     },
     "lb-xl9q": {
       "id": "lb-xl9q",
@@ -1103,8 +1363,43 @@
   },
   "deps": [
     {
+      "from_id": "lb-1hfx",
+      "to_id": "lb-2rj3",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-1hfx",
+      "to_id": "lb-qnpw",
+      "dep_type": "blocks"
+    },
+    {
+      "from_id": "lb-1hfx",
+      "to_id": "lb-xkq6",
+      "dep_type": "blocks"
+    },
+    {
+      "from_id": "lb-1jfl",
+      "to_id": "lb-mke6",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-1yo3",
+      "to_id": "lb-2rj3",
+      "dep_type": "parent"
+    },
+    {
       "from_id": "lb-2dra",
       "to_id": "lb-cmnc",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-3m77",
+      "to_id": "lb-2rj3",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-5e79",
+      "to_id": "lb-mke6",
       "dep_type": "parent"
     },
     {
@@ -1118,6 +1413,41 @@
       "dep_type": "parent"
     },
     {
+      "from_id": "lb-6scn",
+      "to_id": "lb-vy69",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-731u",
+      "to_id": "lb-kl4s",
+      "dep_type": "blocks"
+    },
+    {
+      "from_id": "lb-731u",
+      "to_id": "lb-l5j3",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-8raq",
+      "to_id": "lb-mke6",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-95np",
+      "to_id": "lb-l5j3",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-95np",
+      "to_id": "lb-wi67",
+      "dep_type": "blocks"
+    },
+    {
+      "from_id": "lb-9bjb",
+      "to_id": "lb-2rj3",
+      "dep_type": "parent"
+    },
+    {
       "from_id": "lb-9lnz",
       "to_id": "lb-cmnc",
       "dep_type": "parent"
@@ -1128,8 +1458,18 @@
       "dep_type": "parent"
     },
     {
+      "from_id": "lb-btw1",
+      "to_id": "lb-vy69",
+      "dep_type": "parent"
+    },
+    {
       "from_id": "lb-cqhc",
       "to_id": "lb-cmnc",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-dbfv",
+      "to_id": "lb-2rj3",
       "dep_type": "parent"
     },
     {
@@ -1143,8 +1483,18 @@
       "dep_type": "parent"
     },
     {
+      "from_id": "lb-eu3o",
+      "to_id": "lb-mke6",
+      "dep_type": "parent"
+    },
+    {
       "from_id": "lb-fki2",
       "to_id": "lb-dvhr",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-ged3",
+      "to_id": "lb-2rj3",
       "dep_type": "parent"
     },
     {
@@ -1156,6 +1506,16 @@
       "from_id": "lb-k3be",
       "to_id": "lb-21dd",
       "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-kl4s",
+      "to_id": "lb-l5j3",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-kl4s",
+      "to_id": "lb-o60w",
+      "dep_type": "blocks"
     },
     {
       "from_id": "lb-kwd4",
@@ -1183,6 +1543,16 @@
       "dep_type": "parent"
     },
     {
+      "from_id": "lb-o60w",
+      "to_id": "lb-95np",
+      "dep_type": "blocks"
+    },
+    {
+      "from_id": "lb-o60w",
+      "to_id": "lb-l5j3",
+      "dep_type": "parent"
+    },
+    {
       "from_id": "lb-okra",
       "to_id": "lb-cmnc",
       "dep_type": "parent"
@@ -1195,6 +1565,11 @@
     {
       "from_id": "lb-q88t",
       "to_id": "lb-cmnc",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-qnpw",
+      "to_id": "lb-2rj3",
       "dep_type": "parent"
     },
     {
@@ -1223,8 +1598,33 @@
       "dep_type": "parent"
     },
     {
+      "from_id": "lb-vfnx",
+      "to_id": "lb-2rj3",
+      "dep_type": "parent"
+    },
+    {
       "from_id": "lb-vsce",
       "to_id": "lb-cmnc",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-wi67",
+      "to_id": "lb-l5j3",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-x5un",
+      "to_id": "lb-731u",
+      "dep_type": "blocks"
+    },
+    {
+      "from_id": "lb-x5un",
+      "to_id": "lb-l5j3",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-xkq6",
+      "to_id": "lb-2rj3",
       "dep_type": "parent"
     },
     {
@@ -1240,16 +1640,6 @@
     {
       "from_id": "lb-zcay",
       "to_id": "lb-dvhr",
-      "dep_type": "parent"
-    },
-    {
-      "from_id": "lb-btw1",
-      "to_id": "lb-vy69",
-      "dep_type": "parent"
-    },
-    {
-      "from_id": "lb-6scn",
-      "to_id": "lb-vy69",
       "dep_type": "parent"
     }
   ]
