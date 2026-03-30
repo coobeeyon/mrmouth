@@ -386,11 +386,10 @@
       "title": "Rename epic.rs to do_cmd.rs and update types",
       "description": "Rename src/epic.rs to src/do_cmd.rs (do is a Rust keyword). Rename EpicOptions→DoOptions (epic_id→item_id), EpicError→DoError (EpicNotFound→ItemNotFound). In main.rs: mod epic→mod do_cmd, Commands::Epic→Commands::Do (epic_id→item_id), dispatch to do_cmd::execute(). In config.rs: EpicConfig→DoConfig with #[serde(rename=\"epic\")] for TOML backward compat, Config field epic→do_config with same serde rename. Update all tests referencing these types. Preserve all existing slug tests.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 2,
-      "claimed_by": "agent-runner",
       "created_at": "2026-03-30T04:00:10.132735429Z",
-      "updated_at": "2026-03-30T04:01:05.112960305Z"
+      "updated_at": "2026-03-30T04:04:00.332484872Z"
     },
     "lb-7s17": {
       "id": "lb-7s17",
