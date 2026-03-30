@@ -42,7 +42,6 @@ You have a limited context window. Use it wisely:
 - Every task ends with: lb close, lb sync, git push — in that order. Then assess whether to continue.
 - The next agent will continue where you left off. Exit promptly when context is filling up.
 - The decider decomposes epics and plans work — do not break down specs or plan ahead.
-- If you discover follow-up work during implementation (bugs, missing pieces, edge cases), create a task for it with `lb create`.
 
 ## Docker Environment
 
