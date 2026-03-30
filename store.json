@@ -979,8 +979,9 @@
       "item_type": "task",
       "status": "open",
       "priority": 2,
+      "claimed_by": "agent-runner",
       "created_at": "2026-03-30T04:00:28.790343546Z",
-      "updated_at": "2026-03-30T04:00:28.790343546Z"
+      "updated_at": "2026-03-30T04:08:27.479492267Z"
     },
     "lb-oj9p": {
       "id": "lb-oj9p",
