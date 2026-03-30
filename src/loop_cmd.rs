@@ -113,6 +113,48 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions, tui: Option
         }
     }
 
+    // Pre-initialized repo with zero commits: seed one so branches can be
+    // created and cloned.  This covers the case where the user ran `git init`
+    // (and possibly `lb init`) before invoking mrmouth.
+    let has_commits = Command::new("git")
+        .args(["rev-parse", "--verify", "HEAD"])
+        .current_dir(repo_root)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+    if !has_commits {
+        emit(&tui_tx, "No commits found — creating seed commit");
+        let gitignore_path = repo_root.join(".gitignore");
+        if !gitignore_path.exists() {
+            let _ = std::fs::write(&gitignore_path, "logs/\n");
+        }
+        let dockerfile_path = repo_root.join(&config.dockerfile);
+        if !dockerfile_path.exists() {
+            if let Some(parent) = dockerfile_path.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            let _ = std::fs::write(&dockerfile_path, crate::docker::DEFAULT_DOCKERFILE);
+        }
+        let _ = Command::new("git")
+            .args(["add", "-A"])
+            .current_dir(repo_root)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+        let seed_status = Command::new("git")
+            .args(["commit", "--allow-empty", "-m", "Initial commit"])
+            .current_dir(repo_root)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .map_err(|e| LoopError::Bootstrap(format!("failed to create seed commit: {e}")))?;
+        if !seed_status.success() {
+            return Err(LoopError::Bootstrap("seed commit failed".into()));
+        }
+    }
+
     // Capture parent branch before creating feature branch
     let parent_branch = git_current_branch(repo_root).unwrap_or_else(|_| "main".into());
 
