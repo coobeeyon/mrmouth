@@ -1268,11 +1268,10 @@
       "title": "Remove lb create from runner prompt",
       "description": "In src/prompt.rs, delete the line: '- If you discover follow-up work during implementation (bugs, missing pieces, edge cases), create a task for it with `lb create`.' The reviewer (reviewer.rs) already has lb create permission. No other files need changes for this.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 2,
-      "claimed_by": "agent-runner",
       "created_at": "2026-03-30T04:00:00.420246913Z",
-      "updated_at": "2026-03-30T04:04:31.529900545Z"
+      "updated_at": "2026-03-30T04:04:47.237971240Z"
     },
     "lb-xfzy": {
       "id": "lb-xfzy",
