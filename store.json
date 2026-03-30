@@ -1213,6 +1213,16 @@
       "created_at": "2026-03-25T20:43:13.568182875Z",
       "updated_at": "2026-03-25T20:43:19.387471688Z"
     },
+    "lb-x5un": {
+      "id": "lb-x5un",
+      "title": "Remove lb create from runner prompt",
+      "description": "In src/prompt.rs, delete the line: '- If you discover follow-up work during implementation (bugs, missing pieces, edge cases), create a task for it with `lb create`.' The reviewer (reviewer.rs) already has lb create permission. No other files need changes for this.",
+      "item_type": "task",
+      "status": "open",
+      "priority": 2,
+      "created_at": "2026-03-30T04:00:00.420246913Z",
+      "updated_at": "2026-03-30T04:00:00.420246913Z"
+    },
     "lb-xfzy": {
       "id": "lb-xfzy",
       "title": "TUI q/Ctrl+C exits via process::exit bypassing Docker cleanup",
@@ -1508,6 +1518,11 @@
     {
       "from_id": "lb-zcay",
       "to_id": "lb-dvhr",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-x5un",
+      "to_id": "lb-l5j3",
       "dep_type": "parent"
     }
   ]
