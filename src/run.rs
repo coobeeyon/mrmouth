@@ -335,6 +335,8 @@ work_dir="$HOME/workspace"
 # --- Clone repo (skip if workspace already mounted) ---
 if [ ! -d "$work_dir/.git" ]; then
   if [ -n "$repo_url" ]; then
+    # Mark the host-repo volume as safe so git clone can read it
+    git config --global --add safe.directory /host-repo
     echo "Cloning $repo_url (branch: $branch)..."
     git clone --branch "$branch" "$repo_url" "$work_dir"
   else

@@ -75,7 +75,7 @@ pub fn execute(config: &Config, repo_root: &Path, log_file: &str, logger: Option
 
     let mut formatter = StreamFormatter::new(target.supports_color());
 
-    let (result, exit_code) = streaming::run_streaming_claude(child, &mut formatter, logger, &target)
+    let (result, exit_code) = streaming::run_streaming_claude(child, &mut formatter, logger, &target, &mut None)
         .map_err(|e| SummaryError(format!("streaming error: {e}")))?;
 
     if exit_code != 0 {

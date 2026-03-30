@@ -1,4 +1,5 @@
-use std::io::{IsTerminal, Write};
+use std::fs::File;
+use std::io::{BufWriter, IsTerminal, Write};
 use std::path::Path;
 use std::process::{Command, Stdio};
 
@@ -22,8 +23,11 @@ pub struct ShipResult {
 pub fn execute(config: &Config, repo_root: &Path, opts: &ShipperOptions, logger: Option<&Logger>) -> Result<ShipResult, ShipperError> {
     crate::logger::log(logger, &format!("SHIPPING  {} -> {}", opts.current_branch, opts.parent_branch));
 
+    let log_dir = repo_root.join(&config.log_dir);
+    let _ = std::fs::create_dir_all(&log_dir);
+
     // 1. Check readiness
-    check_ready(config, repo_root, &opts.current_branch, &opts.model, logger)?;
+    check_ready(config, repo_root, &opts.current_branch, &opts.model, logger, &log_dir)?;
 
     // 2. Merge current branch into parent
     merge_branch(repo_root, &opts.current_branch, &opts.parent_branch, logger)?;
@@ -35,7 +39,7 @@ pub fn execute(config: &Config, repo_root: &Path, opts: &ShipperOptions, logger:
     Ok(ShipResult { new_branch: branch_name })
 }
 
-fn check_ready(config: &Config, repo_root: &Path, current_branch: &str, model: &str, logger: Option<&Logger>) -> Result<(), ShipperError> {
+fn check_ready(config: &Config, repo_root: &Path, current_branch: &str, model: &str, logger: Option<&Logger>, log_dir: &Path) -> Result<(), ShipperError> {
     let schema = r#"{"type":"object","properties":{"status":{"type":"string","enum":["READY","BLOCKED"]},"reason":{"type":"string"}},"required":["status","reason"]}"#;
 
     let preamble = crate::prompt::SYSTEM_PREAMBLE;
@@ -66,6 +70,7 @@ work_dir="$HOME/workspace"
 # Clone repo
 if [ ! -d "$work_dir/.git" ]; then
   if [ -n "$repo_url" ]; then
+    git config --global --add safe.directory /host-repo
     echo "Cloning $repo_url (branch: $branch)..."
     git clone --branch "$branch" "$repo_url" "$work_dir"
   fi
@@ -126,6 +131,19 @@ fi
     let container_name = format!("readiness-{timestamp}");
     let volume = config.effective_volume(repo_root);
 
+    // Create dedicated ship log + jsonl files
+    let ship_log_path = log_dir.join(format!("ship-{timestamp}.log"));
+    let ship_jsonl_path = log_dir.join(format!("ship-{timestamp}.jsonl"));
+
+    let ship_logger = match logger.and_then(|l| l.tui_sender()) {
+        Some(tui) => Logger::with_tui(&ship_log_path, tui.clone()),
+        None => Logger::new(&ship_log_path),
+    }.ok();
+
+    let mut jsonl_writer: Option<BufWriter<File>> = File::create(&ship_jsonl_path)
+        .ok()
+        .map(BufWriter::new);
+
     DockerBuilder::remove_container(&container_name);
 
     let docker = DockerBuilder::new(&config.image);
@@ -154,6 +172,11 @@ fi
 
     handle
         .stream_output(|line| {
+            // Write raw JSONL to dedicated file
+            if let Some(w) = jsonl_writer.as_mut() {
+                let _ = writeln!(w, "{line}");
+            }
+
             if let Ok(event) = serde_json::from_str::<serde_json::Value>(line) {
                 if event.get("type").and_then(|v| v.as_str()) == Some("result") {
                     // structured_output (JSON object) takes priority over result (string)
@@ -170,16 +193,23 @@ fi
                 }
             }
             if let Some(formatted) = stream_fmt::format_line(&mut formatter, line) {
+                // Display to TUI/stderr
                 match logger {
-                    Some(l) => {
-                        l.display(&formatted);
-                        l.log_file_only(&formatted);
-                    }
+                    Some(l) => l.display(&formatted),
                     None => eprintln!("{formatted}"),
+                }
+                // Write formatted text to dedicated ship log
+                if let Some(sl) = ship_logger.as_ref() {
+                    sl.log_file_only(&formatted);
                 }
             }
         })
         .map_err(|e| ShipperError(format!("streaming error: {e}")))?;
+
+    // Flush dedicated JSONL writer
+    if let Some(w) = jsonl_writer.as_mut() {
+        let _ = w.flush();
+    }
 
     let exit_code = handle
         .wait()
@@ -340,7 +370,7 @@ pub fn generate_branch_name(repo_root: &Path, model: &str, logger: Option<&Logge
 
     let mut formatter = StreamFormatter::new(target.supports_color());
 
-    let (result_text, exit_code) = streaming::run_streaming_claude(child, &mut formatter, logger, &target)
+    let (result_text, exit_code) = streaming::run_streaming_claude(child, &mut formatter, logger, &target, &mut None)
         .map_err(|e| ShipperError(format!("branch name generation failed: {e}")))?;
 
     if exit_code != 0 {

@@ -42,13 +42,13 @@ Run the agent repeatedly until work is done.
 
 **What it does:**
 
-1. Execute `mrmouth run`
-2. After each run, if the agent committed changes, run a **reviewer** agent inside Docker. The reviewer checks the diff against SPEC.md, verifies the build and tests pass, and files/closes litebrite tasks for issues found.
-3. Optionally generate a summary of each run log (using Haiku)
-4. Run an AI **decider** that reads SPEC.md and litebrite task state and returns one of: `continue`, `ship`, or `stop`
-5. If `ship`: run a **readiness check** inside Docker (verifies no open blocking tasks and all build/tests pass), merge the current branch, and start a new feature branch
-6. If `continue`, loop back to step 1
-7. Stop when the decider says `stop` or max iterations are reached
+1. Run an AI **decider** that reads SPEC.md and litebrite task state. If only epics (no leaf tasks) are open, the decider decomposes them into concrete child tasks and ensures the Dockerfile has the required toolchain. Returns one of: `continue`, `ship`, or `stop`
+2. If `ship`: run a **readiness check** inside Docker (verifies no open blocking tasks and all build/tests pass), merge the current branch, and start a new feature branch — then loop back to step 1
+3. If `stop`: exit the loop
+4. If `continue`: execute `mrmouth run` (the runner agent)
+5. After the run, if the agent committed changes, run a **reviewer** agent inside Docker. The reviewer checks the diff (scoped to the commits from this run) against SPEC.md and files/closes litebrite tasks for issues found
+6. Optionally generate a summary of each run log (using Haiku)
+7. Loop back to step 1. Stop when the decider says `stop` or max iterations are reached
 
 **Flags:**
 

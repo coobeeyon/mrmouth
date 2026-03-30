@@ -1,4 +1,5 @@
-use std::io::IsTerminal;
+use std::fs::File;
+use std::io::{BufWriter, IsTerminal, Write};
 use std::path::Path;
 use std::process::Command;
 
@@ -10,6 +11,9 @@ use crate::stream_fmt::{self, StreamFormatter};
 pub struct ReviewerOptions {
     pub model: String,
     pub current_branch: String,
+    /// If set, the reviewer scopes its review to only the changes in this
+    /// commit range (before..after) instead of the entire branch.
+    pub commit_range: Option<(String, String)>,
 }
 
 /// Run a reviewer agent inside the project Docker container so it has access
@@ -22,13 +26,27 @@ pub fn execute(config: &Config, repo_root: &Path, opts: &ReviewerOptions, logger
     let effective_dockerfile = crate::docker::effective_dockerfile_content(repo_root, &config.dockerfile);
 
     let preamble = crate::prompt::SYSTEM_PREAMBLE;
+
+    let scope_instructions = match &opts.commit_range {
+        Some((before, after)) => format!(
+            "Review ONLY the changes between commits {before}..{after} on branch '{}'. \
+            Run `git diff {before}..{after}` to see what changed — do NOT review code outside this range. \
+            Use lb commands to inspect task state.",
+            opts.current_branch
+        ),
+        None => format!(
+            "Review the changes on branch '{}' \
+            against the project spec (SPEC.md). Use git diff and git log to understand what changed. \
+            Use lb commands to inspect task state.",
+            opts.current_branch
+        ),
+    };
+
     let prompt = format!(
         "## System\n\n{preamble}\n\n\
         You are the **Reviewer**. Your job is to review code and file issues. You do NOT implement features, make architectural decisions, or decide whether the loop continues.\n\n\
         ## Instructions\n\n\
-        Review the changes on branch '{}' \
-        against the project spec (SPEC.md). Use git diff and git log to understand what changed. \
-        Use lb commands to inspect task state.\n\n\
+        {scope_instructions}\n\n\
         First, verify the project builds and all tests pass. Discover the correct build/test \
         commands by examining the project structure (Makefile, package.json, Cargo.toml, etc.) \
         and run them. A build failure or test failure is a blocking issue that must be filed.\n\n\
@@ -46,7 +64,6 @@ pub fn execute(config: &Config, repo_root: &Path, opts: &ReviewerOptions, logger
         create litebrite items for them: lb create \"<title>\" -d \"<description>\"\n\n\
         If you see completed items that are still open, close them: lb close <id>\n\n\
         Be concise. Only flag real issues, not style nits.",
-        opts.current_branch
     );
 
     let escaped_prompt = prompt.replace('\'', "'\\''");
@@ -63,6 +80,7 @@ work_dir="$HOME/workspace"
 # Clone repo
 if [ ! -d "$work_dir/.git" ]; then
   if [ -n "$repo_url" ]; then
+    git config --global --add safe.directory /host-repo
     echo "Cloning $repo_url (branch: $branch)..."
     git clone --branch "$branch" "$repo_url" "$work_dir"
   fi
@@ -142,6 +160,21 @@ fi
     let container_name = format!("review-{timestamp}");
     let volume = config.effective_volume(repo_root);
 
+    // Create dedicated review log + jsonl files
+    let log_dir = repo_root.join(&config.log_dir);
+    let _ = std::fs::create_dir_all(&log_dir);
+    let review_log_path = log_dir.join(format!("review-{timestamp}.log"));
+    let review_jsonl_path = log_dir.join(format!("review-{timestamp}.jsonl"));
+
+    let review_logger = match logger.and_then(|l| l.tui_sender()) {
+        Some(tui) => Logger::with_tui(&review_log_path, tui.clone()),
+        None => Logger::new(&review_log_path),
+    }.ok();
+
+    let mut jsonl_writer: Option<BufWriter<File>> = File::create(&review_jsonl_path)
+        .ok()
+        .map(BufWriter::new);
+
     DockerBuilder::remove_container(&container_name);
 
     let docker = DockerBuilder::new(&config.image);
@@ -169,17 +202,29 @@ fi
 
     handle
         .stream_output(|line| {
+            // Write raw JSONL to dedicated file
+            if let Some(w) = jsonl_writer.as_mut() {
+                let _ = writeln!(w, "{line}");
+            }
+
             if let Some(formatted) = stream_fmt::format_line(&mut formatter, line) {
+                // Display to TUI/stderr
                 match logger {
-                    Some(l) => {
-                        l.display(&formatted);
-                        l.log_file_only(&formatted);
-                    }
+                    Some(l) => l.display(&formatted),
                     None => eprintln!("{formatted}"),
+                }
+                // Write formatted text to dedicated review log
+                if let Some(rl) = review_logger.as_ref() {
+                    rl.log_file_only(&formatted);
                 }
             }
         })
         .map_err(|e| ReviewerError(format!("streaming error: {e}")))?;
+
+    // Flush dedicated JSONL writer
+    if let Some(w) = jsonl_writer.as_mut() {
+        let _ = w.flush();
+    }
 
     let exit_code = handle
         .wait()

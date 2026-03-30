@@ -1,3 +1,5 @@
+use std::fs::File;
+use std::io::BufWriter;
 use std::path::Path;
 use std::process::{Command, Stdio};
 
@@ -71,6 +73,15 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions, tui: Option
             }
         }
 
+        // Seed default Dockerfile so the decider has a base to add layers to
+        let dockerfile_path = repo_root.join(&config.dockerfile);
+        if !dockerfile_path.exists() {
+            if let Some(parent) = dockerfile_path.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            let _ = std::fs::write(&dockerfile_path, crate::docker::DEFAULT_DOCKERFILE);
+        }
+
         let add_status = Command::new("git")
             .args(["add", "-A"])
             .current_dir(repo_root)
@@ -99,6 +110,48 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions, tui: Option
                     return Err(LoopError::Bootstrap("initial commit failed".into()));
                 }
             }
+        }
+    }
+
+    // Pre-initialized repo with zero commits: seed one so branches can be
+    // created and cloned.  This covers the case where the user ran `git init`
+    // (and possibly `lb init`) before invoking mrmouth.
+    let has_commits = Command::new("git")
+        .args(["rev-parse", "--verify", "HEAD"])
+        .current_dir(repo_root)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+    if !has_commits {
+        emit(&tui_tx, "No commits found — creating seed commit");
+        let gitignore_path = repo_root.join(".gitignore");
+        if !gitignore_path.exists() {
+            let _ = std::fs::write(&gitignore_path, "logs/\n");
+        }
+        let dockerfile_path = repo_root.join(&config.dockerfile);
+        if !dockerfile_path.exists() {
+            if let Some(parent) = dockerfile_path.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            let _ = std::fs::write(&dockerfile_path, crate::docker::DEFAULT_DOCKERFILE);
+        }
+        let _ = Command::new("git")
+            .args(["add", "-A"])
+            .current_dir(repo_root)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+        let seed_status = Command::new("git")
+            .args(["commit", "--allow-empty", "-m", "Initial commit"])
+            .current_dir(repo_root)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .map_err(|e| LoopError::Bootstrap(format!("failed to create seed commit: {e}")))?;
+        if !seed_status.success() {
+            return Err(LoopError::Bootstrap("seed commit failed".into()));
         }
     }
 
@@ -141,6 +194,54 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions, tui: Option
             break;
         }
 
+        // --- Decider (runs first; uses loop_logger since no run logger exists yet) ---
+        if let Some(t) = tui { t.set_stage("Deciding"); }
+        let decider_model = config.loop_config.decider_model.clone();
+        let decision = should_continue(repo_root, &decider_model, loop_logger.as_ref(), &log_dir);
+
+        match decision {
+            Ok(Decision::Continue(reason)) => {
+                crate::logger::log(loop_logger.as_ref(), &format!("Decider: continue — {reason}"));
+            }
+            Ok(Decision::Ship(reason)) => {
+                crate::logger::log(loop_logger.as_ref(), &format!("Decider: ship — {reason}"));
+
+                if let Some(t) = tui { t.set_stage("Shipper"); }
+                let ship_opts = shipper::ShipperOptions {
+                    model: config.loop_config.shipper_model.clone(),
+                    current_branch: current_branch.clone(),
+                    parent_branch: parent_branch.clone(),
+                };
+
+                match shipper::execute(config, repo_root, &ship_opts, loop_logger.as_ref()) {
+                    Ok(result) => {
+                        crate::logger::log(loop_logger.as_ref(), &format!("Shipped! New branch: {}", result.new_branch));
+                        current_branch = result.new_branch;
+                        continue;
+                    }
+                    Err(e) => {
+                        crate::logger::log(loop_logger.as_ref(), &format!("Ship failed (continuing on current branch): {e}"));
+                    }
+                }
+            }
+            Ok(Decision::Stop(reason)) => {
+                crate::logger::log(loop_logger.as_ref(), &format!("Decider: stop — {reason}"));
+                let completed = run_number - 1;
+                emit(&tui_tx, &format!("LOOP COMPLETE  {completed} runs"));
+                break;
+            }
+            Err(e) => {
+                crate::logger::log(loop_logger.as_ref(), &format!("Decider error (continuing anyway): {e}"));
+            }
+        }
+
+        // Check if TUI user cancelled after decider
+        if tui.is_some_and(|t| t.is_cancelled()) {
+            emit(&tui_tx, "LOOP CANCELLED BY USER");
+            break;
+        }
+
+        // --- Runner ---
         let run_opts = RunOptions {
             raw: false,
             model: opts.model.clone(),
@@ -162,7 +263,6 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions, tui: Option
             }
         };
         // Use the run's logger if available, otherwise fall back to the loop logger.
-        // This ensures output routes through the TUI even when a run fails.
         let logger_opt: Option<&Logger> = run_logger.as_ref().or(loop_logger.as_ref());
 
         // Check if TUI user cancelled during the run
@@ -171,20 +271,22 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions, tui: Option
             break;
         }
 
-        // Sync litebrite so reviewer and decider see fresh task state
+        // Sync litebrite so reviewer sees fresh task state
         litebrite::sync(repo_root, logger_opt);
 
-        // Only run reviewer if the agent actually committed something
+        // --- Reviewer (only if the agent actually committed something) ---
         let head_after = git_head(repo_root);
-        let agent_made_commits = head_before.is_ok()
-            && head_after.is_ok()
-            && head_before.unwrap() != head_after.unwrap();
+        let commit_range = match (&head_before, &head_after) {
+            (Ok(before), Ok(after)) if before != after => Some((before.clone(), after.clone())),
+            _ => None,
+        };
 
-        if agent_made_commits {
+        if commit_range.is_some() {
             if let Some(t) = tui { t.set_stage("Reviewer"); }
             let reviewer_opts = reviewer::ReviewerOptions {
                 model: config.loop_config.reviewer_model.clone(),
                 current_branch: current_branch.clone(),
+                commit_range,
             };
             if let Err(e) = reviewer::execute(config, repo_root, &reviewer_opts, logger_opt) {
                 crate::logger::log(logger_opt, &format!("Reviewer failed (non-fatal): {e}"));
@@ -195,60 +297,11 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions, tui: Option
             crate::logger::log(logger_opt, "Reviewer skipped: no new commits from this run.");
         }
 
-        // Run summary and decider in parallel — they're independent
-        if let Some(t) = tui { t.set_stage("Deciding"); }
-        let decider_model = config.loop_config.decider_model.clone();
-        let decision = std::thread::scope(|s| {
-            if !opts.no_summary {
-                let log_file = format!("{}/latest.jsonl", config.log_dir);
-                s.spawn(move || {
-                    if let Err(e) = summary::execute(config, repo_root, &log_file, logger_opt) {
-                        crate::logger::log(logger_opt, &format!("Summary generation failed: {e}"));
-                    }
-                });
-            }
-
-            let decider_handle = s.spawn(move || {
-                should_continue(repo_root, &decider_model, logger_opt)
-            });
-
-            match decider_handle.join() {
-                Ok(result) => result,
-                Err(_) => Err(LoopError::Decider("decider thread panicked".into())),
-            }
-        });
-
-        match decision {
-            Ok(Decision::Continue(reason)) => {
-                crate::logger::log(logger_opt, &format!("Decider: continue — {reason}"));
-            }
-            Ok(Decision::Ship(reason)) => {
-                crate::logger::log(logger_opt, &format!("Decider: ship — {reason}"));
-
-                if let Some(t) = tui { t.set_stage("Shipper"); }
-                let ship_opts = shipper::ShipperOptions {
-                    model: config.loop_config.shipper_model.clone(),
-                    current_branch: current_branch.clone(),
-                    parent_branch: parent_branch.clone(),
-                };
-
-                match shipper::execute(config, repo_root, &ship_opts, logger_opt) {
-                    Ok(result) => {
-                        crate::logger::log(logger_opt, &format!("Shipped! New branch: {}", result.new_branch));
-                        current_branch = result.new_branch;
-                    }
-                    Err(e) => {
-                        crate::logger::log(logger_opt, &format!("Ship failed (continuing on current branch): {e}"));
-                    }
-                }
-            }
-            Ok(Decision::Stop(reason)) => {
-                crate::logger::log(logger_opt, &format!("Decider: stop — {reason}"));
-                emit(&tui_tx, &format!("LOOP COMPLETE  {run_number} runs"));
-                break;
-            }
-            Err(e) => {
-                crate::logger::log(logger_opt, &format!("Decider error (continuing anyway): {e}"));
+        // --- Summary (runs after reviewer) ---
+        if !opts.no_summary {
+            let log_file = format!("{}/latest.jsonl", config.log_dir);
+            if let Err(e) = summary::execute(config, repo_root, &log_file, logger_opt) {
+                crate::logger::log(logger_opt, &format!("Summary generation failed: {e}"));
             }
         }
 
@@ -273,28 +326,61 @@ enum Decision {
     Stop(String),
 }
 
-fn should_continue(repo_root: &Path, decider_model: &str, logger: Option<&Logger>) -> Result<Decision, LoopError> {
+fn should_continue(repo_root: &Path, decider_model: &str, logger: Option<&Logger>, log_dir: &Path) -> Result<Decision, LoopError> {
     crate::logger::log(logger, "DECISION");
 
-    let schema = r#"{"type":"object","properties":{"action":{"type":"string","enum":["continue","ship","stop"],"description":"continue = keep working, ship = merge current branch and start new one, stop = all done"},"reason":{"type":"string","description":"Brief explanation of the decision"}},"required":["action","reason"]}"#;
+    // Create dedicated decider log + jsonl files
+    let timestamp = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
+    let decider_log_path = log_dir.join(format!("decider-{timestamp}.log"));
+    let decider_jsonl_path = log_dir.join(format!("decider-{timestamp}.jsonl"));
+
+    let decider_logger = match logger.and_then(|l| l.tui_sender()) {
+        Some(tui) => Logger::with_tui(&decider_log_path, tui.clone()),
+        None => Logger::new(&decider_log_path),
+    }.ok();
+
+    let mut jsonl_writer: Option<BufWriter<File>> = File::create(&decider_jsonl_path)
+        .ok()
+        .map(BufWriter::new);
+
+    let schema = r#"{"type":"object","properties":{"action":{"type":"string","enum":["continue","ship","stop"],"description":"continue = more work to do, ship = all done and ready to merge, stop = nothing to merge"},"reason":{"type":"string","description":"Brief explanation of the decision"}},"required":["action","reason"]}"#;
 
     let prompt = format!("## System\n\n{}\n\n\
-        You are the **Decider**. Your job is to read state and return a decision. \
-        You do NOT implement, review, or modify anything. Do not claim, create, close, \
-        or update litebrite items. Do not make git commits or push.\n\n\
+        You are the **Decider**. Your job is to assess project state and return a decision.\n\n\
+        ## Boundary\n\n\
+        You do NOT implement features, claim tasks, or make code changes. \
+        You MAY create litebrite items, edit the Dockerfile, and read any file.\n\n\
         ## Instructions\n\n\
-        The project is specified in SPEC.md. Check the litebrite task state to see what \
-        has been done and what remains, and compare this to the spec.\n\n\
+        1. Run `lb list` to check for open litebrite items.\n\
+        2. Check whether the open items include **leaf tasks** (type=task with no children) that the runner can implement.\n\
+           - Run `lb list --tree` to see the hierarchy.\n\
+           - If leaf tasks exist, return **continue**.\n\
+           - If the only open items are **epics or features with no child tasks**, decompose them: \
+             create concrete child tasks with `lb create \"<title>\" -t task --parent <epic-id> -d \"<description>\"`. \
+             Also read `.mrmouth/Dockerfile` and SPEC.md — if the spec requires a toolchain \
+             (e.g. Rust, Go, Python) that is not installed in the Dockerfile, add the necessary \
+             `RUN` commands **before** the `USER runner` line so the runner has a working compiler/interpreter. \
+             Then return **continue**.\n\
+        3. If NO open items exist, read SPEC.md and compare it against the current implementation.\n\
+           - If there are deficiencies or missing features, create litebrite tasks for them \
+             (and optionally edit `.mrmouth/Dockerfile` if tooling changes are needed), then return **continue**.\n\
+           - If the implementation fully satisfies the spec, check if the current branch has commits \
+             ahead of main: `git rev-list --count HEAD --not main`. If > 0, return **ship**. \
+             If 0, return **stop** (nothing to merge).\n\n\
+        **Important:** If you edit any files (e.g. `.mrmouth/Dockerfile`), you MUST commit and push \
+        before returning your decision: `git add -A && git commit -m \"<message>\" && git push`.\n\n\
+        **Ship** means: all litebrite items are closed and the implementation matches the spec. \
+        It merges the current branch and stops.\n\n\
         Actions:\n\
-        - \"continue\": there is more work to do on the current feature branch\n\
-        - \"ship\": the current batch of work is complete and ready to merge; start a new branch for remaining work\n\
-        - \"stop\": all work is done, no more runs needed",
+        - \"continue\": there is work remaining for the runner\n\
+        - \"ship\": all work is complete — merge the branch\n\
+        - \"stop\": nothing was done, nothing to merge",
         crate::prompt::SYSTEM_PREAMBLE);
 
     let mut cmd = streaming::claude_stream_cmd_with_schema(
         repo_root,
         decider_model,
-        "Read,Bash(git *),Bash(lb *)",
+        "Read,Edit,Write,Bash(git *),Bash(lb *)",
         schema,
     );
 
@@ -311,7 +397,8 @@ fn should_continue(repo_root: &Path, decider_model: &str, logger: Option<&Logger
 
     let mut formatter = StreamFormatter::new(target.supports_color());
 
-    let (result_text, exit_code) = streaming::run_streaming_claude(child, &mut formatter, logger, &target)
+    let effective_logger = decider_logger.as_ref().or(logger);
+    let (result_text, exit_code) = streaming::run_streaming_claude(child, &mut formatter, effective_logger, &target, &mut jsonl_writer)
         .map_err(|e| LoopError::Decider(format!("streaming error: {e}")))?;
 
     if exit_code != 0 {
@@ -324,8 +411,8 @@ fn should_continue(repo_root: &Path, decider_model: &str, logger: Option<&Logger
     let parsed: serde_json::Value = match serde_json::from_str(&result_text) {
         Ok(v) => v,
         Err(e) => {
-            crate::logger::log(logger, &format!("WARNING: decider returned invalid JSON (defaulting to 'continue'): {e}"));
-            crate::logger::log(logger, &format!("  raw output: {result_text}"));
+            crate::logger::log(effective_logger, &format!("WARNING: decider returned invalid JSON (defaulting to 'continue'): {e}"));
+            crate::logger::log(effective_logger, &format!("  raw output: {result_text}"));
             return Ok(Decision::Continue("JSON parse failure — defaulting to continue".into()));
         }
     };
