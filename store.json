@@ -41,6 +41,16 @@
       "created_at": "2026-03-25T19:39:52.027798678Z",
       "updated_at": "2026-03-25T19:40:23.044061782Z"
     },
+    "lb-1ebq": {
+      "id": "lb-1ebq",
+      "title": "Shipper should not create a new branch after merging",
+      "description": "After merging a feature branch into the parent, the shipper unconditionally generates and creates a new feature branch (shipper.rs lines 36-37). This wastes a cycle: the decider must run again just to say 'stop' on an empty branch. The loop already handles branch creation at the top (loop_cmd.rs lines 162-171), so the shipper should just merge and return to main. Remove branch creation from shipper::execute() and update ShipResult accordingly.",
+      "item_type": "task",
+      "status": "open",
+      "priority": 2,
+      "created_at": "2026-03-30T03:36:27.993698502Z",
+      "updated_at": "2026-03-30T03:36:27.993698502Z"
+    },
     "lb-1hfx": {
       "id": "lb-1hfx",
       "title": "Reorder loop body: decider before runner",
