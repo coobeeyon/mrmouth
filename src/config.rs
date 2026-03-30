@@ -15,7 +15,8 @@ pub struct Config {
     pub branch: Option<String>,
     #[serde(rename = "loop")]
     pub loop_config: LoopConfig,
-    pub epic: EpicConfig,
+    #[serde(rename = "epic")]
+    pub do_config: DoConfig,
 }
 
 #[derive(Debug, Deserialize)]
@@ -31,7 +32,7 @@ pub struct LoopConfig {
 
 #[derive(Debug, Deserialize)]
 #[serde(default)]
-pub struct EpicConfig {
+pub struct DoConfig {
     pub timeout: u32,
     pub max_failures: u32,
 }
@@ -46,7 +47,7 @@ impl Default for Config {
             log_dir: "logs".into(),
             branch: None,
             loop_config: LoopConfig::default(),
-            epic: EpicConfig::default(),
+            do_config: DoConfig::default(),
         }
     }
 }
@@ -64,7 +65,7 @@ impl Default for LoopConfig {
     }
 }
 
-impl Default for EpicConfig {
+impl Default for DoConfig {
     fn default() -> Self {
         Self {
             timeout: 15,
@@ -177,7 +178,7 @@ mod tests {
         assert_eq!(config.model, "opus");
         assert_eq!(config.image, "mrmouth-runner");
         assert_eq!(config.loop_config.decider_model, "sonnet");
-        assert_eq!(config.epic.timeout, 15);
+        assert_eq!(config.do_config.timeout, 15);
     }
 
     #[test]
@@ -236,8 +237,8 @@ max_failures = 5
         assert_eq!(config.loop_config.summary_model, "sonnet");
         assert_eq!(config.loop_config.reviewer_model, "haiku");
         assert_eq!(config.loop_config.shipper_model, "opus");
-        assert_eq!(config.epic.timeout, 30);
-        assert_eq!(config.epic.max_failures, 5);
+        assert_eq!(config.do_config.timeout, 30);
+        assert_eq!(config.do_config.max_failures, 5);
     }
 
     #[test]

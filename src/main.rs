@@ -1,6 +1,6 @@
 mod config;
 mod docker;
-mod epic;
+mod do_cmd;
 mod litebrite;
 mod logger;
 mod loop_cmd;
@@ -63,10 +63,10 @@ enum Commands {
         model: Option<String>,
     },
 
-    /// Work through a litebrite epic's tasks sequentially
-    Epic {
-        /// The litebrite epic ID
-        epic_id: String,
+    /// Work through a litebrite item's tasks sequentially
+    Do {
+        /// The litebrite item ID
+        item_id: String,
 
         /// Per-task timeout in minutes (default: from config or 15)
         #[arg(long)]
@@ -154,14 +154,14 @@ fn main() {
             };
             loop_cmd::execute(&config, &repo_root, opts, tui.as_ref()).map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
         }
-        Commands::Epic { epic_id, timeout, max_failures, model } => {
-            let opts = epic::EpicOptions {
-                epic_id,
-                timeout: timeout.unwrap_or(config.epic.timeout),
-                max_failures: max_failures.unwrap_or(config.epic.max_failures),
+        Commands::Do { item_id, timeout, max_failures, model } => {
+            let opts = do_cmd::DoOptions {
+                item_id,
+                timeout: timeout.unwrap_or(config.do_config.timeout),
+                max_failures: max_failures.unwrap_or(config.do_config.max_failures),
                 model: model.unwrap_or_else(|| config.model.clone()),
             };
-            epic::execute(&config, &repo_root, opts, tui.as_ref()).map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
+            do_cmd::execute(&config, &repo_root, opts, tui.as_ref()).map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
         }
         Commands::Summary { log_file } => {
             let log_file = log_file.unwrap_or_else(|| {

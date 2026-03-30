@@ -14,14 +14,14 @@ fn emit(tui_tx: &Option<TuiSender>, msg: &str) {
     }
 }
 
-pub struct EpicOptions {
-    pub epic_id: String,
+pub struct DoOptions {
+    pub item_id: String,
     pub timeout: u32,
     pub max_failures: u32,
     pub model: String,
 }
 
-pub fn execute(config: &Config, repo_root: &Path, opts: EpicOptions, tui: Option<&TuiHandle>) -> Result<(), EpicError> {
+pub fn execute(config: &Config, repo_root: &Path, opts: DoOptions, tui: Option<&TuiHandle>) -> Result<(), DoError> {
     let tui_tx = tui.map(|t| t.sender("AGENT SESSION"));
 
     // Create an epic-level logger so litebrite/subprocess output routes through
@@ -34,14 +34,14 @@ pub fn execute(config: &Config, repo_root: &Path, opts: EpicOptions, tui: Option
     }.ok();
 
     // 1. Verify the epic exists
-    let epic_info = lb_show(repo_root, &opts.epic_id)?;
-    emit(&tui_tx, &format!("EPIC: {epic_info}"));
+    let item_info = lb_show(repo_root, &opts.item_id)?;
+    emit(&tui_tx, &format!("DO: {item_info}"));
 
     // 2. Create feature branch (if not already on one)
     let current_branch = git_current_branch(repo_root)?;
     let feature_branch = if current_branch == "main" || current_branch == "master" {
-        let slug = make_slug(&epic_info);
-        let branch_name = format!("{}-{}", opts.epic_id, slug);
+        let slug = make_slug(&item_info);
+        let branch_name = format!("{}-{}", opts.item_id, slug);
         emit(&tui_tx, &format!("Creating feature branch: {branch_name}"));
         git_checkout_new_branch(repo_root, &branch_name)?;
         // Push the new branch so container can clone it
@@ -72,9 +72,9 @@ pub fn execute(config: &Config, repo_root: &Path, opts: EpicOptions, tui: Option
         }
 
         // Check remaining tasks
-        let remaining = count_remaining_tasks(repo_root, &opts.epic_id);
+        let remaining = count_remaining_tasks(repo_root, &opts.item_id);
         if remaining == 0 {
-            emit(&tui_tx, &format!("All tasks in {} complete.", opts.epic_id));
+            emit(&tui_tx, &format!("All tasks in {} complete.", opts.item_id));
             break;
         }
 
@@ -85,13 +85,13 @@ pub fn execute(config: &Config, repo_root: &Path, opts: EpicOptions, tui: Option
             task_num, remaining, chrono::Local::now().format("%H:%M:%S")
         ));
 
-        // Build epic-focused prompt
+        // Build task-focused prompt
         let prompt = format!(
             "You are working on epic {}. \
             Run 'lb list --parent {}' to see tasks. Pick ONE open child task and complete it. \
             Do NOT work on tasks outside this epic. \
             Commit your changes, close the item, and push when done.",
-            opts.epic_id, opts.epic_id
+            opts.item_id, opts.item_id
         );
 
         let run_opts = RunOptions {
@@ -120,14 +120,14 @@ pub fn execute(config: &Config, repo_root: &Path, opts: EpicOptions, tui: Option
                         "ERROR: {} consecutive failures — aborting",
                         opts.max_failures
                     ));
-                    return Err(EpicError::TooManyFailures(opts.max_failures));
+                    return Err(DoError::TooManyFailures(opts.max_failures));
                 }
             }
         }
 
         // Show current task state — capture output and route through TUI
         if let Ok(output) = Command::new("lb")
-            .args(["list", "--parent", &opts.epic_id])
+            .args(["list", "--parent", &opts.item_id])
             .current_dir(repo_root)
             .output()
         {
@@ -139,7 +139,7 @@ pub fn execute(config: &Config, repo_root: &Path, opts: EpicOptions, tui: Option
     }
 
     // Final sync
-    emit(&tui_tx, "EPIC COMPLETE");
+    emit(&tui_tx, "DO COMPLETE");
     emit(&tui_tx, "Final push to remote...");
     sync_and_push(repo_root, &feature_branch, epic_logger.as_ref());
     emit(&tui_tx, &format!("Done. Merge branch '{feature_branch}' when ready."));
@@ -147,17 +147,17 @@ pub fn execute(config: &Config, repo_root: &Path, opts: EpicOptions, tui: Option
     Ok(())
 }
 
-fn lb_show(repo_root: &Path, epic_id: &str) -> Result<String, EpicError> {
+fn lb_show(repo_root: &Path, item_id: &str) -> Result<String, DoError> {
     let output = Command::new("lb")
-        .args(["show", epic_id])
+        .args(["show", item_id])
         .current_dir(repo_root)
         .output()
-        .map_err(|e| EpicError::Command(format!("failed to run lb show: {e}")))?;
+        .map_err(|e| DoError::Command(format!("failed to run lb show: {e}")))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(EpicError::EpicNotFound(format!(
-            "Epic {epic_id} not found: {stderr}"
+        return Err(DoError::ItemNotFound(format!(
+            "Item {item_id} not found: {stderr}"
         )));
     }
 
@@ -167,7 +167,7 @@ fn lb_show(repo_root: &Path, epic_id: &str) -> Result<String, EpicError> {
         .lines()
         .find(|l| l.contains("Title:"))
         .map(|l| l.trim().trim_start_matches("Title:").trim().to_string())
-        .unwrap_or_else(|| epic_id.to_string());
+        .unwrap_or_else(|| item_id.to_string());
 
     Ok(title)
 }
@@ -196,25 +196,25 @@ fn count_remaining_tasks(repo_root: &Path, epic_id: &str) -> u32 {
     }
 }
 
-fn git_current_branch(repo_root: &Path) -> Result<String, EpicError> {
+fn git_current_branch(repo_root: &Path) -> Result<String, DoError> {
     let output = Command::new("git")
         .args(["-C", &repo_root.to_string_lossy(), "branch", "--show-current"])
         .output()
-        .map_err(|e| EpicError::Command(format!("failed to get current branch: {e}")))?;
+        .map_err(|e| DoError::Command(format!("failed to get current branch: {e}")))?;
 
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
-fn git_checkout_new_branch(repo_root: &Path, branch: &str) -> Result<(), EpicError> {
+fn git_checkout_new_branch(repo_root: &Path, branch: &str) -> Result<(), DoError> {
     let output = Command::new("git")
         .args(["-C", &repo_root.to_string_lossy(), "checkout", "-b", branch])
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status()
-        .map_err(|e| EpicError::Command(format!("failed to create branch: {e}")))?;
+        .map_err(|e| DoError::Command(format!("failed to create branch: {e}")))?;
 
     if !output.success() {
-        return Err(EpicError::Command(format!(
+        return Err(DoError::Command(format!(
             "git checkout -b {branch} failed"
         )));
     }
@@ -277,16 +277,16 @@ fn make_slug(title: &str) -> String {
 }
 
 #[derive(Debug)]
-pub enum EpicError {
-    EpicNotFound(String),
+pub enum DoError {
+    ItemNotFound(String),
     Command(String),
     TooManyFailures(u32),
 }
 
-impl std::fmt::Display for EpicError {
+impl std::fmt::Display for DoError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::EpicNotFound(msg) => write!(f, "{msg}"),
+            Self::ItemNotFound(msg) => write!(f, "{msg}"),
             Self::Command(msg) => write!(f, "{msg}"),
             Self::TooManyFailures(n) => {
                 write!(f, "aborted after {n} consecutive failures")
@@ -295,7 +295,7 @@ impl std::fmt::Display for EpicError {
     }
 }
 
-impl std::error::Error for EpicError {}
+impl std::error::Error for DoError {}
 
 #[cfg(test)]
 mod tests {
