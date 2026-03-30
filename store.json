@@ -421,6 +421,16 @@
       "created_at": "2026-03-25T19:25:34.564958699Z",
       "updated_at": "2026-03-25T19:25:57.575038268Z"
     },
+    "lb-btw1": {
+      "id": "lb-btw1",
+      "title": "Compose do_cmd prompts with full default prompt to restore Dockerfile editing",
+      "description": "execute_task() and execute_epic() in do_cmd.rs use prompt_override with minimal hardcoded prompts that strip the Docker Environment section. Change them to prepend a scope constraint onto the full default prompt (via prompt::load_prompt) so runners know they can edit .mrmouth/Dockerfile to install missing tools.",
+      "item_type": "task",
+      "status": "open",
+      "priority": 2,
+      "created_at": "2026-03-30T21:07:52.455552064Z",
+      "updated_at": "2026-03-30T21:07:52.455552064Z"
+    },
     "lb-c4kp": {
       "id": "lb-c4kp",
       "title": "Reviewer ignores container crash - always returns Ok",
