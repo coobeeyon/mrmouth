@@ -812,6 +812,16 @@
       "created_at": "2026-03-12T22:35:37.318369415Z",
       "updated_at": "2026-03-25T18:48:47.162041484Z"
     },
+    "lb-kl4s": {
+      "id": "lb-kl4s",
+      "title": "Add individual task support to do command",
+      "description": "In do_cmd.rs, add ItemInfo { title, item_type } struct. Enhance lb_show() to parse the Type: line from lb show output, returning ItemInfo instead of just a String. Add type-based dispatch in execute(): if item_type is 'task' (or no children found), run a single agent session with a task-focused prompt ('Work on task {id}. lb show, claim, implement, commit, close, lb sync, git push.'), then run reviewer on the diff. If item_type is 'epic', use the existing children loop. Extract shared helpers as pub(crate): sync_and_push(), git_current_branch(), git_checkout_new_branch(), make_slug().",
+      "item_type": "task",
+      "status": "open",
+      "priority": 2,
+      "created_at": "2026-03-30T04:00:20.537638462Z",
+      "updated_at": "2026-03-30T04:00:20.537638462Z"
+    },
     "lb-kwd4": {
       "id": "lb-kwd4",
       "title": "Deduplicate git_remote_url function",
@@ -1537,6 +1547,11 @@
     },
     {
       "from_id": "lb-731u",
+      "to_id": "lb-l5j3",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-kl4s",
       "to_id": "lb-l5j3",
       "dep_type": "parent"
     }
