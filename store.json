@@ -1614,6 +1614,11 @@
       "from_id": "lb-kl4s",
       "to_id": "lb-o60w",
       "dep_type": "blocks"
+    },
+    {
+      "from_id": "lb-o60w",
+      "to_id": "lb-95np",
+      "dep_type": "blocks"
     }
   ]
 }
