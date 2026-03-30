@@ -1,16 +1,5 @@
 {
   "items": {
-    "lb-0uq3": {
-      "id": "lb-0uq3",
-      "title": "Pin alpine image version in docker.rs ensure_volume",
-      "description": "docker.rs:147 uses bare 'alpine' (no tag) for the chown step in ensure_volume. This means alpine:latest which can trigger unexpected pulls. Pin to alpine:3 for reliability.",
-      "item_type": "task",
-      "status": "open",
-      "priority": 3,
-      "claimed_by": "agent-runner",
-      "created_at": "2026-03-25T20:43:12.971834962Z",
-      "updated_at": "2026-03-25T20:43:17.741536155Z"
-    },
     "lb-16m8": {
       "id": "lb-16m8",
       "title": "Fix structured_output parsing in shipper readiness check",
