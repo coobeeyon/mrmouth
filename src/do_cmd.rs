@@ -3,6 +3,7 @@ use std::process::{Command, Stdio};
 
 use crate::config::Config;
 use crate::litebrite;
+use crate::prompt;
 use crate::reviewer;
 use crate::run::{self, RunOptions};
 use crate::tui::{TuiHandle, TuiSender};
@@ -104,9 +105,12 @@ fn execute_task(
 
     let head_before = git_head(repo_root);
 
+    let base_prompt = prompt::load_prompt(repo_root, logger);
     let prompt = format!(
-        "Work on task {}. Run `lb show {}` to understand the task, then `lb claim {}`. \
-        Implement the changes, commit your code, then `lb close {}`, `lb sync`, and `git push`.",
+        "## Scope\n\n\
+        Work on task {}. Run `lb show {}` to understand the task, then `lb claim {}`. \
+        Implement the changes, commit your code, then `lb close {}`, `lb sync`, and `git push`.\n\n\
+        {base_prompt}",
         opts.item_id, opts.item_id, opts.item_id, opts.item_id
     );
 
@@ -191,11 +195,14 @@ fn execute_epic(
             task_num, remaining, chrono::Local::now().format("%H:%M:%S")
         ));
 
+        let base_prompt = prompt::load_prompt(repo_root, logger);
         let prompt = format!(
-            "You are working on epic {}. \
+            "## Scope\n\n\
+            You are working on epic {}. \
             Run 'lb list --parent {}' to see tasks. Pick ONE open child task and complete it. \
             Do NOT work on tasks outside this epic. \
-            Commit your changes, close the item, and push when done.",
+            Commit your changes, close the item, and push when done.\n\n\
+            {base_prompt}",
             opts.item_id, opts.item_id
         );
 
