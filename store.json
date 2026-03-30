@@ -1609,6 +1609,11 @@
       "from_id": "lb-731u",
       "to_id": "lb-kl4s",
       "dep_type": "blocks"
+    },
+    {
+      "from_id": "lb-kl4s",
+      "to_id": "lb-o60w",
+      "dep_type": "blocks"
     }
   ]
 }
