@@ -977,11 +977,10 @@
       "title": "Add reviewer pass to do command",
       "description": "Add reviewer integration to do_cmd.rs. For task path: capture HEAD before/after the single run, call reviewer::execute() with commit_range if commits were made. For epic path: capture HEAD before the children loop starts and after it ends, then run one reviewer pass at the end covering the entire epic's diff (no reviewer per child). Use ReviewerOptions { model: config.loop_config.reviewer_model, current_branch, commit_range }.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 2,
-      "claimed_by": "agent-runner",
       "created_at": "2026-03-30T04:00:28.790343546Z",
-      "updated_at": "2026-03-30T04:08:27.479492267Z"
+      "updated_at": "2026-03-30T04:09:27.901832495Z"
     },
     "lb-oj9p": {
       "id": "lb-oj9p",
