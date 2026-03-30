@@ -431,6 +431,16 @@
       "created_at": "2026-03-10T16:16:43.384115350Z",
       "updated_at": "2026-03-10T16:17:02.229650803Z"
     },
+    "lb-95np": {
+      "id": "lb-95np",
+      "title": "Add ready command",
+      "description": "New file src/ready.rs. ReadyOptions { timeout, max_failures, model }. ReadyError { Command(String), TooManyFailures(u32) }. execute(): (1) create feature branch ready-{YYYYMMDD-HHMMSS}, (2) loop: run lb ready and parse first item ID (break if none), capture HEAD before, build task-focused prompt, run::execute() with prompt_override, capture HEAD after, if new commits run reviewer::execute() with commit_range, sync_and_push(), track consecutive failures and abort if >= max_failures, (3) final sync. Add lb_ready() helper that runs lb ready and parses the first item ID. In main.rs: add Commands::Ready with --timeout --max-failures --model flags, add mod ready, dispatch to ready::execute(). Import shared helpers from do_cmd (sync_and_push, git_current_branch, git_checkout_new_branch).",
+      "item_type": "task",
+      "status": "open",
+      "priority": 2,
+      "created_at": "2026-03-30T04:00:48.109558951Z",
+      "updated_at": "2026-03-30T04:00:48.109558951Z"
+    },
     "lb-95nz": {
       "id": "lb-95nz",
       "title": "Fix loop decider allowed tools to include lb commands",
@@ -1568,6 +1578,11 @@
     {
       "from_id": "lb-zcay",
       "to_id": "lb-dvhr",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-95np",
+      "to_id": "lb-l5j3",
       "dep_type": "parent"
     }
   ]
