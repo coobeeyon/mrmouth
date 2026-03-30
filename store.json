@@ -1032,6 +1032,16 @@
       "created_at": "2026-03-10T13:14:47.518545914Z",
       "updated_at": "2026-03-12T21:39:40.976778548Z"
     },
+    "lb-vy69": {
+      "id": "lb-vy69",
+      "title": "Restore Dockerfile editing capability in do and ready flows",
+      "description": "The do and ready flows use prompt_override with minimal hardcoded prompts that strip the Docker Environment section from the default runner prompt. Runners don't know they can edit .mrmouth/Dockerfile to install missing tools. Fix by composing prompts that prepend scope constraints onto the full default prompt.",
+      "item_type": "epic",
+      "status": "open",
+      "priority": 2,
+      "created_at": "2026-03-30T21:11:24.119030309Z",
+      "updated_at": "2026-03-30T21:11:24.119030309Z"
+    },
     "lb-wil9": {
       "id": "lb-wil9",
       "title": "SPEC.md missing --timeout for loop mode",
