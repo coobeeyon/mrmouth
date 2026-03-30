@@ -822,6 +822,16 @@
       "created_at": "2026-03-25T20:00:24.070228902Z",
       "updated_at": "2026-03-25T20:04:24.480077070Z"
     },
+    "lb-l5j3": {
+      "id": "lb-l5j3",
+      "title": "Rename epic to do, add ready command, restrict lb create to reviewer",
+      "description": "The mrmouth epic command only works with epics. Rename it to 'do' so it handles both epics and individual tasks. Add a new 'ready' command that picks up whatever lb ready items are available. Both are simple runner+reviewer loops (no decider, no shipper). Remove lb create from the runner prompt so only the reviewer can add brites.",
+      "item_type": "epic",
+      "status": "open",
+      "priority": 2,
+      "created_at": "2026-03-30T03:55:56.217205938Z",
+      "updated_at": "2026-03-30T03:55:56.217205938Z"
+    },
     "lb-l78i": {
       "id": "lb-l78i",
       "title": "Update loop_cmd: Decision enum, decider schema, branch management",
