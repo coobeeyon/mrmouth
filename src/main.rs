@@ -5,6 +5,7 @@ mod litebrite;
 mod logger;
 mod loop_cmd;
 mod prompt;
+mod ready;
 mod reviewer;
 mod run;
 mod shipper;
@@ -68,6 +69,21 @@ enum Commands {
         /// The litebrite item ID
         item_id: String,
 
+        /// Per-task timeout in minutes (default: from config or 15)
+        #[arg(long)]
+        timeout: Option<u32>,
+
+        /// Consecutive failures before aborting (default: from config or 3)
+        #[arg(long)]
+        max_failures: Option<u32>,
+
+        /// Override the Claude model (default: from config or opus)
+        #[arg(long)]
+        model: Option<String>,
+    },
+
+    /// Pick up ready items from litebrite and work through them
+    Ready {
         /// Per-task timeout in minutes (default: from config or 15)
         #[arg(long)]
         timeout: Option<u32>,
@@ -162,6 +178,14 @@ fn main() {
                 model: model.unwrap_or_else(|| config.model.clone()),
             };
             do_cmd::execute(&config, &repo_root, opts, tui.as_ref()).map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
+        }
+        Commands::Ready { timeout, max_failures, model } => {
+            let opts = ready::ReadyOptions {
+                timeout: timeout.unwrap_or(config.do_config.timeout),
+                max_failures: max_failures.unwrap_or(config.do_config.max_failures),
+                model: model.unwrap_or_else(|| config.model.clone()),
+            };
+            ready::execute(&config, &repo_root, opts, tui.as_ref()).map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
         }
         Commands::Summary { log_file } => {
             let log_file = log_file.unwrap_or_else(|| {
