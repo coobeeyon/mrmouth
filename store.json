@@ -438,8 +438,9 @@
       "item_type": "task",
       "status": "open",
       "priority": 2,
+      "claimed_by": "agent-runner",
       "created_at": "2026-03-30T04:00:48.109558951Z",
-      "updated_at": "2026-03-30T04:00:48.109558951Z"
+      "updated_at": "2026-03-30T04:10:02.946461325Z"
     },
     "lb-95nz": {
       "id": "lb-95nz",
