@@ -56,21 +56,42 @@ Run the agent repeatedly until work is done.
 - `--max-runs <n>` — stop after N runs regardless of decider
 - `--no-summary` — skip AI summary generation
 
-### `mrmouth epic <epic-id>`
+### `mrmouth do <item-id>`
 
-Work through a litebrite epic's tasks sequentially.
+Work through a litebrite item — either an epic or a single task.
 
 **What it does:**
 
-1. Create a feature branch for the epic (if not already on one)
-2. Run agent sessions focused on the epic, one task at a time
-3. After each run, check if open tasks remain in the epic
-4. Stop when all tasks are closed or after N consecutive failures
+1. Verify the item exists via `lb show` and determine its type
+2. Create a feature branch `<item-id>-<slug>` (if not already on a non-main branch)
+3. Dispatch based on item type:
+   - **Epic**: loop through child tasks one at a time — run a runner agent per task, check remaining tasks after each, stop when all closed or max failures reached. Run a reviewer on the full diff at the end.
+   - **Task**: run a single runner agent session focused on the task. Run a reviewer on the diff afterward.
+4. Final sync and push
 
 **Flags:**
 
 - `--timeout <minutes>` — per-task timeout (default: 15)
 - `--max-failures <n>` — consecutive failures before aborting (default: 3)
+- `--model <model>` — override the Claude model
+
+### `mrmouth ready`
+
+Pick up unblocked items from litebrite and work through them.
+
+**What it does:**
+
+1. Create a timestamped feature branch `ready-YYYYMMDD-HHMMSS`
+2. Loop: run `lb ready` to find the highest-priority unblocked, unclaimed item
+3. For each item: run a runner agent, sync and push, then run a reviewer on the diff
+4. Stop when no ready items remain or after N consecutive failures
+5. Final sync and push
+
+**Flags:**
+
+- `--timeout <minutes>` — per-task timeout (default: 15)
+- `--max-failures <n>` — consecutive failures before aborting (default: 3)
+- `--model <model>` — override the Claude model
 
 ### `mrmouth summary [log-file]`
 
@@ -225,7 +246,8 @@ mrmouth/                    # Rust project root (inside this repo)
     docker.rs               # Docker build/run orchestration
     run.rs                  # mrmouth run implementation
     loop_cmd.rs             # mrmouth loop implementation
-    epic.rs                 # mrmouth epic implementation
+    do_cmd.rs               # mrmouth do implementation
+    ready.rs                # mrmouth ready implementation
     summary.rs              # mrmouth summary implementation
     reviewer.rs             # Code reviewer Docker agent (runs inside container)
     shipper.rs              # Shipper: readiness check (Docker), merge, new branch
