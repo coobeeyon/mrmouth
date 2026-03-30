@@ -1042,6 +1042,16 @@
       "created_at": "2026-03-25T18:59:14.191879750Z",
       "updated_at": "2026-03-25T19:05:35.001205179Z"
     },
+    "lb-t7nw": {
+      "id": "lb-t7nw",
+      "title": "Decider should close parent epics before shipping",
+      "description": "When the decider determines all child tasks of an epic are closed and the implementation satisfies the spec, it should close the parent epic before returning 'ship'. Currently it leaves the epic open, which causes the shipper readiness check to fail ('Open item exists'), wasting a full decider+runner+reviewer cycle. Fix: add instruction to the decider prompt to close epics whose children are all closed before returning ship.",
+      "item_type": "task",
+      "status": "open",
+      "priority": 2,
+      "created_at": "2026-03-30T03:36:26.563853784Z",
+      "updated_at": "2026-03-30T03:36:26.563853784Z"
+    },
     "lb-tipn": {
       "id": "lb-tipn",
       "title": "Add text wrapping to body Paragraph",
