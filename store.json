@@ -439,7 +439,7 @@
       "status": "open",
       "priority": 2,
       "created_at": "2026-03-30T21:07:52.455552064Z",
-      "updated_at": "2026-03-30T21:07:52.455552064Z"
+      "updated_at": "2026-03-30T21:11:27.367559714Z"
     },
     "lb-c4kp": {
       "id": "lb-c4kp",
@@ -1273,6 +1273,11 @@
     {
       "from_id": "lb-zcay",
       "to_id": "lb-dvhr",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-btw1",
+      "to_id": "lb-vy69",
       "dep_type": "parent"
     }
   ]
