@@ -165,10 +165,12 @@ fn execute_epic(
     feature_branch: &str,
     tui: Option<&TuiHandle>,
     tui_tx: &Option<TuiSender>,
-    _logger: Option<&crate::logger::Logger>,
+    logger: Option<&crate::logger::Logger>,
 ) -> Result<(), DoError> {
     let mut task_num: u32 = 0;
     let mut consecutive_failures: u32 = 0;
+
+    let head_before = git_head(repo_root);
 
     loop {
         if tui.is_some_and(|t| t.is_cancelled()) {
@@ -238,6 +240,29 @@ fn execute_epic(
                 emit(tui_tx, line);
             }
         }
+    }
+
+    // Run reviewer on the full epic diff if new commits were made
+    let head_after = git_head(repo_root);
+    let commit_range = match (&head_before, &head_after) {
+        (Ok(before), Ok(after)) if before != after => Some((before.clone(), after.clone())),
+        _ => None,
+    };
+
+    if commit_range.is_some() {
+        emit(tui_tx, "Running reviewer on epic changes...");
+        if let Some(t) = tui { t.set_stage("Reviewer"); }
+        let reviewer_opts = reviewer::ReviewerOptions {
+            model: config.loop_config.reviewer_model.clone(),
+            current_branch: feature_branch.to_string(),
+            commit_range,
+        };
+        if let Err(e) = reviewer::execute(config, repo_root, &reviewer_opts, logger) {
+            emit(tui_tx, &format!("Reviewer failed (non-fatal): {e}"));
+        }
+        litebrite::sync(repo_root, logger);
+    } else {
+        emit(tui_tx, "Reviewer skipped: no new commits.");
     }
 
     Ok(())
