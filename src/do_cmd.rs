@@ -3,6 +3,7 @@ use std::process::{Command, Stdio};
 
 use crate::config::Config;
 use crate::litebrite;
+use crate::reviewer;
 use crate::run::{self, RunOptions};
 use crate::tui::{TuiHandle, TuiSender};
 
@@ -11,6 +12,17 @@ fn emit(tui_tx: &Option<TuiSender>, msg: &str) {
     match tui_tx {
         Some(sender) => sender.send_line(msg),
         None => eprintln!("{msg}"),
+    }
+}
+
+pub struct ItemInfo {
+    pub title: String,
+    pub item_type: String,
+}
+
+impl std::fmt::Display for ItemInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "[{}] {}", self.item_type, self.title)
     }
 }
 
@@ -33,14 +45,14 @@ pub fn execute(config: &Config, repo_root: &Path, opts: DoOptions, tui: Option<&
         None => crate::logger::Logger::new(&log_dir.join("epic.log")),
     }.ok();
 
-    // 1. Verify the epic exists
+    // 1. Verify the item exists and determine its type
     let item_info = lb_show(repo_root, &opts.item_id)?;
     emit(&tui_tx, &format!("DO: {item_info}"));
 
     // 2. Create feature branch (if not already on one)
     let current_branch = git_current_branch(repo_root)?;
     let feature_branch = if current_branch == "main" || current_branch == "master" {
-        let slug = make_slug(&item_info);
+        let slug = make_slug(&item_info.title);
         let branch_name = format!("{}-{}", opts.item_id, slug);
         emit(&tui_tx, &format!("Creating feature branch: {branch_name}"));
         git_checkout_new_branch(repo_root, &branch_name)?;
@@ -60,32 +72,123 @@ pub fn execute(config: &Config, repo_root: &Path, opts: DoOptions, tui: Option<&
         current_branch
     };
 
-    // 3. Task loop
+    // 3. Dispatch based on item type
+    let is_task = item_info.item_type == "task"
+        || count_remaining_tasks(repo_root, &opts.item_id) == 0;
+
+    if is_task {
+        execute_task(config, repo_root, &opts, &feature_branch, tui, &tui_tx, epic_logger.as_ref())?;
+    } else {
+        execute_epic(config, repo_root, &opts, &feature_branch, tui, &tui_tx, epic_logger.as_ref())?;
+    }
+
+    // Final sync
+    emit(&tui_tx, "DO COMPLETE");
+    emit(&tui_tx, "Final push to remote...");
+    sync_and_push(repo_root, &feature_branch, epic_logger.as_ref());
+    emit(&tui_tx, &format!("Done. Merge branch '{feature_branch}' when ready."));
+
+    Ok(())
+}
+
+fn execute_task(
+    config: &Config,
+    repo_root: &Path,
+    opts: &DoOptions,
+    feature_branch: &str,
+    tui: Option<&TuiHandle>,
+    tui_tx: &Option<TuiSender>,
+    logger: Option<&crate::logger::Logger>,
+) -> Result<(), DoError> {
+    emit(tui_tx, &format!("Running single task: {}", opts.item_id));
+
+    let head_before = git_head(repo_root);
+
+    let prompt = format!(
+        "Work on task {}. Run `lb show {}` to understand the task, then `lb claim {}`. \
+        Implement the changes, commit your code, then `lb close {}`, `lb sync`, and `git push`.",
+        opts.item_id, opts.item_id, opts.item_id, opts.item_id
+    );
+
+    let run_opts = RunOptions {
+        raw: false,
+        model: opts.model.clone(),
+        timeout: Some(opts.timeout),
+        local: false,
+        prompt_override: Some(prompt),
+        branch: None,
+    };
+
+    let run_result = run::execute(config, repo_root, run_opts, tui);
+
+    match run_result {
+        Ok(ref run_logger) => {
+            emit(tui_tx, "Task agent succeeded, syncing...");
+            sync_and_push(repo_root, feature_branch, Some(run_logger));
+        }
+        Err(e) => {
+            emit(tui_tx, &format!("Task agent failed: {e}"));
+            return Err(DoError::Command(format!("task agent failed: {e}")));
+        }
+    }
+
+    // Run reviewer on the diff if new commits were made
+    let head_after = git_head(repo_root);
+    let commit_range = match (&head_before, &head_after) {
+        (Ok(before), Ok(after)) if before != after => Some((before.clone(), after.clone())),
+        _ => None,
+    };
+
+    if commit_range.is_some() {
+        emit(tui_tx, "Running reviewer on task changes...");
+        if let Some(t) = tui { t.set_stage("Reviewer"); }
+        let reviewer_opts = reviewer::ReviewerOptions {
+            model: config.loop_config.reviewer_model.clone(),
+            current_branch: feature_branch.to_string(),
+            commit_range,
+        };
+        if let Err(e) = reviewer::execute(config, repo_root, &reviewer_opts, logger) {
+            emit(tui_tx, &format!("Reviewer failed (non-fatal): {e}"));
+        }
+        litebrite::sync(repo_root, logger);
+    } else {
+        emit(tui_tx, "Reviewer skipped: no new commits.");
+    }
+
+    Ok(())
+}
+
+fn execute_epic(
+    config: &Config,
+    repo_root: &Path,
+    opts: &DoOptions,
+    feature_branch: &str,
+    tui: Option<&TuiHandle>,
+    tui_tx: &Option<TuiSender>,
+    _logger: Option<&crate::logger::Logger>,
+) -> Result<(), DoError> {
     let mut task_num: u32 = 0;
     let mut consecutive_failures: u32 = 0;
 
     loop {
-        // Check if TUI user cancelled
         if tui.is_some_and(|t| t.is_cancelled()) {
-            emit(&tui_tx, "Epic cancelled by user.");
+            emit(tui_tx, "Epic cancelled by user.");
             break;
         }
 
-        // Check remaining tasks
         let remaining = count_remaining_tasks(repo_root, &opts.item_id);
         if remaining == 0 {
-            emit(&tui_tx, &format!("All tasks in {} complete.", opts.item_id));
+            emit(tui_tx, &format!("All tasks in {} complete.", opts.item_id));
             break;
         }
 
         task_num += 1;
         if let Some(t) = tui { t.set_run(Some(format!("Task {task_num}"))); }
-        emit(&tui_tx, &format!(
+        emit(tui_tx, &format!(
             "TASK {}  ({} remaining)  {}",
             task_num, remaining, chrono::Local::now().format("%H:%M:%S")
         ));
 
-        // Build task-focused prompt
         let prompt = format!(
             "You are working on epic {}. \
             Run 'lb list --parent {}' to see tasks. Pick ONE open child task and complete it. \
@@ -108,15 +211,15 @@ pub fn execute(config: &Config, repo_root: &Path, opts: DoOptions, tui: Option<&
         match run_result {
             Ok(ref run_logger) => {
                 consecutive_failures = 0;
-                emit(&tui_tx, &format!("Task {task_num} succeeded, syncing..."));
-                sync_and_push(repo_root, &feature_branch, Some(run_logger));
+                emit(tui_tx, &format!("Task {task_num} succeeded, syncing..."));
+                sync_and_push(repo_root, feature_branch, Some(run_logger));
             }
             Err(e) => {
                 consecutive_failures += 1;
-                emit(&tui_tx, &format!("--- Task {task_num} failed: {e}"));
+                emit(tui_tx, &format!("--- Task {task_num} failed: {e}"));
 
                 if consecutive_failures >= opts.max_failures {
-                    emit(&tui_tx, &format!(
+                    emit(tui_tx, &format!(
                         "ERROR: {} consecutive failures — aborting",
                         opts.max_failures
                     ));
@@ -125,7 +228,6 @@ pub fn execute(config: &Config, repo_root: &Path, opts: DoOptions, tui: Option<&
             }
         }
 
-        // Show current task state — capture output and route through TUI
         if let Ok(output) = Command::new("lb")
             .args(["list", "--parent", &opts.item_id])
             .current_dir(repo_root)
@@ -133,21 +235,27 @@ pub fn execute(config: &Config, repo_root: &Path, opts: DoOptions, tui: Option<&
         {
             let stdout = String::from_utf8_lossy(&output.stdout);
             for line in stdout.lines() {
-                emit(&tui_tx, line);
+                emit(tui_tx, line);
             }
         }
     }
 
-    // Final sync
-    emit(&tui_tx, "DO COMPLETE");
-    emit(&tui_tx, "Final push to remote...");
-    sync_and_push(repo_root, &feature_branch, epic_logger.as_ref());
-    emit(&tui_tx, &format!("Done. Merge branch '{feature_branch}' when ready."));
-
     Ok(())
 }
 
-fn lb_show(repo_root: &Path, item_id: &str) -> Result<String, DoError> {
+fn git_head(repo_root: &Path) -> Result<String, ()> {
+    let output = Command::new("git")
+        .args(["-C", &repo_root.to_string_lossy(), "rev-parse", "HEAD"])
+        .output()
+        .map_err(|_| ())?;
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    } else {
+        Err(())
+    }
+}
+
+fn lb_show(repo_root: &Path, item_id: &str) -> Result<ItemInfo, DoError> {
     let output = Command::new("lb")
         .args(["show", item_id])
         .current_dir(repo_root)
@@ -161,7 +269,6 @@ fn lb_show(repo_root: &Path, item_id: &str) -> Result<String, DoError> {
         )));
     }
 
-    // Extract the title line (first line of lb show output)
     let stdout = String::from_utf8_lossy(&output.stdout);
     let title = stdout
         .lines()
@@ -169,7 +276,13 @@ fn lb_show(repo_root: &Path, item_id: &str) -> Result<String, DoError> {
         .map(|l| l.trim().trim_start_matches("Title:").trim().to_string())
         .unwrap_or_else(|| item_id.to_string());
 
-    Ok(title)
+    let item_type = stdout
+        .lines()
+        .find(|l| l.contains("Type:"))
+        .map(|l| l.trim().trim_start_matches("Type:").trim().to_string())
+        .unwrap_or_else(|| "task".to_string());
+
+    Ok(ItemInfo { title, item_type })
 }
 
 fn count_remaining_tasks(repo_root: &Path, epic_id: &str) -> u32 {
@@ -196,7 +309,7 @@ fn count_remaining_tasks(repo_root: &Path, epic_id: &str) -> u32 {
     }
 }
 
-fn git_current_branch(repo_root: &Path) -> Result<String, DoError> {
+pub(crate) fn git_current_branch(repo_root: &Path) -> Result<String, DoError> {
     let output = Command::new("git")
         .args(["-C", &repo_root.to_string_lossy(), "branch", "--show-current"])
         .output()
@@ -205,7 +318,7 @@ fn git_current_branch(repo_root: &Path) -> Result<String, DoError> {
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
-fn git_checkout_new_branch(repo_root: &Path, branch: &str) -> Result<(), DoError> {
+pub(crate) fn git_checkout_new_branch(repo_root: &Path, branch: &str) -> Result<(), DoError> {
     let output = Command::new("git")
         .args(["-C", &repo_root.to_string_lossy(), "checkout", "-b", branch])
         .stdout(Stdio::null())
@@ -222,7 +335,7 @@ fn git_checkout_new_branch(repo_root: &Path, branch: &str) -> Result<(), DoError
     Ok(())
 }
 
-fn sync_and_push(repo_root: &Path, branch: &str, logger: Option<&crate::logger::Logger>) {
+pub(crate) fn sync_and_push(repo_root: &Path, branch: &str, logger: Option<&crate::logger::Logger>) {
     litebrite::sync(repo_root, logger);
 
     // Push to remote
@@ -240,7 +353,7 @@ fn sync_and_push(repo_root: &Path, branch: &str, logger: Option<&crate::logger::
         .status();
 }
 
-fn make_slug(title: &str) -> String {
+pub(crate) fn make_slug(title: &str) -> String {
     let slug: String = title
         .to_lowercase()
         .chars()
