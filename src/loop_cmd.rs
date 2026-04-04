@@ -159,7 +159,7 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions, tui: Option
     let parent_branch = git_current_branch(repo_root).unwrap_or_else(|_| "main".into());
 
     // Create feature branch (unless bootstrap mode — stay on main)
-    let mut current_branch = if bootstrap_mode {
+    let current_branch = if bootstrap_mode {
         parent_branch.clone()
     } else {
         emit(&tui_tx, "BRANCH SETUP");
@@ -214,10 +214,11 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions, tui: Option
                 };
 
                 match shipper::execute(config, repo_root, &ship_opts, loop_logger.as_ref()) {
-                    Ok(result) => {
-                        crate::logger::log(loop_logger.as_ref(), &format!("Shipped! New branch: {}", result.new_branch));
-                        current_branch = result.new_branch;
-                        continue;
+                    Ok(()) => {
+                        crate::logger::log(loop_logger.as_ref(), "Shipped! Merged to parent branch.");
+                        let completed = run_number - 1;
+                        emit(&tui_tx, &format!("LOOP COMPLETE  {completed} runs (shipped)"));
+                        break;
                     }
                     Err(e) => {
                         crate::logger::log(loop_logger.as_ref(), &format!("Ship failed (continuing on current branch): {e}"));
@@ -364,7 +365,8 @@ fn should_continue(repo_root: &Path, decider_model: &str, logger: Option<&Logger
         3. If NO open items exist, read SPEC.md and compare it against the current implementation.\n\
            - If there are deficiencies or missing features, create litebrite tasks for them \
              (and optionally edit `.mrmouth/Dockerfile` if tooling changes are needed), then return **continue**.\n\
-           - If the implementation fully satisfies the spec, check if the current branch has commits \
+           - If the implementation fully satisfies the spec, close any parent epics/features \
+             whose children are all closed (`lb close <id>`), then check if the current branch has commits \
              ahead of main: `git rev-list --count HEAD --not main`. If > 0, return **ship**. \
              If 0, return **stop** (nothing to merge).\n\n\
         **Important:** If you edit any files (e.g. `.mrmouth/Dockerfile`), you MUST commit and push \

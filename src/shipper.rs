@@ -15,12 +15,8 @@ pub struct ShipperOptions {
     pub parent_branch: String,
 }
 
-pub struct ShipResult {
-    pub new_branch: String,
-}
-
-/// Run the shipper agent: check readiness, merge branch, create next feature branch.
-pub fn execute(config: &Config, repo_root: &Path, opts: &ShipperOptions, logger: Option<&Logger>) -> Result<ShipResult, ShipperError> {
+/// Run the shipper agent: check readiness and merge branch into parent.
+pub fn execute(config: &Config, repo_root: &Path, opts: &ShipperOptions, logger: Option<&Logger>) -> Result<(), ShipperError> {
     crate::logger::log(logger, &format!("SHIPPING  {} -> {}", opts.current_branch, opts.parent_branch));
 
     let log_dir = repo_root.join(&config.log_dir);
@@ -32,11 +28,7 @@ pub fn execute(config: &Config, repo_root: &Path, opts: &ShipperOptions, logger:
     // 2. Merge current branch into parent
     merge_branch(repo_root, &opts.current_branch, &opts.parent_branch, logger)?;
 
-    // 3. Generate and create next feature branch
-    let branch_name = generate_branch_name(repo_root, &opts.model, logger)?;
-    create_and_push_branch(repo_root, &branch_name, logger)?;
-
-    Ok(ShipResult { new_branch: branch_name })
+    Ok(())
 }
 
 fn check_ready(config: &Config, repo_root: &Path, current_branch: &str, model: &str, logger: Option<&Logger>, log_dir: &Path) -> Result<(), ShipperError> {
