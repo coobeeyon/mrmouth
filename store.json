@@ -1,16 +1,5 @@
 {
   "items": {
-    "lb-0uq3": {
-      "id": "lb-0uq3",
-      "title": "Pin alpine image version in docker.rs ensure_volume",
-      "description": "docker.rs:147 uses bare 'alpine' (no tag) for the chown step in ensure_volume. This means alpine:latest which can trigger unexpected pulls. Pin to alpine:3 for reliability.",
-      "item_type": "task",
-      "status": "open",
-      "priority": 3,
-      "claimed_by": "agent-runner",
-      "created_at": "2026-03-25T20:43:12.971834962Z",
-      "updated_at": "2026-03-25T20:43:17.741536155Z"
-    },
     "lb-16m8": {
       "id": "lb-16m8",
       "title": "Fix structured_output parsing in shipper readiness check",
@@ -371,6 +360,16 @@
       "created_at": "2026-03-10T16:52:40.255483883Z",
       "updated_at": "2026-03-10T16:53:55.914462167Z"
     },
+    "lb-6scn": {
+      "id": "lb-6scn",
+      "title": "Compose ready.rs prompt with full default prompt to restore Dockerfile editing",
+      "description": "execute() in ready.rs uses prompt_override with a minimal hardcoded prompt that strips the Docker Environment section. Change it to prepend a scope constraint onto the full default prompt (via prompt::load_prompt) so runners know they can edit .mrmouth/Dockerfile.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 2,
+      "created_at": "2026-03-30T21:07:53.700895405Z",
+      "updated_at": "2026-03-30T21:47:57.341754318Z"
+    },
     "lb-6xo6": {
       "id": "lb-6xo6",
       "title": "loop_cmd.rs decider thread join uses .expect() instead of error handling",
@@ -531,6 +530,16 @@
       "created_at": "2026-03-25T19:25:34.564958699Z",
       "updated_at": "2026-03-25T19:25:57.575038268Z"
     },
+    "lb-btw1": {
+      "id": "lb-btw1",
+      "title": "Compose do_cmd prompts with full default prompt to restore Dockerfile editing",
+      "description": "execute_task() and execute_epic() in do_cmd.rs use prompt_override with minimal hardcoded prompts that strip the Docker Environment section. Change them to prepend a scope constraint onto the full default prompt (via prompt::load_prompt) so runners know they can edit .mrmouth/Dockerfile to install missing tools.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 2,
+      "created_at": "2026-03-30T21:07:52.455552064Z",
+      "updated_at": "2026-03-30T21:46:51.415742155Z"
+    },
     "lb-c4kp": {
       "id": "lb-c4kp",
       "title": "Reviewer ignores container crash - always returns Ok",
@@ -690,17 +699,6 @@
       "priority": 2,
       "created_at": "2026-03-28T16:18:38.270917486Z",
       "updated_at": "2026-03-28T17:12:41.535926688Z"
-    },
-    "lb-ggzz": {
-      "id": "lb-ggzz",
-      "title": "Document epic reviewer config reuse from [loop] section",
-      "description": "Epic mode borrows reviewer_model and reviewer_timeout from config.loop_config. This coupling is undocumented — SPEC.md epic section should note that epic reviewer settings are configured under [loop].",
-      "item_type": "task",
-      "status": "open",
-      "priority": 4,
-      "claimed_by": "agent-runner",
-      "created_at": "2026-03-25T20:43:14.129705763Z",
-      "updated_at": "2026-03-25T20:43:21.002219953Z"
     },
     "lb-gipm": {
       "id": "lb-gipm",
@@ -921,6 +919,16 @@
       "priority": 1,
       "created_at": "2026-03-26T12:00:29.380086332Z",
       "updated_at": "2026-03-26T12:03:12.343921664Z"
+    },
+    "lb-mkeq": {
+      "id": "lb-mkeq",
+      "title": "mrmouth epic should work with standalone tasks, not just epic children",
+      "description": "Currently 'mrmouth epic <id>' only finds child tasks of the given epic. If you pass a standalone task (not an epic, or an epic with no children), it reports 'All tasks complete' and exits without doing anything.\n\nExpected behavior: 'mrmouth epic <task-id>' should work on any item — if it's a standalone task, treat it as a single-item workload. If it's an epic with children, work the children. The current behavior forces users to wrap standalone tasks in a parent epic as a workaround, which is unnecessary ceremony.\n\nDiscovered when trying to run 'mrmouth epic lb-nu6d' on a standalone task — it did nothing until the task was reparented under a new epic.",
+      "item_type": "task",
+      "status": "open",
+      "priority": 2,
+      "created_at": "2026-03-26T03:45:21.356840097Z",
+      "updated_at": "2026-03-26T03:45:21.356840097Z"
     },
     "lb-mxo4": {
       "id": "lb-mxo4",
@@ -1232,6 +1240,16 @@
       "created_at": "2026-03-10T13:14:47.518545914Z",
       "updated_at": "2026-03-12T21:39:40.976778548Z"
     },
+    "lb-vy69": {
+      "id": "lb-vy69",
+      "title": "Restore Dockerfile editing capability in do and ready flows",
+      "description": "The do and ready flows use prompt_override with minimal hardcoded prompts that strip the Docker Environment section from the default runner prompt. Runners don't know they can edit .mrmouth/Dockerfile to install missing tools. Fix by composing prompts that prepend scope constraints onto the full default prompt.",
+      "item_type": "epic",
+      "status": "open",
+      "priority": 2,
+      "created_at": "2026-03-30T21:11:24.119030309Z",
+      "updated_at": "2026-03-30T21:11:24.119030309Z"
+    },
     "lb-wi67": {
       "id": "lb-wi67",
       "title": "Update docs for do and ready commands",
@@ -1251,17 +1269,6 @@
       "priority": 2,
       "created_at": "2026-03-25T19:11:17.451611497Z",
       "updated_at": "2026-03-25T19:13:19.109072166Z"
-    },
-    "lb-wla4": {
-      "id": "lb-wla4",
-      "title": "Quote model name in runner script shell command",
-      "description": "run.rs interpolates --model {model} directly into a shell script without quoting. If model string contains spaces or special chars, the shell command is malformed. Wrap in single quotes.",
-      "item_type": "task",
-      "status": "open",
-      "priority": 3,
-      "claimed_by": "agent-runner",
-      "created_at": "2026-03-25T20:43:13.568182875Z",
-      "updated_at": "2026-03-25T20:43:19.387471688Z"
     },
     "lb-x5un": {
       "id": "lb-x5un",
@@ -1406,6 +1413,11 @@
       "dep_type": "parent"
     },
     {
+      "from_id": "lb-6scn",
+      "to_id": "lb-vy69",
+      "dep_type": "parent"
+    },
+    {
       "from_id": "lb-731u",
       "to_id": "lb-kl4s",
       "dep_type": "blocks"
@@ -1443,6 +1455,11 @@
     {
       "from_id": "lb-anmx",
       "to_id": "lb-hwg3",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-btw1",
+      "to_id": "lb-vy69",
       "dep_type": "parent"
     },
     {
