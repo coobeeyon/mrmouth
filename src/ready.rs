@@ -4,6 +4,7 @@ use std::process::Command;
 use crate::config::Config;
 use crate::do_cmd::{git_checkout_new_branch, sync_and_push};
 use crate::litebrite;
+use crate::prompt;
 use crate::reviewer;
 use crate::run::{self, RunOptions};
 use crate::tui::{TuiHandle, TuiSender};
@@ -123,9 +124,12 @@ pub fn execute(config: &Config, repo_root: &Path, opts: ReadyOptions, tui: Optio
 
         let head_before = git_head(repo_root);
 
+        let base_prompt = prompt::load_prompt(repo_root, logger.as_ref());
         let prompt = format!(
-            "Work on task {item_id}. Run `lb show {item_id}` to understand the task, then `lb claim {item_id}`. \
-            Implement the changes, commit your code, then `lb close {item_id}`, `lb sync`, and `git push`."
+            "## Scope\n\n\
+            Work on task {item_id}. Run `lb show {item_id}` to understand the task, then `lb claim {item_id}`. \
+            Implement the changes, commit your code, then `lb close {item_id}`, `lb sync`, and `git push`.\n\n\
+            {base_prompt}"
         );
 
         let run_opts = RunOptions {
