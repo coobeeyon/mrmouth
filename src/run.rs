@@ -377,7 +377,7 @@ fi
 
 # --- Run agent ---
 echo "Starting agent run..."
-claude -p --dangerously-skip-permissions --verbose --output-format stream-json --model {model} '{escaped_prompt}'
+claude -p --dangerously-skip-permissions --verbose --output-format stream-json --disallowedTools EnterPlanMode,ExitPlanMode --model {model} '{escaped_prompt}'
 
 echo "Agent run complete."
 
