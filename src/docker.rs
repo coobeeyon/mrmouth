@@ -5,12 +5,13 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 /// Default Dockerfile content used when no `.mrmouth/Dockerfile` exists.
-pub const DEFAULT_DOCKERFILE: &str = r#"# Stage 1: Build litebrite (lb) — static musl binary, no glibc dependency
-FROM rust:slim AS lb-builder
+pub const DEFAULT_DOCKERFILE: &str = r#"# Stage 1: Build litebrite (lb) and trapperkeeper (trk) — static musl binaries
+FROM rust:slim AS tools-builder
 RUN apt-get update && apt-get install -y musl-tools && rm -rf /var/lib/apt/lists/*
 RUN MUSL_TARGET="$(uname -m)-unknown-linux-musl" && \
     rustup target add "$MUSL_TARGET" && \
-    cargo install --git https://github.com/coobeeyon/litebrite.git --target "$MUSL_TARGET"
+    cargo install --git https://github.com/coobeeyon/litebrite.git --target "$MUSL_TARGET" && \
+    cargo install --git https://github.com/coobeeyon/trapperkeeper.git --target "$MUSL_TARGET"
 
 # Stage 2: Runtime image — no Rust toolchain
 FROM node:22
@@ -34,8 +35,9 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
 RUN mkdir -p /root/.ssh && \
     ssh-keyscan github.com >> /root/.ssh/known_hosts
 
-# Layer 4: Copy lb binary from builder
-COPY --from=lb-builder /usr/local/cargo/bin/lb /usr/local/bin/lb
+# Layer 4: Copy tool binaries from builder
+COPY --from=tools-builder /usr/local/cargo/bin/lb /usr/local/bin/lb
+COPY --from=tools-builder /usr/local/cargo/bin/trk /usr/local/bin/trk
 
 # Layer 5: Claude Code (changes occasionally)
 RUN npm install -g @anthropic-ai/claude-code

@@ -61,11 +61,15 @@ pub fn execute(config: &Config, repo_root: &Path, opts: RunOptions, tui: Option<
     logger.log(&format!("AGENT RUN  branch={branch}  {timestamp}"));
 
     // 1. Preflight checks
+    let local = opts.local || has_local_only_tooling_branch(repo_root);
+    if local && !opts.local {
+        logger.log("Tooling branch exists locally but not on remote — using local mode.");
+    }
     logger.log("Checking preflight conditions...");
-    preflight(repo_root, opts.local).inspect_err(|_| { logger.flush(); })?;
+    preflight(repo_root, local).inspect_err(|_| { logger.flush(); })?;
 
     // 2. Resolve repo URL
-    let (repo_url, file_remote_path) = if opts.local {
+    let (repo_url, file_remote_path) = if local {
         (String::new(), None)
     } else {
         match git_remote_url(repo_root) {
@@ -117,7 +121,7 @@ pub fn execute(config: &Config, repo_root: &Path, opts: RunOptions, tui: Option<
         branch: branch.clone(),
         runner_script: runner_script.to_path_buf(),
         volume,
-        local: opts.local,
+        local,
         file_remote_path: file_remote_path.clone(),
         timeout_secs: opts.timeout.map(|m| m as u64 * 60),
     };
@@ -190,7 +194,7 @@ pub fn execute(config: &Config, repo_root: &Path, opts: RunOptions, tui: Option<
     }
 
     // 12. Extract updated Dockerfile from container (agent may have modified it)
-    if !opts.local {
+    if !local {
         let dockerfile_dest = repo_root.join(&config.dockerfile);
         let container_path = format!("/home/runner/workspace/{}", config.dockerfile);
         if DockerBuilder::copy_from_container(&container_name, &container_path, &dockerfile_dest) {
@@ -204,7 +208,7 @@ pub fn execute(config: &Config, repo_root: &Path, opts: RunOptions, tui: Option<
     // 14. Post-run sync
     logger.log("Post-run sync...");
 
-    if !opts.local && file_remote_path.is_none() {
+    if !local && file_remote_path.is_none() {
         logger.log("Pulling code changes from remote...");
         let pull_output = Command::new("git")
             .args(["-C", &repo_root.to_string_lossy(), "pull", "--ff-only"])
@@ -301,6 +305,34 @@ fn configure_file_remote(repo_root: &Path) -> Result<(), RunError> {
     Ok(())
 }
 
+/// Returns true if a litebrite or trapperkeeper branch exists locally but not on the remote.
+fn has_local_only_tooling_branch(repo_root: &Path) -> bool {
+    for branch in &["litebrite", "trapperkeeper"] {
+        let local_exists = Command::new("git")
+            .args(["-C", &repo_root.to_string_lossy(), "show-ref", "--quiet", &format!("refs/heads/{branch}")])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .is_ok_and(|s| s.success());
+
+        if !local_exists {
+            continue;
+        }
+
+        let remote_exists = Command::new("git")
+            .args(["-C", &repo_root.to_string_lossy(), "show-ref", "--quiet", &format!("refs/remotes/origin/{branch}")])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .is_ok_and(|s| s.success());
+
+        if !remote_exists {
+            return true;
+        }
+    }
+    false
+}
+
 fn git_current_branch(repo_root: &Path) -> Result<String, RunError> {
     let output = Command::new("git")
         .args(["-C", &repo_root.to_string_lossy(), "branch", "--show-current"])
@@ -357,12 +389,20 @@ MRMOUTH_DOCKERFILE_EOF
   echo "Seeded Dockerfile into workspace."
 fi
 
-# --- Initialize litebrite (requires git repo) ---
+# --- Initialize task tooling (requires git repo with matching branches) ---
 if [ -d "$work_dir/.git" ]; then
-  echo "Initializing litebrite..."
-  lb init
-  lb setup claude 2>/dev/null || true
-  lb sync 2>/dev/null || true
+  if git show-ref --quiet refs/heads/litebrite refs/remotes/origin/litebrite 2>/dev/null; then
+    echo "Initializing litebrite..."
+    lb init
+    lb setup claude 2>/dev/null || true
+    lb sync 2>/dev/null || true
+  fi
+  if git show-ref --quiet refs/heads/trapperkeeper refs/remotes/origin/trapperkeeper 2>/dev/null; then
+    echo "Initializing trapperkeeper..."
+    trk init
+    trk setup claude 2>/dev/null || true
+    trk sync 2>/dev/null || true
+  fi
 fi
 
 # --- Restore .claude.json from persisted backup if missing ---
@@ -383,8 +423,9 @@ echo "Agent run complete."
 
 # --- Belt-and-suspenders: force sync/push even if agent forgot ---
 if [ -d "$work_dir/.git" ]; then
-  echo "Post-agent cleanup: forcing lb sync and git push..."
+  echo "Post-agent cleanup: forcing sync and push..."
   lb sync 2>/dev/null || true
+  trk sync 2>/dev/null || true
   git push 2>/dev/null || true
 fi
 "#

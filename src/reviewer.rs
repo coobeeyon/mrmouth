@@ -98,12 +98,20 @@ MRMOUTH_DOCKERFILE_EOF
   echo "Seeded Dockerfile into workspace."
 fi
 
-# Initialize litebrite
+# Initialize task tooling (only if matching branches exist)
 if [ -d "$work_dir/.git" ]; then
-  echo "Initializing litebrite..."
-  lb init
-  lb setup claude 2>/dev/null || true
-  lb sync 2>/dev/null || true
+  if git show-ref --quiet refs/heads/litebrite refs/remotes/origin/litebrite 2>/dev/null; then
+    echo "Initializing litebrite..."
+    lb init
+    lb setup claude 2>/dev/null || true
+    lb sync 2>/dev/null || true
+  fi
+  if git show-ref --quiet refs/heads/trapperkeeper refs/remotes/origin/trapperkeeper 2>/dev/null; then
+    echo "Initializing trapperkeeper..."
+    trk init
+    trk setup claude 2>/dev/null || true
+    trk sync 2>/dev/null || true
+  fi
 fi
 
 # Restore .claude.json from persisted backup if missing
@@ -121,9 +129,10 @@ echo "Starting code review..."
 claude -p --dangerously-skip-permissions --verbose --output-format stream-json --model {model} '{escaped_prompt}'
 echo "Code review complete."
 
-# Push lb state changes back so the host loop can sync them
+# Push state changes back so the host loop can sync them
 if [ -d "$work_dir/.git" ]; then
   lb sync 2>/dev/null || true
+  trk sync 2>/dev/null || true
   git push 2>/dev/null || true
 fi
 "#
