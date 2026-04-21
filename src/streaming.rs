@@ -135,11 +135,14 @@ pub fn claude_stream_cmd(
         "--no-session-persistence",
         "--model",
         model,
+        "--effort",
+        "max",
         "--allowedTools",
         allowed_tools,
         "--output-format",
         "stream-json",
     ])
+    .env("CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING", "1")
     .stdin(Stdio::piped())
     .stdout(Stdio::piped())
     .stderr(Stdio::piped())
@@ -162,6 +165,8 @@ pub fn claude_stream_cmd_with_schema(
         "--no-session-persistence",
         "--model",
         model,
+        "--effort",
+        "max",
         "--allowedTools",
         allowed_tools,
         "--output-format",
@@ -169,6 +174,7 @@ pub fn claude_stream_cmd_with_schema(
         "--json-schema",
         schema,
     ])
+    .env("CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING", "1")
     .stdin(Stdio::piped())
     .stdout(Stdio::piped())
     .stderr(Stdio::piped())

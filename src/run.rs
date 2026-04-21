@@ -417,7 +417,7 @@ fi
 
 # --- Run agent ---
 echo "Starting agent run..."
-claude -p --dangerously-skip-permissions --verbose --output-format stream-json --disallowedTools EnterPlanMode,ExitPlanMode --model {model} '{escaped_prompt}'
+CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING=1 claude -p --dangerously-skip-permissions --verbose --output-format stream-json --disallowedTools EnterPlanMode,ExitPlanMode --model {model} --effort max '{escaped_prompt}'
 
 echo "Agent run complete."
 

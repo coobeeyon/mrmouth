@@ -98,7 +98,7 @@ fi
 
 # Run readiness check
 echo "Starting readiness check..."
-claude -p --dangerously-skip-permissions --verbose --output-format stream-json --model {model} --json-schema '{escaped_schema}' '{escaped_prompt}'
+CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING=1 claude -p --dangerously-skip-permissions --verbose --output-format stream-json --model {model} --effort max --json-schema '{escaped_schema}' '{escaped_prompt}'
 echo "Readiness check complete."
 
 # Push state changes back so the host loop can sync them
