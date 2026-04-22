@@ -1,12 +1,33 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use crate::config::Config;
 use crate::litebrite;
 use crate::prompt;
 use crate::reviewer;
-use crate::run::{self, RunOptions};
+use crate::run::{self, RunError, RunOptions};
 use crate::tui::{TuiHandle, TuiSender};
+
+/// One failed attempt's diagnostic trail, kept across the abort threshold so
+/// the user can see each failure's reason and log without hunting logs/.
+struct AttemptSummary {
+    attempt: u32,
+    reason: String,
+    log_path: Option<PathBuf>,
+}
+
+impl AttemptSummary {
+    fn render(&self, repo_root: &Path) -> String {
+        let tail = match &self.log_path {
+            Some(p) => {
+                let rel = p.strip_prefix(repo_root).unwrap_or(p);
+                format!(" (log: {})", rel.display())
+            }
+            None => String::new(),
+        };
+        format!("attempt {}: {}{}", self.attempt, self.reason, tail)
+    }
+}
 
 /// Route a message to the TUI pane if available, otherwise stderr.
 fn emit(tui_tx: &Option<TuiSender>, msg: &str) {
@@ -173,6 +194,7 @@ fn execute_epic(
 ) -> Result<(), DoError> {
     let mut task_num: u32 = 0;
     let mut consecutive_failures: u32 = 0;
+    let mut recent_failures: Vec<AttemptSummary> = Vec::new();
 
     let head_before = git_head(repo_root);
 
@@ -220,18 +242,24 @@ fn execute_epic(
         match run_result {
             Ok(ref run_logger) => {
                 consecutive_failures = 0;
+                recent_failures.clear();
                 emit(tui_tx, &format!("Task {task_num} succeeded, syncing..."));
                 sync_and_push(repo_root, feature_branch, Some(run_logger));
             }
             Err(e) => {
                 consecutive_failures += 1;
                 emit(tui_tx, &format!("--- Task {task_num} failed: {e}"));
+                recent_failures.push(attempt_from(&e, consecutive_failures));
 
                 if consecutive_failures >= opts.max_failures {
                     emit(tui_tx, &format!(
                         "ERROR: {} consecutive failures — aborting",
                         opts.max_failures
                     ));
+                    emit(tui_tx, "Per-attempt summary:");
+                    for a in &recent_failures {
+                        emit(tui_tx, &format!("  {}", a.render(repo_root)));
+                    }
                     return Err(DoError::TooManyFailures(opts.max_failures));
                 }
             }
@@ -273,6 +301,14 @@ fn execute_epic(
     }
 
     Ok(())
+}
+
+fn attempt_from(err: &RunError, attempt: u32) -> AttemptSummary {
+    AttemptSummary {
+        attempt,
+        reason: err.short_reason(),
+        log_path: err.log_path().map(|p| p.to_path_buf()),
+    }
 }
 
 fn git_head(repo_root: &Path) -> Result<String, ()> {
@@ -491,5 +527,69 @@ mod tests {
         assert!(slug.len() <= 50);
         // Verify it's valid UTF-8 (would panic on bad boundary)
         let _ = slug.chars().count();
+    }
+
+    #[test]
+    fn attempt_summary_renders_relative_log_path() {
+        let repo_root = Path::new("/home/user/project");
+        let a = AttemptSummary {
+            attempt: 1,
+            reason: "exit 127 — missing command 'trk'".into(),
+            log_path: Some(PathBuf::from("/home/user/project/logs/run-20260422-151500.log")),
+        };
+        assert_eq!(
+            a.render(repo_root),
+            "attempt 1: exit 127 — missing command 'trk' (log: logs/run-20260422-151500.log)"
+        );
+    }
+
+    #[test]
+    fn attempt_summary_renders_absolute_path_when_outside_repo() {
+        let repo_root = Path::new("/home/user/project");
+        let a = AttemptSummary {
+            attempt: 2,
+            reason: "exit 64".into(),
+            log_path: Some(PathBuf::from("/tmp/other/run.log")),
+        };
+        assert_eq!(
+            a.render(repo_root),
+            "attempt 2: exit 64 (log: /tmp/other/run.log)"
+        );
+    }
+
+    #[test]
+    fn attempt_summary_renders_without_log() {
+        let repo_root = Path::new("/home/user/project");
+        let a = AttemptSummary {
+            attempt: 3,
+            reason: "preflight check failed: Docker is not available".into(),
+            log_path: None,
+        };
+        assert_eq!(
+            a.render(repo_root),
+            "attempt 3: preflight check failed: Docker is not available"
+        );
+    }
+
+    #[test]
+    fn attempt_from_container_failure_carries_log_path() {
+        let err = RunError::ContainerFailed {
+            code: 127,
+            reason: "missing command".into(),
+            log_path: PathBuf::from("/x/logs/run-y.log"),
+        };
+        let s = attempt_from(&err, 1);
+        assert_eq!(s.attempt, 1);
+        assert_eq!(s.reason, "exit 127 — missing command");
+        assert_eq!(s.log_path.as_deref(), Some(Path::new("/x/logs/run-y.log")));
+    }
+
+    #[test]
+    fn attempt_from_preflight_has_no_log_path() {
+        let err = RunError::Preflight("docker down".into());
+        let s = attempt_from(&err, 2);
+        assert_eq!(s.attempt, 2);
+        assert!(s.reason.contains("preflight check failed"));
+        assert!(s.log_path.is_none());
     }
 }
