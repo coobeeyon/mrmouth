@@ -105,3 +105,9 @@ impl std::fmt::Display for SummaryError {
 }
 
 impl std::error::Error for SummaryError {}
+
+impl SummaryError {
+    pub fn debrief(&self) -> crate::debrief::FailureDebrief {
+        crate::debrief::FailureDebrief::new(self.0.clone())
+    }
+}

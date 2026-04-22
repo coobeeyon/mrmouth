@@ -472,3 +472,11 @@ impl std::fmt::Display for LoopError {
 }
 
 impl std::error::Error for LoopError {}
+
+impl LoopError {
+    /// LoopError variants all fail before a run log exists, so the debrief
+    /// just carries the Display message.
+    pub fn debrief(&self) -> crate::debrief::FailureDebrief {
+        crate::debrief::FailureDebrief::new(self.to_string())
+    }
+}

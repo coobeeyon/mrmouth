@@ -1,4 +1,5 @@
 mod config;
+mod debrief;
 mod docker;
 mod do_cmd;
 mod litebrite;
@@ -16,6 +17,7 @@ mod tui;
 
 use clap::{Parser, Subcommand};
 use config::Config;
+use debrief::FailureDebrief;
 
 #[derive(Parser)]
 #[command(name = "mrmouth", version, about = "Run Claude Code as an autonomous coding agent in Docker containers")]
@@ -149,7 +151,7 @@ fn main() {
         tui::TuiHandle::try_start(project_name)
     };
 
-    let result = match cli.command {
+    let result: Result<(), FailureDebrief> = match cli.command {
         Commands::Run { raw, model, timeout, local } => {
             let opts = run::RunOptions {
                 raw,
@@ -159,7 +161,7 @@ fn main() {
                 prompt_override: None,
                 branch: None,
             };
-            run::execute(&config, &repo_root, opts, tui.as_ref()).map(|_| ()).map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
+            run::execute(&config, &repo_root, opts, tui.as_ref()).map(|_| ()).map_err(|e| e.debrief())
         }
         Commands::Loop { delay, max_runs, no_summary, model } => {
             let opts = loop_cmd::LoopOptions {
@@ -168,7 +170,7 @@ fn main() {
                 no_summary,
                 model: model.unwrap_or_else(|| config.model.clone()),
             };
-            loop_cmd::execute(&config, &repo_root, opts, tui.as_ref()).map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
+            loop_cmd::execute(&config, &repo_root, opts, tui.as_ref()).map_err(|e| e.debrief())
         }
         Commands::Do { item_id, timeout, max_failures, model } => {
             let opts = do_cmd::DoOptions {
@@ -177,7 +179,7 @@ fn main() {
                 max_failures: max_failures.unwrap_or(config.do_config.max_failures),
                 model: model.unwrap_or_else(|| config.model.clone()),
             };
-            do_cmd::execute(&config, &repo_root, opts, tui.as_ref()).map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
+            do_cmd::execute(&config, &repo_root, opts, tui.as_ref()).map_err(|e| e.debrief())
         }
         Commands::Ready { timeout, max_failures, model } => {
             let opts = ready::ReadyOptions {
@@ -185,21 +187,22 @@ fn main() {
                 max_failures: max_failures.unwrap_or(config.do_config.max_failures),
                 model: model.unwrap_or_else(|| config.model.clone()),
             };
-            ready::execute(&config, &repo_root, opts, tui.as_ref()).map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
+            ready::execute(&config, &repo_root, opts, tui.as_ref()).map_err(|e| e.debrief())
         }
         Commands::Summary { log_file } => {
             let log_file = log_file.unwrap_or_else(|| {
                 format!("{}/latest.jsonl", config.log_dir)
             });
-            summary::execute(&config, &repo_root, &log_file, None).map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
+            summary::execute(&config, &repo_root, &log_file, None).map_err(|e| e.debrief())
         }
     };
 
-    // Drop TUI first to restore terminal before printing errors or exiting
+    // Drop TUI first to restore terminal before printing errors or exiting —
+    // otherwise the alt-screen teardown erases the debrief.
     drop(tui);
 
-    if let Err(e) = result {
-        eprintln!("error: {e}");
+    if let Err(d) = result {
+        d.print();
         std::process::exit(1);
     }
 }
