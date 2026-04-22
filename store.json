@@ -815,11 +815,10 @@
       "title": "Print failure debrief after TUI teardown",
       "description": "When any top-level error exits mrmouth (run/loop/do/ready), after dropping the TUI but before process exit, print: what failed, exit code if applicable, absolute path to the run log, and the last ~25 lines of that log. Currently main.rs only prints 'error: {e}' — which, for DoError::TooManyFailures, is just the count. Thread the log path through errors (RunError::ContainerFailed, DoError::TooManyFailures, etc.) so main.rs can tail it. This single change converts 'no idea what happened' into 'here is exactly what the container printed when it died.'",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 1,
-      "claimed_by": "agent-runner",
       "created_at": "2026-04-22T15:15:16.548962927Z",
-      "updated_at": "2026-04-22T15:30:44.898825790Z"
+      "updated_at": "2026-04-22T16:06:56.470074162Z"
     },
     "lb-j6dm": {
       "id": "lb-j6dm",
