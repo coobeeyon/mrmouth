@@ -995,10 +995,10 @@
       "title": "mrmouth epic should work with standalone tasks, not just epic children",
       "description": "Currently 'mrmouth epic <id>' only finds child tasks of the given epic. If you pass a standalone task (not an epic, or an epic with no children), it reports 'All tasks complete' and exits without doing anything.\n\nExpected behavior: 'mrmouth epic <task-id>' should work on any item — if it's a standalone task, treat it as a single-item workload. If it's an epic with children, work the children. The current behavior forces users to wrap standalone tasks in a parent epic as a workaround, which is unnecessary ceremony.\n\nDiscovered when trying to run 'mrmouth epic lb-nu6d' on a standalone task — it did nothing until the task was reparented under a new epic.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 2,
       "created_at": "2026-03-26T03:45:21.356840097Z",
-      "updated_at": "2026-03-26T03:45:21.356840097Z"
+      "updated_at": "2026-04-22T15:21:48.594123021Z"
     },
     "lb-mxo4": {
       "id": "lb-mxo4",
