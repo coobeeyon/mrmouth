@@ -231,7 +231,10 @@ pub fn execute(config: &Config, repo_root: &Path, opts: RunOptions, tui: Option<
     logger.log(&format!("Done. Log saved: {}", log_path.display()));
 
     if exit_code != 0 {
-        return Err(RunError::ContainerFailed(exit_code));
+        // Flush so classify_exit reads everything the runner script wrote.
+        logger.flush();
+        let reason = classify_exit(exit_code, &log_path);
+        return Err(RunError::ContainerFailed { code: exit_code, reason });
     }
 
     Ok(logger)
@@ -466,7 +469,7 @@ pub enum RunError {
     Preflight(String),
     Docker(crate::docker::DockerError),
     Io(String, std::io::Error),
-    ContainerFailed(i32),
+    ContainerFailed { code: i32, reason: String },
 }
 
 impl std::fmt::Display for RunError {
@@ -475,12 +478,110 @@ impl std::fmt::Display for RunError {
             Self::Preflight(msg) => write!(f, "preflight check failed: {msg}"),
             Self::Docker(e) => write!(f, "docker error: {e}"),
             Self::Io(ctx, e) => write!(f, "{ctx}: {e}"),
-            Self::ContainerFailed(code) => write!(f, "container exited with code {code}"),
+            Self::ContainerFailed { code, reason } => {
+                write!(f, "container exited with code {code}: {reason}")
+            }
         }
     }
 }
 
 impl std::error::Error for RunError {}
+
+/// Classify a non-zero container exit code into a human-readable cause.
+/// Scans the tail of the log for `::mrmouth::` markers (emitted by the runner
+/// script) and well-known error fragments before falling back to exit-code
+/// heuristics.
+pub fn classify_exit(code: i32, log_path: &Path) -> String {
+    let tail = read_log_tail(log_path, 8192);
+    classify_exit_with_tail(code, &tail)
+}
+
+fn classify_exit_with_tail(code: i32, tail: &str) -> String {
+    const MISSING_TOOL: &str = "::mrmouth::missing-tool ";
+    const SCRIPT_ERROR: &str = "::mrmouth::script-error ";
+
+    // Scan from the bottom up — the most recent marker wins.
+    for line in tail.lines().rev() {
+        if let Some(idx) = line.find(MISSING_TOOL) {
+            let rest = &line[idx + MISSING_TOOL.len()..];
+            let tool = parse_marker_field(rest, "tool=");
+            let reason = parse_marker_tail(rest, "reason=");
+            return match (tool, reason) {
+                (Some(t), Some(r)) => format!("missing tool '{t}' — {r}"),
+                (Some(t), None) => format!("missing tool '{t}'"),
+                _ => "missing required tool in container".into(),
+            };
+        }
+        if let Some(idx) = line.find(SCRIPT_ERROR) {
+            let rest = &line[idx + SCRIPT_ERROR.len()..];
+            let line_no = parse_marker_field(rest, "line=");
+            let cmd = parse_marker_tail(rest, "cmd=");
+            return match (line_no, cmd) {
+                (Some(l), Some(c)) => format!("runner script error at line {l}: {c}"),
+                (Some(l), None) => format!("runner script error at line {l}"),
+                (None, Some(c)) => format!("runner script error: {c}"),
+                _ => "runner script error".into(),
+            };
+        }
+    }
+
+    // Pattern-based heuristics — the runner script may not have caught it,
+    // but the log still has tell-tale fragments.
+    if let Some(line) = tail.lines().rev().find(|l| l.contains("command not found")) {
+        let snippet = line.trim();
+        return format!("missing command in container — {snippet}");
+    }
+    if tail.contains("Killed") || tail.contains("OOMKilled") {
+        return "container killed (likely OOM)".into();
+    }
+    if tail.contains("context deadline exceeded") {
+        return "timed out (context deadline exceeded)".into();
+    }
+
+    // Code-based fallback.
+    match code {
+        64 => "missing required tool in container (runner script guard fired — see log)".into(),
+        124 => "timed out (timeout wrapper)".into(),
+        126 => "permission denied / not executable".into(),
+        127 => "missing command in container (check your Dockerfile includes all expected tools)".into(),
+        137 => "container killed (likely OOM)".into(),
+        143 => "timed out (SIGTERM)".into(),
+        _ => format!("unrecognised exit code {code}"),
+    }
+}
+
+/// Read up to `n_bytes` from the end of `log_path` as a string. Returns "" on
+/// any I/O error so callers can keep classifying with what they have.
+fn read_log_tail(log_path: &Path, n_bytes: usize) -> String {
+    use std::io::{Read, Seek, SeekFrom};
+    let Ok(mut file) = std::fs::File::open(log_path) else { return String::new(); };
+    let len = file.metadata().map(|m| m.len()).unwrap_or(0);
+    let start = len.saturating_sub(n_bytes as u64);
+    if file.seek(SeekFrom::Start(start)).is_err() {
+        return String::new();
+    }
+    let mut buf = Vec::with_capacity(n_bytes);
+    let _ = file.take(n_bytes as u64).read_to_end(&mut buf);
+    String::from_utf8_lossy(&buf).into_owned()
+}
+
+/// Extract a single-token value for `key=` from a marker payload.
+/// Returns the substring up to the next whitespace.
+fn parse_marker_field(payload: &str, key: &str) -> Option<String> {
+    let pos = payload.find(key)?;
+    let value_start = pos + key.len();
+    let rest = &payload[value_start..];
+    let end = rest.find(char::is_whitespace).unwrap_or(rest.len());
+    Some(rest[..end].to_string())
+}
+
+/// Extract a multi-word value for `key=` that runs to the end of the payload.
+/// Used for free-form fields like `reason=...` and `cmd=...`.
+fn parse_marker_tail(payload: &str, key: &str) -> Option<String> {
+    let pos = payload.find(key)?;
+    let value_start = pos + key.len();
+    Some(payload[value_start..].trim().to_string())
+}
 
 /// Atomically replace a symlink by creating a temp link and renaming over the target.
 #[cfg(unix)]
@@ -622,5 +723,89 @@ mod tests {
         let claude_pos = content.find("claude -p --dangerously-skip-permissions").expect("missing claude invocation");
         assert!(guard_pos < claude_pos, "claude guard must precede claude invocation");
         assert!(content.contains("::mrmouth::missing-tool tool=claude"));
+    }
+
+    #[test]
+    fn classify_recognises_missing_tool_marker() {
+        let tail = "Initializing trapperkeeper...\n\
+                    ::mrmouth::missing-tool tool=trk reason=trapperkeeper branch exists but binary not in image\n";
+        let msg = classify_exit_with_tail(64, tail);
+        assert!(msg.contains("missing tool 'trk'"), "got: {msg}");
+        assert!(msg.contains("trapperkeeper branch exists but binary not in image"), "got: {msg}");
+    }
+
+    #[test]
+    fn classify_recognises_script_error_marker() {
+        let tail = "::mrmouth::script-error rc=1 line=42 cmd=git clone foo bar\n";
+        let msg = classify_exit_with_tail(1, tail);
+        assert!(msg.contains("line 42"), "got: {msg}");
+        assert!(msg.contains("git clone foo bar"), "got: {msg}");
+    }
+
+    #[test]
+    fn classify_marker_takes_precedence_over_code() {
+        // Even with code 127, an explicit marker should win.
+        let tail = "::mrmouth::missing-tool tool=lb reason=litebrite branch exists but binary not in image\n";
+        let msg = classify_exit_with_tail(127, tail);
+        assert!(msg.contains("missing tool 'lb'"), "got: {msg}");
+    }
+
+    #[test]
+    fn classify_most_recent_marker_wins() {
+        // If two markers appear, the one nearer the bottom (most recent) wins.
+        let tail = "::mrmouth::missing-tool tool=lb reason=lb missing\n\
+                    ::mrmouth::missing-tool tool=trk reason=trk missing\n";
+        let msg = classify_exit_with_tail(64, tail);
+        assert!(msg.contains("'trk'"), "got: {msg}");
+        assert!(!msg.contains("'lb'"), "got: {msg}");
+    }
+
+    #[test]
+    fn classify_falls_back_to_command_not_found_pattern() {
+        let tail = "Initializing litebrite...\n\
+                    /run.sh: line 30: lb: command not found\n";
+        let msg = classify_exit_with_tail(127, tail);
+        assert!(msg.contains("missing command in container"), "got: {msg}");
+        assert!(msg.contains("command not found"), "got: {msg}");
+    }
+
+    #[test]
+    fn classify_falls_back_to_exit_code() {
+        assert!(classify_exit_with_tail(127, "").contains("missing command"));
+        assert!(classify_exit_with_tail(137, "").contains("OOM"));
+        assert!(classify_exit_with_tail(143, "").contains("SIGTERM"));
+        assert!(classify_exit_with_tail(124, "").contains("timeout"));
+        assert!(classify_exit_with_tail(126, "").contains("permission"));
+        assert!(classify_exit_with_tail(64, "").contains("runner script guard"));
+        assert!(classify_exit_with_tail(99, "").contains("99"));
+    }
+
+    #[test]
+    fn classify_handles_unknown_code_with_no_log() {
+        let msg = classify_exit_with_tail(42, "");
+        assert!(msg.contains("42"));
+    }
+
+    #[test]
+    fn classify_marker_without_fields_degrades_gracefully() {
+        // Marker matched but with no recognised key=value fields.
+        let tail = "::mrmouth::missing-tool unknown=junk\n";
+        let msg = classify_exit_with_tail(64, tail);
+        assert_eq!(msg, "missing required tool in container");
+    }
+
+    #[test]
+    fn read_log_tail_returns_empty_for_missing_file() {
+        let path = std::path::PathBuf::from("/nonexistent/path/to/log");
+        assert_eq!(read_log_tail(&path, 1024), "");
+    }
+
+    #[test]
+    fn read_log_tail_returns_last_n_bytes() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.log");
+        std::fs::write(&path, "0123456789abcdef").unwrap();
+        let tail = read_log_tail(&path, 5);
+        assert_eq!(tail, "bcdef");
     }
 }
