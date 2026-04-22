@@ -2,7 +2,8 @@ use std::io::{BufRead, BufReader};
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::mpsc;
+use std::sync::Arc;
 
 /// Default Dockerfile content used when no `.mrmouth/Dockerfile` exists.
 pub const DEFAULT_DOCKERFILE: &str = r#"# Stage 1: Build litebrite (lb) and trapperkeeper (trk) — static musl binaries
@@ -290,9 +291,9 @@ pub struct ContainerHandle {
 }
 
 impl ContainerHandle {
-    /// Stream stdout line by line, calling `handler` for each line.
-    /// Container stderr is buffered and then passed through the same handler
-    /// after stdout closes, so it reaches the TUI/logger rather than bypassing it.
+    /// Stream stdout and stderr line by line, interleaved in arrival order,
+    /// calling `handler` for each line. Both streams feed a single mpsc channel
+    /// so errors appear in the TUI/log when they happen, not after stdout closes.
     pub fn stream_output<F>(&mut self, mut handler: F) -> Result<(), DockerError>
     where
         F: FnMut(&str),
@@ -308,32 +309,37 @@ impl ContainerHandle {
             .take()
             .ok_or(DockerError::NoStderr)?;
 
-        // Buffer stderr on a background thread (handler is not Send)
-        let stderr_buf: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
-        let stderr_buf_clone = Arc::clone(&stderr_buf);
-        let stderr_handle = std::thread::spawn(move || {
-            let reader = BufReader::new(stderr);
+        let (tx, rx) = mpsc::channel::<String>();
+        let tx_stdout = tx.clone();
+        let tx_stderr = tx;
+
+        let stdout_handle = std::thread::spawn(move || {
+            let reader = BufReader::new(stdout);
             for line in reader.lines().map_while(Result::ok) {
-                if let Ok(mut v) = stderr_buf_clone.lock() {
-                    v.push(line);
+                if tx_stdout.send(line).is_err() {
+                    break;
                 }
             }
         });
 
-        let reader = BufReader::new(stdout);
-        for line in reader.lines() {
-            let line = line.map_err(|e| DockerError::Io("reading container output".into(), e))?;
+        let stderr_handle = std::thread::spawn(move || {
+            let reader = BufReader::new(stderr);
+            for line in reader.lines().map_while(Result::ok) {
+                if tx_stderr.send(line).is_err() {
+                    break;
+                }
+            }
+        });
+
+        // Drain the channel on the main thread. The handler is not Send,
+        // so it must run here. The loop exits when both sender clones drop,
+        // which happens when both reader threads finish.
+        for line in rx {
             handler(&line);
         }
 
+        let _ = stdout_handle.join();
         let _ = stderr_handle.join();
-
-        // Route buffered stderr through the same handler so it appears in the TUI/log
-        if let Ok(lines) = stderr_buf.lock() {
-            for line in lines.iter() {
-                handler(line);
-            }
-        }
 
         Ok(())
     }
