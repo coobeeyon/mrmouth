@@ -1250,6 +1250,16 @@
       "created_at": "2026-04-22T15:15:23.586726286Z",
       "updated_at": "2026-04-22T15:15:23.586726286Z"
     },
+    "lb-vjkd": {
+      "id": "lb-vjkd",
+      "title": "Per-attempt summary on TooManyFailures abort",
+      "description": "In do_cmd.rs::execute_epic, when consecutive_failures >= max_failures, we return DoError::TooManyFailures(n) which displays as 'aborted after N consecutive failures' with no detail. Track a Vec<(u32 attempt, String reason, PathBuf log_path)> across attempts (reason pulled from the RunError — exit code, classification, message). On abort, render each attempt: 'attempt 1: exit 127 — possibly missing command (log: logs/run-XXX.log)'. Combined with lb-iyie (failure debrief), the user sees the full story without hunting through logs/.",
+      "item_type": "task",
+      "status": "open",
+      "priority": 1,
+      "created_at": "2026-04-22T15:15:31.214830728Z",
+      "updated_at": "2026-04-22T15:15:31.214830728Z"
+    },
     "lb-vjkj": {
       "id": "lb-vjkj",
       "title": "Fails on pre-initialized empty repo",
@@ -1679,6 +1689,11 @@
     },
     {
       "from_id": "lb-vj6i",
+      "to_id": "lb-obsn",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-vjkd",
       "to_id": "lb-obsn",
       "dep_type": "parent"
     }
