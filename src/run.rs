@@ -2,6 +2,7 @@ use std::fs::{self, File};
 use std::io::{BufWriter, IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::Duration;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -283,10 +284,82 @@ fn preflight(repo_root: &Path, local: bool) -> Result<(), RunError> {
             if is_ssh_remote(&url) {
                 check_ssh_agent()?;
             }
+            check_origin_reachable(repo_root)?;
         }
     }
 
     Ok(())
+}
+
+/// Wall-clock timeout outcome for a subprocess invocation.
+enum TimeoutOutcome {
+    Completed(std::process::Output),
+    TimedOut,
+}
+
+/// Run `cmd` with a wall-clock timeout, capturing stdout/stderr. On timeout,
+/// the child is SIGKILL'd and reaped before returning `TimedOut`.
+///
+/// Note: this uses a `try_wait` polling loop, so the child's output must fit
+/// inside the pipe buffer before it exits. Suitable for small-output commands
+/// (git ls-remote HEAD, git rev-parse, etc.), not for streaming workloads.
+fn run_with_timeout(mut cmd: Command, timeout: Duration) -> std::io::Result<TimeoutOutcome> {
+    use std::io::Read;
+    cmd.stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .stdin(std::process::Stdio::null());
+    let mut child = cmd.spawn()?;
+    let start = std::time::Instant::now();
+
+    loop {
+        match child.try_wait()? {
+            Some(status) => {
+                let mut stdout = Vec::new();
+                let mut stderr = Vec::new();
+                if let Some(mut s) = child.stdout.take() { let _ = s.read_to_end(&mut stdout); }
+                if let Some(mut s) = child.stderr.take() { let _ = s.read_to_end(&mut stderr); }
+                return Ok(TimeoutOutcome::Completed(std::process::Output { status, stdout, stderr }));
+            }
+            None => {
+                if start.elapsed() >= timeout {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return Ok(TimeoutOutcome::TimedOut);
+                }
+                std::thread::sleep(Duration::from_millis(50));
+            }
+        }
+    }
+}
+
+/// Probe origin with `git ls-remote --exit-code origin HEAD`. On unreachable
+/// origin (DNS, VPN, SSH key, network), the container would otherwise fail
+/// opaquely inside `git clone`; this catches it before docker build.
+fn check_origin_reachable(repo_root: &Path) -> Result<(), RunError> {
+    let mut cmd = Command::new("git");
+    cmd.args(["-C", &repo_root.to_string_lossy(), "ls-remote", "--exit-code", "origin", "HEAD"]);
+
+    let outcome = run_with_timeout(cmd, Duration::from_secs(8))
+        .map_err(|e| RunError::Io("running git ls-remote".into(), e))?;
+
+    match outcome {
+        TimeoutOutcome::Completed(out) if out.status.success() => Ok(()),
+        TimeoutOutcome::Completed(out) => {
+            let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
+            let msg = if stderr.is_empty() {
+                format!(
+                    "cannot reach origin (git ls-remote exit {})",
+                    out.status.code().map(|c| c.to_string()).unwrap_or_else(|| "signal".into())
+                )
+            } else {
+                format!("cannot reach origin: {stderr}")
+            };
+            Err(RunError::Preflight(msg))
+        }
+        TimeoutOutcome::TimedOut => Err(RunError::Preflight(
+            "cannot reach origin: git ls-remote did not respond within 8s (DNS, VPN, or SSH-agent issue?)".into(),
+        )),
+    }
 }
 
 /// True for SSH-form git remotes (git@host:... or ssh://...).
@@ -939,6 +1012,90 @@ mod tests {
             None => std::env::remove_var("SSH_AUTH_SOCK"),
         }
         assert!(result.is_ok());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn run_with_timeout_completes_fast_command() {
+        let mut cmd = Command::new("sh");
+        cmd.args(["-c", "printf out; printf err >&2; exit 0"]);
+        let out = match run_with_timeout(cmd, Duration::from_secs(5)).unwrap() {
+            TimeoutOutcome::Completed(o) => o,
+            TimeoutOutcome::TimedOut => panic!("fast command unexpectedly timed out"),
+        };
+        assert!(out.status.success());
+        assert_eq!(out.stdout, b"out");
+        assert_eq!(out.stderr, b"err");
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn run_with_timeout_kills_slow_command() {
+        let mut cmd = Command::new("sh");
+        cmd.args(["-c", "sleep 30"]);
+        let start = std::time::Instant::now();
+        let outcome = run_with_timeout(cmd, Duration::from_millis(300)).unwrap();
+        let elapsed = start.elapsed();
+        assert!(matches!(outcome, TimeoutOutcome::TimedOut));
+        // Should return well before the 30s sleep completes.
+        assert!(elapsed < Duration::from_secs(5), "run_with_timeout blocked for {elapsed:?}");
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn run_with_timeout_reports_nonzero_exit() {
+        let mut cmd = Command::new("sh");
+        cmd.args(["-c", "echo boom >&2; exit 42"]);
+        let out = match run_with_timeout(cmd, Duration::from_secs(5)).unwrap() {
+            TimeoutOutcome::Completed(o) => o,
+            TimeoutOutcome::TimedOut => panic!("unexpected timeout"),
+        };
+        assert_eq!(out.status.code(), Some(42));
+        assert!(String::from_utf8_lossy(&out.stderr).contains("boom"));
+    }
+
+    #[cfg(unix)]
+    fn git(dir: &Path, args: &[&str]) {
+        let status = Command::new("git")
+            .args(["-C", &dir.to_string_lossy()])
+            .args(args)
+            .env("GIT_AUTHOR_NAME", "t")
+            .env("GIT_AUTHOR_EMAIL", "t@t")
+            .env("GIT_COMMITTER_NAME", "t")
+            .env("GIT_COMMITTER_EMAIL", "t@t")
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .expect("git run");
+        assert!(status.success(), "git {args:?} failed");
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn check_origin_reachable_succeeds_for_local_remote() {
+        let origin_dir = tempfile::tempdir().unwrap();
+        git(origin_dir.path(), &["init", "-q"]);
+        std::fs::write(origin_dir.path().join("README"), "hi").unwrap();
+        git(origin_dir.path(), &["add", "README"]);
+        git(origin_dir.path(), &["commit", "-q", "-m", "init"]);
+
+        let work_dir = tempfile::tempdir().unwrap();
+        git(work_dir.path(), &["init", "-q"]);
+        git(work_dir.path(), &["remote", "add", "origin", &origin_dir.path().to_string_lossy()]);
+
+        check_origin_reachable(work_dir.path()).expect("local origin should be reachable");
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn check_origin_reachable_fails_for_missing_remote() {
+        let work_dir = tempfile::tempdir().unwrap();
+        git(work_dir.path(), &["init", "-q"]);
+        git(work_dir.path(), &["remote", "add", "origin", "/nonexistent/path/mrmouth-y5z9"]);
+
+        let err = check_origin_reachable(work_dir.path()).unwrap_err();
+        let msg = format!("{err}");
+        assert!(msg.contains("cannot reach origin"), "got: {msg}");
     }
 
     fn env_lock() -> std::sync::MutexGuard<'static, ()> {
