@@ -72,7 +72,7 @@ pub fn execute(config: &Config, repo_root: &Path, opts: RunOptions, tui: Option<
     } else {
         logger.log("Checking preflight conditions...");
     }
-    preflight(repo_root, local, &effective_dockerfile).inspect_err(|_| { logger.flush(); })?;
+    preflight(repo_root, local, &effective_dockerfile, Some(&logger)).inspect_err(|_| { logger.flush(); })?;
 
     // 2. Resolve repo URL
     let (repo_url, file_remote_path) = if local {
@@ -252,7 +252,12 @@ fn preflight_skipped() -> bool {
     std::env::var("MRMOUTH_SKIP_PREFLIGHT").ok().as_deref() == Some("1")
 }
 
-fn preflight(repo_root: &Path, local: bool, dockerfile_content: &str) -> Result<(), RunError> {
+fn preflight(
+    repo_root: &Path,
+    local: bool,
+    dockerfile_content: &str,
+    logger: Option<&Logger>,
+) -> Result<(), RunError> {
     if preflight_skipped() {
         return Ok(());
     }
@@ -266,6 +271,9 @@ fn preflight(repo_root: &Path, local: bool, dockerfile_content: &str) -> Result<
         Ok(s) if s.success() => {}
         _ => return Err(RunError::Preflight("Docker is not available. Is Docker running?".into())),
     }
+
+    // Best-effort diagnostic — never blocks preflight.
+    check_disk_space(logger);
 
     let has_api_key = std::env::var("ANTHROPIC_API_KEY").is_ok();
     let has_oauth = std::env::var("CLAUDE_CODE_OAUTH_TOKEN").is_ok();
@@ -332,6 +340,42 @@ fn check_tooling_coherence(repo_root: &Path, dockerfile_content: &str) -> Result
         }
     }
     Ok(())
+}
+
+/// Best-effort disk-space warning for `/var/lib/docker`. Emits a non-blocking
+/// warning via the logger if free space is below the threshold. Any failure
+/// (no df, non-Linux filesystem layout, parse mismatch) is silently ignored —
+/// this is pure diagnostic help, not a hard gate.
+fn check_disk_space(logger: Option<&Logger>) {
+    const DOCKER_DIR: &str = "/var/lib/docker";
+    const WARN_THRESHOLD_GB: u64 = 2;
+
+    let Ok(output) = Command::new("df").args(["-P", DOCKER_DIR]).output() else { return };
+    if !output.status.success() {
+        return;
+    }
+    let text = String::from_utf8_lossy(&output.stdout);
+    let Some(avail_kb) = parse_df_available_kb(&text) else { return };
+
+    let avail_gb = avail_kb / (1024 * 1024);
+    if avail_gb < WARN_THRESHOLD_GB {
+        let msg = format!(
+            "Warning: only {avail_gb} GB free at {DOCKER_DIR}. Docker build may fail with 'no space left on device'. Try 'docker system prune'."
+        );
+        crate::logger::log(logger, &msg);
+    }
+}
+
+/// Parse the 4th column ("Available" in 1K-blocks) from `df -P` output.
+/// Returns None if the output doesn't look like two lines of POSIX df.
+fn parse_df_available_kb(text: &str) -> Option<u64> {
+    // First data line after the header. `df -P` guarantees no line-wrapping.
+    let line = text.lines().nth(1)?;
+    let parts: Vec<&str> = line.split_whitespace().collect();
+    if parts.len() < 4 {
+        return None;
+    }
+    parts[3].parse::<u64>().ok()
 }
 
 /// Returns true if `branch` exists locally or on origin.
@@ -1250,12 +1294,55 @@ mod tests {
         let prev_skip = std::env::var_os("MRMOUTH_SKIP_PREFLIGHT");
         std::env::set_var("MRMOUTH_SKIP_PREFLIGHT", "1");
         // Dockerfile lacks trk, but env skip must bypass that (and all other checks).
-        let result = preflight(dir.path(), true, "FROM scratch\n");
+        let result = preflight(dir.path(), true, "FROM scratch\n", None);
         match prev_skip {
             Some(v) => std::env::set_var("MRMOUTH_SKIP_PREFLIGHT", v),
             None => std::env::remove_var("MRMOUTH_SKIP_PREFLIGHT"),
         }
         assert!(result.is_ok(), "skip env should bypass all preflight failures");
+    }
+
+    #[test]
+    fn parse_df_available_kb_linux_format() {
+        let text = "Filesystem     1024-blocks       Used   Available Capacity Mounted on\n\
+                    /dev/nvme0n1p2    499963392  337834220   137129788      72% /\n";
+        assert_eq!(parse_df_available_kb(text), Some(137129788));
+    }
+
+    #[test]
+    fn parse_df_available_kb_macos_format() {
+        // macOS df -P has 512-byte blocks by default without -k, but -P uses 1024-blocks too.
+        let text = "Filesystem  1024-blocks     Used Available Capacity iused ifree %iused Mounted on\n\
+                    /dev/disk1s1  487893504  63218928 420000000    14% 500000 1000000   33%   /\n";
+        assert_eq!(parse_df_available_kb(text), Some(420000000));
+    }
+
+    #[test]
+    fn parse_df_available_kb_empty_input() {
+        assert_eq!(parse_df_available_kb(""), None);
+        assert_eq!(parse_df_available_kb("only a header line\n"), None);
+    }
+
+    #[test]
+    fn parse_df_available_kb_garbled_input() {
+        // Non-numeric 4th column.
+        let text = "h1 h2 h3 h4 h5 h6\n\
+                    a  b  c  not-a-number e f\n";
+        assert_eq!(parse_df_available_kb(text), None);
+    }
+
+    #[test]
+    fn parse_df_available_kb_short_line() {
+        let text = "h1 h2 h3\n\
+                    a b c\n";
+        assert_eq!(parse_df_available_kb(text), None);
+    }
+
+    #[test]
+    fn check_disk_space_silently_ignores_missing_dir() {
+        // /var/lib/docker typically doesn't exist on the test host — df returns non-zero.
+        // The function must not panic and must not log anything mandatory.
+        check_disk_space(None);
     }
 
     fn env_lock() -> std::sync::MutexGuard<'static, ()> {
