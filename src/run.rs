@@ -66,8 +66,13 @@ pub fn execute(config: &Config, repo_root: &Path, opts: RunOptions, tui: Option<
     if local && !opts.local {
         logger.log("Tooling branch exists locally but not on remote — using local mode.");
     }
-    logger.log("Checking preflight conditions...");
-    preflight(repo_root, local).inspect_err(|_| { logger.flush(); })?;
+    let effective_dockerfile = crate::docker::effective_dockerfile_content(repo_root, &config.dockerfile);
+    if preflight_skipped() {
+        logger.log("MRMOUTH_SKIP_PREFLIGHT=1 — skipping preflight checks.");
+    } else {
+        logger.log("Checking preflight conditions...");
+    }
+    preflight(repo_root, local, &effective_dockerfile).inspect_err(|_| { logger.flush(); })?;
 
     // 2. Resolve repo URL
     let (repo_url, file_remote_path) = if local {
@@ -87,7 +92,6 @@ pub fn execute(config: &Config, repo_root: &Path, opts: RunOptions, tui: Option<
     litebrite::init_and_sync(repo_root, Some(&logger));
 
     // 4. Write runner entrypoint script
-    let effective_dockerfile = crate::docker::effective_dockerfile_content(repo_root, &config.dockerfile);
     let runner_script = write_runner_script(repo_root, &opts.model, opts.prompt_override.as_deref(), &effective_dockerfile, &config.dockerfile, Some(&logger))?;
 
     // 5. Build Docker image
@@ -241,7 +245,18 @@ pub fn execute(config: &Config, repo_root: &Path, opts: RunOptions, tui: Option<
     Ok(logger)
 }
 
-fn preflight(repo_root: &Path, local: bool) -> Result<(), RunError> {
+/// True when MRMOUTH_SKIP_PREFLIGHT=1 is set — a user-facing escape hatch for
+/// overriding all preflight checks (tooling coherence, origin reachability,
+/// docker, credentials, uncommitted changes, SSH agent).
+fn preflight_skipped() -> bool {
+    std::env::var("MRMOUTH_SKIP_PREFLIGHT").ok().as_deref() == Some("1")
+}
+
+fn preflight(repo_root: &Path, local: bool, dockerfile_content: &str) -> Result<(), RunError> {
+    if preflight_skipped() {
+        return Ok(());
+    }
+
     let docker_check = Command::new("docker")
         .arg("info")
         .stdout(std::process::Stdio::null())
@@ -259,6 +274,8 @@ fn preflight(repo_root: &Path, local: bool) -> Result<(), RunError> {
             "No credentials found. Set ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN.".into(),
         ));
     }
+
+    check_tooling_coherence(repo_root, dockerfile_content)?;
 
     if !local {
         let diff_status = Command::new("git")
@@ -289,6 +306,48 @@ fn preflight(repo_root: &Path, local: bool) -> Result<(), RunError> {
     }
 
     Ok(())
+}
+
+/// Pairs of (branch name, binary name) for task-tracking tools that the runner
+/// script invokes conditionally based on branch existence. If a tooling branch
+/// exists but the Dockerfile doesn't build the binary, the runner would hit
+/// exit 127 deep inside the container — catch it on the host instead.
+const TOOLING_PAIRS: &[(&str, &str)] = &[("litebrite", "lb"), ("trapperkeeper", "trk")];
+
+/// For each tooling branch present (locally or on origin), verify the effective
+/// Dockerfile references the tool by name (e.g. contains "trapperkeeper"). If
+/// it doesn't, the runner script's `trk init` / `lb init` call will hit exit
+/// 127 deep inside the container — surface it here instead.
+fn check_tooling_coherence(repo_root: &Path, dockerfile_content: &str) -> Result<(), RunError> {
+    for &(branch, binary) in TOOLING_PAIRS {
+        if !tooling_branch_exists(repo_root, branch) {
+            continue;
+        }
+        if !dockerfile_content.contains(branch) {
+            return Err(RunError::Preflight(format!(
+                "Your Dockerfile does not build {binary}, but a {branch} branch exists. \
+                 Either add the build stage (see DEFAULT_DOCKERFILE) or delete the branch. \
+                 Set MRMOUTH_SKIP_PREFLIGHT=1 to override."
+            )));
+        }
+    }
+    Ok(())
+}
+
+/// Returns true if `branch` exists locally or on origin.
+fn tooling_branch_exists(repo_root: &Path, branch: &str) -> bool {
+    for reference in [format!("refs/heads/{branch}"), format!("refs/remotes/origin/{branch}")] {
+        let ok = Command::new("git")
+            .args(["-C", &repo_root.to_string_lossy(), "show-ref", "--quiet", &reference])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .is_ok_and(|s| s.success());
+        if ok {
+            return true;
+        }
+    }
+    false
 }
 
 /// Wall-clock timeout outcome for a subprocess invocation.
@@ -1096,6 +1155,107 @@ mod tests {
         let err = check_origin_reachable(work_dir.path()).unwrap_err();
         let msg = format!("{err}");
         assert!(msg.contains("cannot reach origin"), "got: {msg}");
+    }
+
+    #[cfg(unix)]
+    fn make_repo_with_branch(branch: Option<&str>) -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        git(dir.path(), &["init", "-q"]);
+        std::fs::write(dir.path().join("f"), "x").unwrap();
+        git(dir.path(), &["add", "f"]);
+        git(dir.path(), &["commit", "-q", "-m", "init"]);
+        if let Some(b) = branch {
+            git(dir.path(), &["branch", b]);
+        }
+        dir
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn check_tooling_coherence_ok_when_no_branches() {
+        let dir = make_repo_with_branch(None);
+        check_tooling_coherence(dir.path(), "FROM node:22\n").expect("no tooling branches → pass");
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn check_tooling_coherence_ok_when_dockerfile_mentions_branch() {
+        let dir = make_repo_with_branch(Some("trapperkeeper"));
+        let dockerfile = "FROM rust\nRUN cargo install --git https://example.com/trapperkeeper.git\n";
+        check_tooling_coherence(dir.path(), dockerfile).expect("dockerfile mentions trapperkeeper → pass");
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn check_tooling_coherence_fails_when_dockerfile_missing_trk() {
+        let dir = make_repo_with_branch(Some("trapperkeeper"));
+        let err = check_tooling_coherence(dir.path(), "FROM node:22\n").unwrap_err();
+        let msg = format!("{err}");
+        assert!(msg.contains("does not build trk"), "got: {msg}");
+        assert!(msg.contains("trapperkeeper branch exists"), "got: {msg}");
+        assert!(msg.contains("MRMOUTH_SKIP_PREFLIGHT"), "got: {msg}");
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn check_tooling_coherence_fails_when_dockerfile_missing_lb() {
+        let dir = make_repo_with_branch(Some("litebrite"));
+        let err = check_tooling_coherence(dir.path(), "FROM node:22\n").unwrap_err();
+        let msg = format!("{err}");
+        assert!(msg.contains("does not build lb"), "got: {msg}");
+        assert!(msg.contains("litebrite branch exists"), "got: {msg}");
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn check_tooling_coherence_passes_with_default_dockerfile() {
+        // Sanity check: DEFAULT_DOCKERFILE contains both tooling words.
+        let dir = make_repo_with_branch(Some("litebrite"));
+        git(dir.path(), &["branch", "trapperkeeper"]);
+        check_tooling_coherence(dir.path(), docker::DEFAULT_DOCKERFILE)
+            .expect("default Dockerfile must satisfy coherence for both tools");
+    }
+
+    #[test]
+    fn preflight_skipped_reads_env_as_one() {
+        let _guard = env_lock();
+        let prev = std::env::var_os("MRMOUTH_SKIP_PREFLIGHT");
+
+        std::env::set_var("MRMOUTH_SKIP_PREFLIGHT", "1");
+        let skip_one = preflight_skipped();
+        std::env::set_var("MRMOUTH_SKIP_PREFLIGHT", "0");
+        let skip_zero = preflight_skipped();
+        std::env::set_var("MRMOUTH_SKIP_PREFLIGHT", "true");
+        let skip_true = preflight_skipped();
+        std::env::remove_var("MRMOUTH_SKIP_PREFLIGHT");
+        let skip_unset = preflight_skipped();
+
+        match prev {
+            Some(v) => std::env::set_var("MRMOUTH_SKIP_PREFLIGHT", v),
+            None => std::env::remove_var("MRMOUTH_SKIP_PREFLIGHT"),
+        }
+
+        assert!(skip_one, "=1 should skip");
+        assert!(!skip_zero, "=0 should not skip");
+        assert!(!skip_true, "=true should not skip (strict match on 1)");
+        assert!(!skip_unset, "unset should not skip");
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn preflight_short_circuits_when_skip_env_set() {
+        let _guard = env_lock();
+        let dir = make_repo_with_branch(Some("trapperkeeper"));
+
+        let prev_skip = std::env::var_os("MRMOUTH_SKIP_PREFLIGHT");
+        std::env::set_var("MRMOUTH_SKIP_PREFLIGHT", "1");
+        // Dockerfile lacks trk, but env skip must bypass that (and all other checks).
+        let result = preflight(dir.path(), true, "FROM scratch\n");
+        match prev_skip {
+            Some(v) => std::env::set_var("MRMOUTH_SKIP_PREFLIGHT", v),
+            None => std::env::remove_var("MRMOUTH_SKIP_PREFLIGHT"),
+        }
+        assert!(result.is_ok(), "skip env should bypass all preflight failures");
     }
 
     fn env_lock() -> std::sync::MutexGuard<'static, ()> {
