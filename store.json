@@ -1436,11 +1436,10 @@
       "title": "Preflight: origin reachability with timeout",
       "description": "In non-local mode we expect the container to clone from origin. If origin is unreachable (DNS, VPN, SSH key) the container fails opaquely inside 'git clone'. Add to preflight: run 'git ls-remote --exit-code origin HEAD' with a 5-10s timeout; on failure, emit 'cannot reach origin: {stderr}' and abort before docker build. Use std::process::Command with a wall-clock timeout helper.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 2,
-      "claimed_by": "agent-runner",
       "created_at": "2026-04-22T15:16:05.720681324Z",
-      "updated_at": "2026-04-22T15:45:03.500738684Z"
+      "updated_at": "2026-04-22T15:49:07.555023236Z"
     },
     "lb-ys68": {
       "id": "lb-ys68",
