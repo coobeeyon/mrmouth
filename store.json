@@ -430,6 +430,16 @@
       "created_at": "2026-04-22T15:15:58.831548330Z",
       "updated_at": "2026-04-22T15:15:58.831548330Z"
     },
+    "lb-8ngb": {
+      "id": "lb-8ngb",
+      "title": "Preflight: disk space warning for Docker",
+      "description": "Docker build failures on low disk are obscure ('no space left on device' buried in layers). Best-effort: run 'df -P /var/lib/docker' (or parse 'docker system df') and warn (not fail) if less than ~2 GB free. Non-blocking warning printed to the TUI/stderr. Skip if the df command fails — this is pure diagnostic help, not a hard gate.",
+      "item_type": "task",
+      "status": "open",
+      "priority": 3,
+      "created_at": "2026-04-22T15:16:23.725719785Z",
+      "updated_at": "2026-04-22T15:16:23.725719785Z"
+    },
     "lb-8raq": {
       "id": "lb-8raq",
       "title": "Include stderr in DockerError::BuildFailed",
@@ -1784,6 +1794,11 @@
     },
     {
       "from_id": "lb-ci6z",
+      "to_id": "lb-obsn",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-8ngb",
       "to_id": "lb-obsn",
       "dep_type": "parent"
     }
