@@ -1,6 +1,6 @@
 use std::fs::{self, File};
 use std::io::{BufWriter, IsTerminal, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -234,7 +234,7 @@ pub fn execute(config: &Config, repo_root: &Path, opts: RunOptions, tui: Option<
         // Flush so classify_exit reads everything the runner script wrote.
         logger.flush();
         let reason = classify_exit(exit_code, &log_path);
-        return Err(RunError::ContainerFailed { code: exit_code, reason });
+        return Err(RunError::ContainerFailed { code: exit_code, reason, log_path: log_path.clone() });
     }
 
     Ok(logger)
@@ -469,7 +469,7 @@ pub enum RunError {
     Preflight(String),
     Docker(crate::docker::DockerError),
     Io(String, std::io::Error),
-    ContainerFailed { code: i32, reason: String },
+    ContainerFailed { code: i32, reason: String, log_path: PathBuf },
 }
 
 impl std::fmt::Display for RunError {
@@ -478,7 +478,7 @@ impl std::fmt::Display for RunError {
             Self::Preflight(msg) => write!(f, "preflight check failed: {msg}"),
             Self::Docker(e) => write!(f, "docker error: {e}"),
             Self::Io(ctx, e) => write!(f, "{ctx}: {e}"),
-            Self::ContainerFailed { code, reason } => {
+            Self::ContainerFailed { code, reason, .. } => {
                 write!(f, "container exited with code {code}: {reason}")
             }
         }
@@ -486,6 +486,26 @@ impl std::fmt::Display for RunError {
 }
 
 impl std::error::Error for RunError {}
+
+impl RunError {
+    /// Log file path, if this error produced one. Only ContainerFailed carries
+    /// a log path today — other variants fail before or during container start.
+    pub fn log_path(&self) -> Option<&Path> {
+        match self {
+            Self::ContainerFailed { log_path, .. } => Some(log_path),
+            _ => None,
+        }
+    }
+
+    /// Short one-line reason suitable for attempt-summary rendering.
+    /// For container exits, prefixes with 'exit <code>'; otherwise reuses Display.
+    pub fn short_reason(&self) -> String {
+        match self {
+            Self::ContainerFailed { code, reason, .. } => format!("exit {code} — {reason}"),
+            other => other.to_string(),
+        }
+    }
+}
 
 /// Classify a non-zero container exit code into a human-readable cause.
 /// Scans the tail of the log for `::mrmouth::` markers (emitted by the runner
