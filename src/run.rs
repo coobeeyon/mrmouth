@@ -359,6 +359,8 @@ fn write_runner_script(
     let script = format!(
         r#"#!/usr/bin/env bash
 set -euo pipefail
+set -o errtrace
+trap 'rc=$?; echo "::mrmouth::script-error rc=$rc line=$LINENO cmd=$BASH_COMMAND" >&2' ERR
 
 repo_url="${{REPO_URL:-}}"
 branch="${{BRANCH:-main}}"
@@ -392,12 +394,14 @@ fi
 # --- Initialize task tooling (requires git repo with matching branches) ---
 if [ -d "$work_dir/.git" ]; then
   if git show-ref --quiet refs/heads/litebrite refs/remotes/origin/litebrite 2>/dev/null; then
+    command -v lb >/dev/null || {{ echo "::mrmouth::missing-tool tool=lb reason=litebrite branch exists but binary not in image" >&2; exit 64; }}
     echo "Initializing litebrite..."
     lb init
     lb setup claude 2>/dev/null || true
     lb sync 2>/dev/null || true
   fi
   if git show-ref --quiet refs/heads/trapperkeeper refs/remotes/origin/trapperkeeper 2>/dev/null; then
+    command -v trk >/dev/null || {{ echo "::mrmouth::missing-tool tool=trk reason=trapperkeeper branch exists but binary not in image" >&2; exit 64; }}
     echo "Initializing trapperkeeper..."
     trk init
     trk setup claude 2>/dev/null || true
@@ -408,7 +412,7 @@ fi
 # --- Restore .claude.json from persisted backup if missing ---
 claude_config="$HOME/.claude.json"
 if [ ! -f "$claude_config" ] && [ -d "$HOME/.claude/backups" ]; then
-  latest_backup=$(ls -t "$HOME/.claude/backups/.claude.json.backup."* 2>/dev/null | head -1)
+  latest_backup=$(ls -t "$HOME/.claude/backups/.claude.json.backup."* 2>/dev/null | head -1 || true)
   if [ -n "$latest_backup" ]; then
     cp "$latest_backup" "$claude_config"
     echo "Restored .claude.json from backup: $(basename "$latest_backup")"
@@ -416,6 +420,7 @@ if [ ! -f "$claude_config" ] && [ -d "$HOME/.claude/backups" ]; then
 fi
 
 # --- Run agent ---
+command -v claude >/dev/null || {{ echo "::mrmouth::missing-tool tool=claude reason=claude binary not in image" >&2; exit 64; }}
 echo "Starting agent run..."
 CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING=1 claude -p --dangerously-skip-permissions --verbose --output-format stream-json --disallowedTools EnterPlanMode,ExitPlanMode --model {model} --effort max '{escaped_prompt}'
 
@@ -567,5 +572,55 @@ mod tests {
         assert!(content.contains("FROM node:22"));
         assert!(content.contains("ARG HOST_UID=${HOST_UID}"), "Docker ARG syntax must be preserved literally");
         assert!(content.contains(".mrmouth/Dockerfile"));
+    }
+
+    #[test]
+    fn runner_script_has_err_trap() {
+        let dir = tempfile::tempdir().unwrap();
+        let tmp = write_runner_script(dir.path(), "opus", None, TEST_DOCKERFILE, TEST_DOCKERFILE_PATH, None).unwrap();
+        let mut content = String::new();
+        File::open(&tmp).unwrap().read_to_string(&mut content).unwrap();
+        assert!(content.contains("set -o errtrace"));
+        assert!(content.contains("::mrmouth::script-error"));
+        assert!(content.contains("$LINENO"));
+        assert!(content.contains("$BASH_COMMAND"));
+        assert!(content.contains("' ERR"));
+    }
+
+    #[test]
+    fn runner_script_guards_lb_binary() {
+        let dir = tempfile::tempdir().unwrap();
+        let tmp = write_runner_script(dir.path(), "opus", None, TEST_DOCKERFILE, TEST_DOCKERFILE_PATH, None).unwrap();
+        let mut content = String::new();
+        File::open(&tmp).unwrap().read_to_string(&mut content).unwrap();
+        let guard_pos = content.find("command -v lb >/dev/null").expect("missing lb guard");
+        let init_pos = content.find("lb init").expect("missing lb init");
+        assert!(guard_pos < init_pos, "lb guard must precede lb init");
+        assert!(content.contains("::mrmouth::missing-tool tool=lb"));
+        assert!(content.contains("exit 64"));
+    }
+
+    #[test]
+    fn runner_script_guards_trk_binary() {
+        let dir = tempfile::tempdir().unwrap();
+        let tmp = write_runner_script(dir.path(), "opus", None, TEST_DOCKERFILE, TEST_DOCKERFILE_PATH, None).unwrap();
+        let mut content = String::new();
+        File::open(&tmp).unwrap().read_to_string(&mut content).unwrap();
+        let guard_pos = content.find("command -v trk >/dev/null").expect("missing trk guard");
+        let init_pos = content.find("trk init").expect("missing trk init");
+        assert!(guard_pos < init_pos, "trk guard must precede trk init");
+        assert!(content.contains("::mrmouth::missing-tool tool=trk"));
+    }
+
+    #[test]
+    fn runner_script_guards_claude_binary() {
+        let dir = tempfile::tempdir().unwrap();
+        let tmp = write_runner_script(dir.path(), "opus", None, TEST_DOCKERFILE, TEST_DOCKERFILE_PATH, None).unwrap();
+        let mut content = String::new();
+        File::open(&tmp).unwrap().read_to_string(&mut content).unwrap();
+        let guard_pos = content.find("command -v claude >/dev/null").expect("missing claude guard");
+        let claude_pos = content.find("claude -p --dangerously-skip-permissions").expect("missing claude invocation");
+        assert!(guard_pos < claude_pos, "claude guard must precede claude invocation");
+        assert!(content.contains("::mrmouth::missing-tool tool=claude"));
     }
 }
