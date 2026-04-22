@@ -1475,11 +1475,10 @@
       "title": "Classify container exit codes into human causes",
       "description": "Enrich RunError::ContainerFailed(i32) to RunError::ContainerFailed { code, reason }. Map: 127→'missing command in container (check your Dockerfile includes all expected tools)', 137→'container killed (likely OOM)', 143→'timed out (SIGTERM)', 124→'timed out (timeout wrapper)', 126→'permission denied / not executable', 0 with agent never starting→'agent exited before starting work'. Reason string feeds into the failure debrief and per-attempt summary. Scan the last few hundred bytes of the logged output for known patterns ('command not found', 'Killed', 'context deadline exceeded') to refine the classification.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 1,
-      "claimed_by": "agent-runner",
       "created_at": "2026-04-22T15:15:39.285238517Z",
-      "updated_at": "2026-04-22T15:24:38.349822868Z"
+      "updated_at": "2026-04-22T15:29:45.132446876Z"
     }
   },
   "deps": [
