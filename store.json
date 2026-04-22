@@ -580,6 +580,16 @@
       "created_at": "2026-03-25T19:22:47.017215293Z",
       "updated_at": "2026-03-25T19:25:12.673241336Z"
     },
+    "lb-ci6z": {
+      "id": "lb-ci6z",
+      "title": "Runner script: echo tool versions at startup",
+      "description": "Add to the top of the generated runner script (run.rs::write_runner_script): 'echo \"::mrmouth::versions\"; git --version || true; lb --version 2>/dev/null || echo \"lb: not installed\"; trk --version 2>/dev/null || echo \"trk: not installed\"; claude --version 2>/dev/null || echo \"claude: not installed\"; echo \"::mrmouth::versions-end\"'. Cheap, always-on diagnostic so when something breaks we can see at a glance whether the image contains what it should.",
+      "item_type": "task",
+      "status": "open",
+      "priority": 2,
+      "created_at": "2026-04-22T15:16:17.973040295Z",
+      "updated_at": "2026-04-22T15:16:17.973040295Z"
+    },
     "lb-cmnc": {
       "id": "lb-cmnc",
       "title": "Add Ratatui TUI with streaming output to mrmouth",
@@ -1769,6 +1779,11 @@
     },
     {
       "from_id": "lb-87en",
+      "to_id": "lb-obsn",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-ci6z",
       "to_id": "lb-obsn",
       "dep_type": "parent"
     }
