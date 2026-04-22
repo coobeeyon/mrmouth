@@ -365,6 +365,14 @@ set -euo pipefail
 set -o errtrace
 trap 'rc=$?; echo "::mrmouth::script-error rc=$rc line=$LINENO cmd=$BASH_COMMAND" >&2' ERR
 
+# --- Tool versions (cheap, always-on diagnostic) ---
+echo "::mrmouth::versions"
+git --version || true
+lb --version 2>/dev/null || echo "lb: not installed"
+trk --version 2>/dev/null || echo "trk: not installed"
+claude --version 2>/dev/null || echo "claude: not installed"
+echo "::mrmouth::versions-end"
+
 repo_url="${{REPO_URL:-}}"
 branch="${{BRANCH:-main}}"
 work_dir="$HOME/workspace"
@@ -706,6 +714,31 @@ mod tests {
         assert!(content.contains("$LINENO"));
         assert!(content.contains("$BASH_COMMAND"));
         assert!(content.contains("' ERR"));
+    }
+
+    #[test]
+    fn runner_script_echoes_tool_versions() {
+        let dir = tempfile::tempdir().unwrap();
+        let tmp = write_runner_script(dir.path(), "opus", None, TEST_DOCKERFILE, TEST_DOCKERFILE_PATH, None).unwrap();
+        let mut content = String::new();
+        File::open(&tmp).unwrap().read_to_string(&mut content).unwrap();
+
+        let begin = content.find("::mrmouth::versions").expect("missing versions begin marker");
+        let end = content.find("::mrmouth::versions-end").expect("missing versions end marker");
+        assert!(begin < end, "versions begin must precede end");
+
+        let block = &content[begin..end];
+        assert!(block.contains("git --version"));
+        assert!(block.contains("lb --version"));
+        assert!(block.contains("trk --version"));
+        assert!(block.contains("claude --version"));
+        assert!(block.contains("lb: not installed"));
+        assert!(block.contains("trk: not installed"));
+        assert!(block.contains("claude: not installed"));
+
+        // Versions must print before any tool is actually invoked for setup.
+        let lb_init = content.find("lb init").expect("missing lb init");
+        assert!(end < lb_init, "version echo must come before tool setup");
     }
 
     #[test]
