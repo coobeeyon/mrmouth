@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use crate::config::Config;
@@ -26,19 +26,47 @@ pub struct ReadyOptions {
 #[derive(Debug)]
 pub enum ReadyError {
     Command(String),
-    TooManyFailures(u32),
+    /// Aborted after N consecutive task failures. Carries the last failure's
+    /// log path + exit code so the debrief can tail it.
+    TooManyFailures {
+        count: u32,
+        last_reason: String,
+        last_log: Option<PathBuf>,
+        last_exit: Option<i32>,
+    },
 }
 
 impl std::fmt::Display for ReadyError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Command(msg) => write!(f, "{msg}"),
-            Self::TooManyFailures(n) => write!(f, "aborted after {n} consecutive failures"),
+            Self::TooManyFailures { count, .. } => {
+                write!(f, "aborted after {count} consecutive failures")
+            }
         }
     }
 }
 
 impl std::error::Error for ReadyError {}
+
+impl ReadyError {
+    /// Build a debrief for printing after TUI teardown. TooManyFailures picks up
+    /// the last failure's reason, log path, and exit code.
+    pub fn debrief(&self) -> crate::debrief::FailureDebrief {
+        match self {
+            Self::TooManyFailures { count, last_reason, last_log, last_exit } => {
+                let message = format!(
+                    "aborted after {count} consecutive failures; last attempt: {last_reason}"
+                );
+                let mut d = crate::debrief::FailureDebrief::new(message);
+                d.exit_code = *last_exit;
+                d.log_path = last_log.clone();
+                d
+            }
+            Self::Command(msg) => crate::debrief::FailureDebrief::new(msg.clone()),
+        }
+    }
+}
 
 /// Run `lb ready` and return the first item ID, or None if no items are ready.
 fn lb_ready(repo_root: &Path) -> Option<String> {
@@ -158,7 +186,12 @@ pub fn execute(config: &Config, repo_root: &Path, opts: ReadyOptions, tui: Optio
                         "ERROR: {} consecutive failures — aborting",
                         opts.max_failures
                     ));
-                    return Err(ReadyError::TooManyFailures(opts.max_failures));
+                    return Err(ReadyError::TooManyFailures {
+                        count: opts.max_failures,
+                        last_reason: e.short_reason(),
+                        last_log: e.log_path().map(|p| p.to_path_buf()),
+                        last_exit: e.exit_code(),
+                    });
                 }
                 continue;
             }
@@ -194,4 +227,47 @@ pub fn execute(config: &Config, repo_root: &Path, opts: ReadyOptions, tui: Optio
     emit(&tui_tx, &format!("Done. Merge branch '{branch_name}' when ready."));
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn too_many_failures_debrief_carries_last_log_and_exit() {
+        let err = ReadyError::TooManyFailures {
+            count: 3,
+            last_reason: "exit 127 — missing tool 'trk'".into(),
+            last_log: Some(PathBuf::from("/logs/run-z.log")),
+            last_exit: Some(127),
+        };
+        let d = err.debrief();
+        assert!(d.message.contains("aborted after 3"), "got: {}", d.message);
+        assert!(d.message.contains("missing tool 'trk'"), "got: {}", d.message);
+        assert_eq!(d.exit_code, Some(127));
+        assert_eq!(d.log_path.as_deref(), Some(Path::new("/logs/run-z.log")));
+    }
+
+    #[test]
+    fn too_many_failures_debrief_without_log() {
+        let err = ReadyError::TooManyFailures {
+            count: 2,
+            last_reason: "preflight check failed: Docker is not available".into(),
+            last_log: None,
+            last_exit: None,
+        };
+        let d = err.debrief();
+        assert!(d.message.contains("Docker is not available"), "got: {}", d.message);
+        assert!(d.log_path.is_none());
+        assert!(d.exit_code.is_none());
+    }
+
+    #[test]
+    fn command_debrief_is_plain_message() {
+        let err = ReadyError::Command("failed to create branch: boom".into());
+        let d = err.debrief();
+        assert_eq!(d.message, "failed to create branch: boom");
+        assert!(d.log_path.is_none());
+        assert!(d.exit_code.is_none());
+    }
 }

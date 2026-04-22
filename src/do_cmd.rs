@@ -10,10 +10,11 @@ use crate::tui::{TuiHandle, TuiSender};
 
 /// One failed attempt's diagnostic trail, kept across the abort threshold so
 /// the user can see each failure's reason and log without hunting logs/.
-struct AttemptSummary {
+pub struct AttemptSummary {
     attempt: u32,
     reason: String,
     log_path: Option<PathBuf>,
+    exit_code: Option<i32>,
 }
 
 impl AttemptSummary {
@@ -22,6 +23,19 @@ impl AttemptSummary {
             Some(p) => {
                 let rel = p.strip_prefix(repo_root).unwrap_or(p);
                 format!(" (log: {})", rel.display())
+            }
+            None => String::new(),
+        };
+        format!("attempt {}: {}{}", self.attempt, self.reason, tail)
+    }
+
+    /// Render the attempt line with an absolute log path — used by FailureDebrief
+    /// after the TUI tears down, where the user no longer has the repo_root in mind.
+    fn render_absolute(&self) -> String {
+        let tail = match &self.log_path {
+            Some(p) => {
+                let abs = std::fs::canonicalize(p).unwrap_or_else(|_| p.clone());
+                format!(" (log: {})", abs.display())
             }
             None => String::new(),
         };
@@ -153,7 +167,7 @@ fn execute_task(
         }
         Err(e) => {
             emit(tui_tx, &format!("Task agent failed: {e}"));
-            return Err(DoError::Command(format!("task agent failed: {e}")));
+            return Err(DoError::TaskFailed(Box::new(e)));
         }
     }
 
@@ -260,7 +274,10 @@ fn execute_epic(
                     for a in &recent_failures {
                         emit(tui_tx, &format!("  {}", a.render(repo_root)));
                     }
-                    return Err(DoError::TooManyFailures(opts.max_failures));
+                    return Err(DoError::TooManyFailures {
+                        count: opts.max_failures,
+                        attempts: recent_failures,
+                    });
                 }
             }
         }
@@ -308,6 +325,7 @@ fn attempt_from(err: &RunError, attempt: u32) -> AttemptSummary {
         attempt,
         reason: err.short_reason(),
         log_path: err.log_path().map(|p| p.to_path_buf()),
+        exit_code: err.exit_code(),
     }
 }
 
@@ -461,7 +479,15 @@ pub(crate) fn make_slug(title: &str) -> String {
 pub enum DoError {
     ItemNotFound(String),
     Command(String),
-    TooManyFailures(u32),
+    /// Epic mode aborted after N consecutive task failures. Carries the full
+    /// attempt trail so the debrief can render each attempt's reason + log.
+    TooManyFailures {
+        count: u32,
+        attempts: Vec<AttemptSummary>,
+    },
+    /// Task mode: the single agent run failed. Wraps the RunError so the debrief
+    /// can tail the run's log and surface the exit code.
+    TaskFailed(Box<RunError>),
 }
 
 impl std::fmt::Display for DoError {
@@ -469,14 +495,46 @@ impl std::fmt::Display for DoError {
         match self {
             Self::ItemNotFound(msg) => write!(f, "{msg}"),
             Self::Command(msg) => write!(f, "{msg}"),
-            Self::TooManyFailures(n) => {
-                write!(f, "aborted after {n} consecutive failures")
+            Self::TooManyFailures { count, .. } => {
+                write!(f, "aborted after {count} consecutive failures")
             }
+            Self::TaskFailed(err) => write!(f, "task agent failed: {err}"),
         }
     }
 }
 
 impl std::error::Error for DoError {}
+
+impl DoError {
+    /// Build a debrief for printing after TUI teardown. TooManyFailures picks
+    /// up the *last* attempt's log path and exit code, since that's the
+    /// freshest failure — the one the user wants to see the tail of. TaskFailed
+    /// delegates to the inner RunError's debrief so the single-task path
+    /// surfaces the same info as Run mode.
+    pub fn debrief(&self) -> crate::debrief::FailureDebrief {
+        match self {
+            Self::TaskFailed(err) => {
+                let mut d = err.debrief();
+                // Prefix the message so the user knows it failed inside `do`.
+                d.message = format!("task agent failed: {}", d.message);
+                d
+            }
+            Self::TooManyFailures { count, attempts } => {
+                let last = attempts.last();
+                let mut message = format!("aborted after {count} consecutive failures");
+                if let Some(a) = last {
+                    message.push_str(&format!("; last attempt: {}", a.reason));
+                }
+                let mut d = crate::debrief::FailureDebrief::new(message);
+                d.exit_code = last.and_then(|a| a.exit_code);
+                d.log_path = last.and_then(|a| a.log_path.clone());
+                d.attempt_lines = attempts.iter().map(|a| a.render_absolute()).collect();
+                d
+            }
+            other => crate::debrief::FailureDebrief::new(other.to_string()),
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -536,6 +594,7 @@ mod tests {
             attempt: 1,
             reason: "exit 127 — missing command 'trk'".into(),
             log_path: Some(PathBuf::from("/home/user/project/logs/run-20260422-151500.log")),
+            exit_code: Some(127),
         };
         assert_eq!(
             a.render(repo_root),
@@ -550,6 +609,7 @@ mod tests {
             attempt: 2,
             reason: "exit 64".into(),
             log_path: Some(PathBuf::from("/tmp/other/run.log")),
+            exit_code: Some(64),
         };
         assert_eq!(
             a.render(repo_root),
@@ -564,6 +624,7 @@ mod tests {
             attempt: 3,
             reason: "preflight check failed: Docker is not available".into(),
             log_path: None,
+            exit_code: None,
         };
         assert_eq!(
             a.render(repo_root),
@@ -582,6 +643,7 @@ mod tests {
         assert_eq!(s.attempt, 1);
         assert_eq!(s.reason, "exit 127 — missing command");
         assert_eq!(s.log_path.as_deref(), Some(Path::new("/x/logs/run-y.log")));
+        assert_eq!(s.exit_code, Some(127));
     }
 
     #[test]
@@ -591,5 +653,81 @@ mod tests {
         assert_eq!(s.attempt, 2);
         assert!(s.reason.contains("preflight check failed"));
         assert!(s.log_path.is_none());
+        assert!(s.exit_code.is_none());
+    }
+
+    #[test]
+    fn do_error_task_failed_debrief_carries_log_and_exit() {
+        let err = DoError::TaskFailed(Box::new(RunError::ContainerFailed {
+            code: 127,
+            reason: "missing tool 'trk'".into(),
+            log_path: PathBuf::from("/logs/run-x.log"),
+        }));
+        let d = err.debrief();
+        assert!(d.message.starts_with("task agent failed:"), "got: {}", d.message);
+        assert!(d.message.contains("missing tool 'trk'"), "got: {}", d.message);
+        assert_eq!(d.exit_code, Some(127));
+        assert_eq!(d.log_path.as_deref(), Some(Path::new("/logs/run-x.log")));
+    }
+
+    #[test]
+    fn do_error_too_many_failures_debrief_picks_up_last_attempt() {
+        let attempts = vec![
+            AttemptSummary {
+                attempt: 1,
+                reason: "exit 127 — missing tool 'trk'".into(),
+                log_path: Some(PathBuf::from("/logs/run-1.log")),
+                exit_code: Some(127),
+            },
+            AttemptSummary {
+                attempt: 2,
+                reason: "preflight check failed: Docker is not available".into(),
+                log_path: None,
+                exit_code: None,
+            },
+            AttemptSummary {
+                attempt: 3,
+                reason: "exit 64 — missing tool 'lb'".into(),
+                log_path: Some(PathBuf::from("/logs/run-3.log")),
+                exit_code: Some(64),
+            },
+        ];
+        let err = DoError::TooManyFailures { count: 3, attempts };
+        let d = err.debrief();
+        assert!(d.message.contains("aborted after 3"), "got: {}", d.message);
+        assert!(d.message.contains("last attempt"), "got: {}", d.message);
+        assert!(d.message.contains("missing tool 'lb'"), "got: {}", d.message);
+        assert_eq!(d.exit_code, Some(64));
+        assert_eq!(d.log_path.as_deref(), Some(Path::new("/logs/run-3.log")));
+        assert_eq!(d.attempt_lines.len(), 3);
+        assert!(d.attempt_lines[0].contains("attempt 1"));
+        assert!(d.attempt_lines[2].contains("attempt 3"));
+    }
+
+    #[test]
+    fn do_error_too_many_failures_debrief_with_no_log_on_last() {
+        // Last attempt was a preflight failure — no log, no exit code. Message
+        // still mentions the last attempt's reason.
+        let attempts = vec![AttemptSummary {
+            attempt: 1,
+            reason: "preflight check failed: Docker is not available".into(),
+            log_path: None,
+            exit_code: None,
+        }];
+        let err = DoError::TooManyFailures { count: 1, attempts };
+        let d = err.debrief();
+        assert!(d.message.contains("Docker is not available"), "got: {}", d.message);
+        assert!(d.log_path.is_none());
+        assert!(d.exit_code.is_none());
+    }
+
+    #[test]
+    fn do_error_item_not_found_debrief_is_plain() {
+        let err = DoError::ItemNotFound("Item lb-xxx not found".into());
+        let d = err.debrief();
+        assert_eq!(d.message, "Item lb-xxx not found");
+        assert!(d.log_path.is_none());
+        assert!(d.exit_code.is_none());
+        assert!(d.attempt_lines.is_empty());
     }
 }

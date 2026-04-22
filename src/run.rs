@@ -708,12 +708,36 @@ impl RunError {
         }
     }
 
+    /// Exit code from the container, if this error carries one.
+    pub fn exit_code(&self) -> Option<i32> {
+        match self {
+            Self::ContainerFailed { code, .. } => Some(*code),
+            _ => None,
+        }
+    }
+
     /// Short one-line reason suitable for attempt-summary rendering.
     /// For container exits, prefixes with 'exit <code>'; otherwise reuses Display.
     pub fn short_reason(&self) -> String {
         match self {
             Self::ContainerFailed { code, reason, .. } => format!("exit {code} — {reason}"),
             other => other.to_string(),
+        }
+    }
+
+    /// Build a debrief for printing after TUI teardown. For ContainerFailed,
+    /// surfaces the reason, exit code, and log path (so the user sees the tail).
+    /// Other variants just carry the Display message — they fail before a log
+    /// file exists, so there's nothing to tail.
+    pub fn debrief(&self) -> crate::debrief::FailureDebrief {
+        match self {
+            Self::ContainerFailed { code, reason, log_path } => {
+                let mut d = crate::debrief::FailureDebrief::new(format!("container exited with code {code}: {reason}"));
+                d.exit_code = Some(*code);
+                d.log_path = Some(log_path.clone());
+                d
+            }
+            other => crate::debrief::FailureDebrief::new(other.to_string()),
         }
     }
 }
@@ -1343,6 +1367,29 @@ mod tests {
         // /var/lib/docker typically doesn't exist on the test host — df returns non-zero.
         // The function must not panic and must not log anything mandatory.
         check_disk_space(None);
+    }
+
+    #[test]
+    fn run_error_debrief_container_failure_carries_code_and_log() {
+        let err = RunError::ContainerFailed {
+            code: 127,
+            reason: "missing command in container — trk: command not found".into(),
+            log_path: std::path::PathBuf::from("/logs/run-abc.log"),
+        };
+        let d = err.debrief();
+        assert_eq!(d.exit_code, Some(127));
+        assert_eq!(d.log_path.as_deref(), Some(Path::new("/logs/run-abc.log")));
+        assert!(d.message.contains("container exited with code 127"), "got: {}", d.message);
+        assert!(d.message.contains("trk: command not found"), "got: {}", d.message);
+    }
+
+    #[test]
+    fn run_error_debrief_preflight_has_no_log_or_exit() {
+        let err = RunError::Preflight("Docker is not available".into());
+        let d = err.debrief();
+        assert!(d.message.contains("Docker is not available"));
+        assert!(d.exit_code.is_none());
+        assert!(d.log_path.is_none());
     }
 
     fn env_lock() -> std::sync::MutexGuard<'static, ()> {
