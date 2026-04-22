@@ -990,6 +990,16 @@
       "created_at": "2026-03-30T04:00:28.790343546Z",
       "updated_at": "2026-03-30T04:09:27.901832495Z"
     },
+    "lb-obsn": {
+      "id": "lb-obsn",
+      "title": "Seriously improve mrmouth do preflight and error reporting",
+      "description": "When 'mrmouth do' fails 3 times in a row and the TUI tears down, the user is left with no visible cause. Today in ai-agent, all 3 attempts hit 'trk: command not found' (exit 127) because the custom Dockerfile lacks trk but a trapperkeeper branch exists. The message was buried: stderr is buffered until stdout closes, the TUI alt-screen wipes the visible history on exit, preflight didn't catch the Dockerfile/branch mismatch, and TooManyFailures prints only the count. Goal: convert 'N fails, no info' into 'fail fast with a clear cause', with strong preflight + real-time error streaming + a failure debrief after the TUI exits.",
+      "item_type": "epic",
+      "status": "open",
+      "priority": 1,
+      "created_at": "2026-04-22T15:15:09.023948528Z",
+      "updated_at": "2026-04-22T15:15:09.023948528Z"
+    },
     "lb-oj9p": {
       "id": "lb-oj9p",
       "title": "litebrite.rs uses which command — not portable",
