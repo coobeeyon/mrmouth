@@ -966,11 +966,10 @@
       "title": "Silence spurious 'litebrite already initialized' log noise",
       "description": "litebrite.rs::run_lb logs 'lb init failed (exit 1): litebrite already initialized' whenever the repo is already initialized but lacks a local .litebrite dir guard. This clutters the run log and makes users suspect real failures. In run_lb (or init_and_sync), check for this specific stderr substring and treat it as benign — either log at debug/trace level or skip it entirely. Safer approach: in init_and_sync, check 'lb status' or similar before calling init, or unconditionally tolerate this specific error.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 3,
-      "claimed_by": "agent-runner",
       "created_at": "2026-04-22T15:16:30.410067733Z",
-      "updated_at": "2026-04-22T15:42:08.319049905Z"
+      "updated_at": "2026-04-22T15:42:52.519482819Z"
     },
     "lb-mgza": {
       "id": "lb-mgza",
