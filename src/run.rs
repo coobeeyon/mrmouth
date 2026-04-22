@@ -278,9 +278,36 @@ fn preflight(repo_root: &Path, local: bool) -> Result<(), RunError> {
                 "Working tree has uncommitted changes. Commit or stash first.".into(),
             ));
         }
+
+        if let Some(url) = git_remote_url(repo_root) {
+            if is_ssh_remote(&url) {
+                check_ssh_agent()?;
+            }
+        }
     }
 
     Ok(())
+}
+
+/// True for SSH-form git remotes (git@host:... or ssh://...).
+fn is_ssh_remote(url: &str) -> bool {
+    url.starts_with("ssh://") || url.starts_with("git@")
+}
+
+/// Require SSH_AUTH_SOCK to be set and the socket path to exist on disk —
+/// without it, the container has no way to authenticate git@ clones/pushes
+/// and will either hang on a password prompt or fail with a permission error.
+fn check_ssh_agent() -> Result<(), RunError> {
+    let sock = std::env::var("SSH_AUTH_SOCK").ok().filter(|s| !s.is_empty());
+    match sock {
+        None => Err(RunError::Preflight(
+            "origin is SSH (git@...) but SSH_AUTH_SOCK is not set — start an ssh-agent and ssh-add your key.".into(),
+        )),
+        Some(path) if !Path::new(&path).exists() => Err(RunError::Preflight(format!(
+            "origin is SSH (git@...) but SSH_AUTH_SOCK={path} does not exist — start an ssh-agent and ssh-add your key."
+        ))),
+        Some(_) => Ok(()),
+    }
 }
 
 fn git_remote_url(repo_root: &Path) -> Option<String> {
@@ -860,5 +887,63 @@ mod tests {
         std::fs::write(&path, "0123456789abcdef").unwrap();
         let tail = read_log_tail(&path, 5);
         assert_eq!(tail, "bcdef");
+    }
+
+    #[test]
+    fn ssh_remote_detection() {
+        assert!(is_ssh_remote("git@github.com:org/repo.git"));
+        assert!(is_ssh_remote("ssh://git@github.com/org/repo.git"));
+        assert!(!is_ssh_remote("https://github.com/org/repo.git"));
+        assert!(!is_ssh_remote("file:///host-repo"));
+        assert!(!is_ssh_remote(""));
+    }
+
+    #[test]
+    fn check_ssh_agent_missing_env_errs() {
+        // Serialize with other env-mutating tests to avoid flakiness under parallel cargo test.
+        let _guard = env_lock();
+        let prev = std::env::var_os("SSH_AUTH_SOCK");
+        std::env::remove_var("SSH_AUTH_SOCK");
+        let result = check_ssh_agent();
+        if let Some(v) = prev { std::env::set_var("SSH_AUTH_SOCK", v); }
+        let err = result.unwrap_err();
+        assert!(format!("{err}").contains("SSH_AUTH_SOCK is not set"));
+    }
+
+    #[test]
+    fn check_ssh_agent_nonexistent_socket_errs() {
+        let _guard = env_lock();
+        let prev = std::env::var_os("SSH_AUTH_SOCK");
+        std::env::set_var("SSH_AUTH_SOCK", "/tmp/definitely-not-a-real-socket-xyz-mrmouth");
+        let result = check_ssh_agent();
+        match prev {
+            Some(v) => std::env::set_var("SSH_AUTH_SOCK", v),
+            None => std::env::remove_var("SSH_AUTH_SOCK"),
+        }
+        let err = result.unwrap_err();
+        let msg = format!("{err}");
+        assert!(msg.contains("does not exist"), "got: {msg}");
+    }
+
+    #[test]
+    fn check_ssh_agent_existing_socket_ok() {
+        let _guard = env_lock();
+        let dir = tempfile::tempdir().unwrap();
+        let fake_sock = dir.path().join("agent.sock");
+        std::fs::write(&fake_sock, "").unwrap();
+        let prev = std::env::var_os("SSH_AUTH_SOCK");
+        std::env::set_var("SSH_AUTH_SOCK", &fake_sock);
+        let result = check_ssh_agent();
+        match prev {
+            Some(v) => std::env::set_var("SSH_AUTH_SOCK", v),
+            None => std::env::remove_var("SSH_AUTH_SOCK"),
+        }
+        assert!(result.is_ok());
+    }
+
+    fn env_lock() -> std::sync::MutexGuard<'static, ()> {
+        use std::sync::{Mutex, OnceLock};
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(())).lock().unwrap_or_else(|e| e.into_inner())
     }
 }
