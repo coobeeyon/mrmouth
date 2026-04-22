@@ -435,11 +435,10 @@
       "title": "Preflight: disk space warning for Docker",
       "description": "Docker build failures on low disk are obscure ('no space left on device' buried in layers). Best-effort: run 'df -P /var/lib/docker' (or parse 'docker system df') and warn (not fail) if less than ~2 GB free. Non-blocking warning printed to the TUI/stderr. Skip if the df command fails — this is pure diagnostic help, not a hard gate.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 3,
-      "claimed_by": "agent-runner",
       "created_at": "2026-04-22T15:16:23.725719785Z",
-      "updated_at": "2026-04-22T15:53:37.311609358Z"
+      "updated_at": "2026-04-22T15:55:19.226313223Z"
     },
     "lb-8raq": {
       "id": "lb-8raq",
