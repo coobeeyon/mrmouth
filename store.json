@@ -1390,6 +1390,16 @@
       "created_at": "2026-03-08T20:58:56.504066401Z",
       "updated_at": "2026-03-08T21:00:53.740269267Z"
     },
+    "lb-y5z9": {
+      "id": "lb-y5z9",
+      "title": "Preflight: origin reachability with timeout",
+      "description": "In non-local mode we expect the container to clone from origin. If origin is unreachable (DNS, VPN, SSH key) the container fails opaquely inside 'git clone'. Add to preflight: run 'git ls-remote --exit-code origin HEAD' with a 5-10s timeout; on failure, emit 'cannot reach origin: {stderr}' and abort before docker build. Use std::process::Command with a wall-clock timeout helper.",
+      "item_type": "task",
+      "status": "open",
+      "priority": 2,
+      "created_at": "2026-04-22T15:16:05.720681324Z",
+      "updated_at": "2026-04-22T15:16:05.720681324Z"
+    },
     "lb-ys68": {
       "id": "lb-ys68",
       "title": "Split multi-line strings into individual lines on ingest",
@@ -1739,6 +1749,11 @@
     },
     {
       "from_id": "lb-87n3",
+      "to_id": "lb-obsn",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-y5z9",
       "to_id": "lb-obsn",
       "dep_type": "parent"
     }
