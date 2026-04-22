@@ -425,11 +425,10 @@
       "title": "Preflight: tooling branch vs Dockerfile coherence check",
       "description": "Today's ai-agent failure: trapperkeeper branch exists on origin, but the user's .mrmouth/Dockerfile only builds 'lb'. The runner unconditionally calls 'trk init' → exit 127. Add a host-side preflight check in run.rs::preflight (or a new module): if a 'litebrite' or 'trapperkeeper' branch exists (locally OR on origin), grep the effective Dockerfile content for that word. If missing, fail preflight with a clear message: 'Your Dockerfile does not build trk, but a trapperkeeper branch exists. Either add the build stage (see DEFAULT_DOCKERFILE) or delete the branch.' Include an env escape hatch (MRMOUTH_SKIP_PREFLIGHT=1) for overrides.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 2,
-      "claimed_by": "agent-runner",
       "created_at": "2026-04-22T15:15:58.831548330Z",
-      "updated_at": "2026-04-22T15:49:32.774974203Z"
+      "updated_at": "2026-04-22T15:53:05.554750440Z"
     },
     "lb-8ngb": {
       "id": "lb-8ngb",
