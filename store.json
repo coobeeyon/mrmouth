@@ -1240,6 +1240,16 @@
       "created_at": "2026-03-28T14:26:18.482524375Z",
       "updated_at": "2026-03-28T14:30:23.906606047Z"
     },
+    "lb-vj6i": {
+      "id": "lb-vj6i",
+      "title": "Stream container stderr in real-time, interleaved with stdout",
+      "description": "In docker.rs::ContainerHandle::stream_output, stderr is currently read on a background thread into a Vec<String> and only flushed to the handler after stdout closes (lines 311-336). This means messages like 'trk: command not found' appear late and out of order. Replace with an mpsc channel: spawn a stdout reader thread and a stderr reader thread, both sending lines into a single channel; the main loop drains the channel and calls the handler. Use a small tag ('out'/'err') only internally if needed for diagnostics. Keep handler signature unchanged. The TUI/logger will then see errors when they happen.",
+      "item_type": "task",
+      "status": "open",
+      "priority": 1,
+      "created_at": "2026-04-22T15:15:23.586726286Z",
+      "updated_at": "2026-04-22T15:15:23.586726286Z"
+    },
     "lb-vjkj": {
       "id": "lb-vjkj",
       "title": "Fails on pre-initialized empty repo",
@@ -1664,6 +1674,11 @@
     },
     {
       "from_id": "lb-iyie",
+      "to_id": "lb-obsn",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-vj6i",
       "to_id": "lb-obsn",
       "dep_type": "parent"
     }
