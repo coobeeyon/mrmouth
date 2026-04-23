@@ -147,8 +147,9 @@
       "item_type": "feature",
       "status": "open",
       "priority": 1,
+      "claimed_by": "Michael Daum",
       "created_at": "2026-04-23T21:45:18.703215507Z",
-      "updated_at": "2026-04-23T21:45:18.703215507Z"
+      "updated_at": "2026-04-23T21:45:22.046545781Z"
     },
     "lb-2x28": {
       "id": "lb-2x28",
