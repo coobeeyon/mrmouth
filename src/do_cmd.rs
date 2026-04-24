@@ -10,6 +10,7 @@ use crate::tui::{TuiHandle, TuiSender};
 
 /// One failed attempt's diagnostic trail, kept across the abort threshold so
 /// the user can see each failure's reason and log without hunting logs/.
+#[derive(Debug)]
 pub struct AttemptSummary {
     attempt: u32,
     reason: String,
