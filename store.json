@@ -145,11 +145,10 @@
       "title": "Reuse Docker container across mrmouth do epic iterations",
       "description": "Current epic loop starts a fresh container per task, paying clone + lb init + claude cold-start every iteration. Replace per-task container with a long-lived session: start detached container once per epic, exec task.sh per iteration, rebuild only when Dockerfile changes. Phases: (1) plumbing in docker.rs — start_detached, exec_script, image_id; (2) split runner script into setup.sh (once) + task.sh (per-task, handles branch switching); (3) execute_in_session variant in run.rs; (4) wire epic loop; (5) Dockerfile-hash invalidation.",
       "item_type": "feature",
-      "status": "open",
+      "status": "closed",
       "priority": 1,
-      "claimed_by": "Michael Daum",
       "created_at": "2026-04-23T21:45:18.703215507Z",
-      "updated_at": "2026-04-23T21:45:22.046545781Z"
+      "updated_at": "2026-04-24T13:54:45.328214046Z"
     },
     "lb-2x28": {
       "id": "lb-2x28",
