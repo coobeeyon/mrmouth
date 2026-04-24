@@ -126,7 +126,7 @@ fi
 
 # Run reviewer
 echo "Starting code review..."
-CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING=1 claude -p --dangerously-skip-permissions --verbose --output-format stream-json --model {model} --effort max '{escaped_prompt}'
+CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING=1 claude -p --dangerously-skip-permissions --verbose --output-format stream-json --model {model} --effort xhigh '{escaped_prompt}'
 echo "Code review complete."
 
 # Push state changes back so the host loop can sync them
