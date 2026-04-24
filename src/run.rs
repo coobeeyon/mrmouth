@@ -34,6 +34,18 @@ pub struct RunOptions {
     pub branch: Option<String>,
 }
 
+/// A long-lived session container shared across multiple task runs (epic mode).
+/// The caller (typically `do_cmd::execute_epic`) owns a Session and feeds it to
+/// `execute_in_session` per task. `start_session` builds the image and boots the
+/// container; `stop_session` tears it down.
+pub struct Session {
+    pub container_name: String,
+    pub image_id: String,
+    pub scripts_dir: tempfile::TempDir,
+    pub local: bool,
+    pub file_remote_path: Option<PathBuf>,
+}
+
 /// Execute one agent run. Returns the Logger so callers can continue writing to the same
 /// log file for subsequent stages (reviewer, decider, summary, etc.).
 pub fn execute(config: &Config, repo_root: &Path, opts: RunOptions, tui: Option<&TuiHandle>) -> Result<Logger, RunError> {
@@ -97,9 +109,11 @@ pub fn execute(config: &Config, repo_root: &Path, opts: RunOptions, tui: Option<
     // 5. Build Docker image
     logger.log("Docker build starting...");
     let docker = DockerBuilder::new(&config.image);
+    let build_start = std::time::Instant::now();
     docker
         .build(repo_root, &config.dockerfile)
         .map_err(RunError::Docker)?;
+    logger.log(&format!("::mrmouth::timing phase=docker-build elapsed_ms={}", build_start.elapsed().as_millis()));
 
     // 6. Ensure persistent volume
     let volume = config.effective_volume(repo_root);
@@ -131,6 +145,7 @@ pub fn execute(config: &Config, repo_root: &Path, opts: RunOptions, tui: Option<
         timeout_secs: opts.timeout.map(|m| m as u64 * 60),
     };
 
+    let container_start = std::time::Instant::now();
     let mut handle = docker.run(&container_args).map_err(RunError::Docker)?;
 
     // 8b. Spawn a watcher that stops the container if the TUI user cancels (q / Ctrl+C)
@@ -187,6 +202,7 @@ pub fn execute(config: &Config, repo_root: &Path, opts: RunOptions, tui: Option<
     // 10. Wait for container exit
     let exit_code = handle.wait().map_err(RunError::Docker)?;
     watcher_done.store(true, Ordering::Relaxed);
+    logger.log(&format!("::mrmouth::timing phase=container-wall elapsed_ms={}", container_start.elapsed().as_millis()));
     logger.log(&format!("Container {container_name} finished (exit code {exit_code})."));
 
     // 11. Update symlinks atomically (latest.jsonl and latest.log)
@@ -243,6 +259,317 @@ pub fn execute(config: &Config, repo_root: &Path, opts: RunOptions, tui: Option<
     }
 
     Ok(logger)
+}
+
+/// Boot a long-lived session container: preflight, build image, start detached,
+/// run setup.sh once. Output is streamed into `logger` (typically the epic
+/// logger). Call `stop_session` when done.
+pub fn start_session(
+    config: &Config,
+    repo_root: &Path,
+    initial_branch: &str,
+    tui: Option<&TuiHandle>,
+    logger: &Logger,
+) -> Result<Session, RunError> {
+    // 1. Preflight
+    let local = has_local_only_tooling_branch(repo_root);
+    let effective_dockerfile = crate::docker::effective_dockerfile_content(repo_root, &config.dockerfile);
+    if preflight_skipped() {
+        logger.log("MRMOUTH_SKIP_PREFLIGHT=1 — skipping preflight checks.");
+    } else {
+        logger.log("Checking preflight conditions...");
+    }
+    preflight(repo_root, local, &effective_dockerfile, Some(logger)).inspect_err(|_| logger.flush())?;
+
+    // 2. Repo URL
+    let (repo_url, file_remote_path) = if local {
+        (String::new(), None)
+    } else {
+        match git_remote_url(repo_root) {
+            Some(url) => (url, None),
+            None => {
+                configure_file_remote(repo_root)?;
+                ("file:///host-repo".to_string(), Some(repo_root.to_path_buf()))
+            }
+        }
+    };
+
+    // 3. Sync litebrite (best-effort)
+    logger.log("Syncing litebrite...");
+    litebrite::init_and_sync(repo_root, Some(logger));
+
+    // 4. Build image
+    logger.log("Docker build starting...");
+    let docker = DockerBuilder::new(&config.image);
+    let build_start = std::time::Instant::now();
+    docker.build(repo_root, &config.dockerfile).map_err(RunError::Docker)?;
+    logger.log(&format!(
+        "::mrmouth::timing phase=docker-build elapsed_ms={}",
+        build_start.elapsed().as_millis()
+    ));
+    let image_id = docker.image_id().unwrap_or_default();
+
+    // 5. Ensure volume
+    let volume = config.effective_volume(repo_root);
+    docker.ensure_volume(&volume).map_err(RunError::Docker)?;
+
+    // 6. Scripts dir + setup.sh
+    let scripts_dir = tempfile::tempdir()
+        .map_err(|e| RunError::Io("creating scripts dir".into(), e))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let perms = std::fs::Permissions::from_mode(0o755);
+        let _ = std::fs::set_permissions(scripts_dir.path(), perms);
+    }
+    write_setup_script(scripts_dir.path(), &effective_dockerfile, &config.dockerfile)?;
+
+    // 7. Start detached container
+    let timestamp = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
+    let container_name = format!("session-{timestamp}");
+    DockerBuilder::remove_container(&container_name);
+
+    let session_args = crate::docker::SessionArgs {
+        name: container_name.clone(),
+        repo_url: repo_url.clone(),
+        scripts_dir: scripts_dir.path().to_path_buf(),
+        volume: volume.clone(),
+        local,
+        file_remote_path: file_remote_path.clone(),
+    };
+    docker.start_session(&session_args).map_err(RunError::Docker)?;
+    logger.log(&format!("SESSION START  container={container_name}  image={image_id}"));
+
+    // 8. Run setup.sh (generous timeout — includes clone + deps)
+    let env_vars = vec![
+        ("REPO_URL".to_string(), repo_url),
+        ("BRANCH".to_string(), initial_branch.to_string()),
+    ];
+    let setup_start = std::time::Instant::now();
+    let mut handle = crate::docker::DockerBuilder::exec_script(&container_name, "setup.sh", &env_vars, Some(600))
+        .map_err(RunError::Docker)?;
+
+    // Cancel watcher: if user hits quit during setup, stop the container so
+    // setup.sh aborts instead of running to its 10-minute timeout.
+    let watcher_done = Arc::new(AtomicBool::new(false));
+    let _done_guard = DoneGuard(Arc::clone(&watcher_done));
+    let _cancel_watcher = if let Some(t) = tui {
+        let flag = t.cancelled_flag();
+        let done = Arc::clone(&watcher_done);
+        let name = container_name.clone();
+        Some(std::thread::spawn(move || {
+            while !flag.load(Ordering::Relaxed) && !done.load(Ordering::Relaxed) {
+                std::thread::sleep(std::time::Duration::from_millis(200));
+            }
+            if flag.load(Ordering::Relaxed) {
+                DockerBuilder::stop_container(&name);
+            }
+        }))
+    } else {
+        None
+    };
+
+    handle.stream_output(|line| logger.log(line)).map_err(RunError::Docker)?;
+    let exit = handle.wait().map_err(RunError::Docker)?;
+    watcher_done.store(true, Ordering::Relaxed);
+    logger.log(&format!(
+        "::mrmouth::timing phase=session-setup elapsed_ms={}",
+        setup_start.elapsed().as_millis()
+    ));
+
+    if exit != 0 {
+        logger.flush();
+        DockerBuilder::stop_container(&container_name);
+        DockerBuilder::remove_container(&container_name);
+        return Err(RunError::SessionSetupFailed { code: exit });
+    }
+
+    Ok(Session {
+        container_name,
+        image_id,
+        scripts_dir,
+        local,
+        file_remote_path,
+    })
+}
+
+/// Execute one task inside an existing session container via `docker exec`.
+/// Writes `task.sh` into the session's scripts dir (overwriting any prior task),
+/// then streams output into a new per-task log/jsonl pair.
+pub fn execute_in_session(
+    config: &Config,
+    repo_root: &Path,
+    opts: RunOptions,
+    session: &Session,
+    tui: Option<&TuiHandle>,
+) -> Result<Logger, RunError> {
+    if let Some(t) = tui { t.set_stage("Agent"); }
+
+    // 0. Per-task log
+    let log_dir = repo_root.join(&config.log_dir);
+    fs::create_dir_all(&log_dir).map_err(|e| RunError::Io("creating log directory".into(), e))?;
+    let timestamp = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
+    let log_filename = format!("run-{timestamp}.log");
+    let log_path = log_dir.join(&log_filename);
+    let logger = match tui {
+        Some(t) => Logger::with_tui(&log_path, t.sender("AGENT SESSION"))
+            .map_err(|e| RunError::Io("creating log file".into(), e))?,
+        None => Logger::new(&log_path)
+            .map_err(|e| RunError::Io("creating log file".into(), e))?,
+    };
+
+    let branch = opts
+        .branch
+        .clone()
+        .or_else(|| config.branch.clone())
+        .unwrap_or_else(|| git_current_branch(repo_root).unwrap_or_else(|_| "main".into()));
+
+    logger.log(&format!(
+        "AGENT RUN  branch={branch}  {timestamp}  session={}",
+        session.container_name
+    ));
+
+    // 1. Generate task.sh for this iteration
+    let prompt_text = match opts.prompt_override.as_deref() {
+        Some(p) => p.to_string(),
+        None => prompt::load_prompt(repo_root, Some(&logger)),
+    };
+    write_task_script(session.scripts_dir.path(), &opts.model, &prompt_text)?;
+
+    // 2. Exec task.sh
+    let env_vars = vec![("BRANCH".to_string(), branch.clone())];
+    let timeout_secs = opts.timeout.map(|m| m as u64 * 60);
+
+    let jsonl_filename = format!("run-{timestamp}.jsonl");
+    let jsonl_path = log_dir.join(&jsonl_filename);
+    let jsonl_file = File::create(&jsonl_path)
+        .map_err(|e| RunError::Io("creating jsonl file".into(), e))?;
+    let mut jsonl_writer = BufWriter::new(jsonl_file);
+    let is_tty = logger.has_tui() || std::io::stdout().is_terminal();
+
+    let container_start = std::time::Instant::now();
+    let mut handle = crate::docker::DockerBuilder::exec_script(
+        &session.container_name,
+        "task.sh",
+        &env_vars,
+        timeout_secs,
+    )
+    .map_err(RunError::Docker)?;
+
+    // Cancel watcher
+    let watcher_done = Arc::new(AtomicBool::new(false));
+    let _done_guard = DoneGuard(Arc::clone(&watcher_done));
+    let _cancel_watcher = if let Some(t) = tui {
+        let flag = t.cancelled_flag();
+        let done = Arc::clone(&watcher_done);
+        let name = session.container_name.clone();
+        Some(std::thread::spawn(move || {
+            while !flag.load(Ordering::Relaxed) && !done.load(Ordering::Relaxed) {
+                std::thread::sleep(std::time::Duration::from_millis(200));
+            }
+            if flag.load(Ordering::Relaxed) {
+                DockerBuilder::stop_container(&name);
+            }
+        }))
+    } else {
+        None
+    };
+
+    if opts.raw {
+        let stdout = std::io::stdout();
+        handle
+            .stream_output(|line| {
+                let _ = writeln!(stdout.lock(), "{line}");
+                let _ = writeln!(jsonl_writer, "{line}");
+                logger.log_file_only(line);
+            })
+            .map_err(RunError::Docker)?;
+    } else {
+        let mut formatter = StreamFormatter::new(is_tty);
+        handle
+            .stream_output(|line| {
+                let _ = writeln!(jsonl_writer, "{line}");
+                if let Some(formatted) = stream_fmt::format_line(&mut formatter, line) {
+                    logger.display(&formatted);
+                    logger.log_file_only(&formatted);
+                }
+            })
+            .map_err(RunError::Docker)?;
+    }
+    let _ = jsonl_writer.flush();
+
+    let exit_code = handle.wait().map_err(RunError::Docker)?;
+    watcher_done.store(true, Ordering::Relaxed);
+    logger.log(&format!(
+        "::mrmouth::timing phase=container-wall elapsed_ms={}",
+        container_start.elapsed().as_millis()
+    ));
+    logger.log(&format!(
+        "Task in session {} finished (exit code {exit_code}).",
+        session.container_name
+    ));
+
+    // Update symlinks
+    let latest_jsonl = log_dir.join("latest.jsonl");
+    let latest_log = log_dir.join("latest.log");
+    #[cfg(unix)]
+    {
+        atomic_symlink(&jsonl_filename, &latest_jsonl);
+        atomic_symlink(&log_filename, &latest_log);
+    }
+
+    // Extract updated Dockerfile (agent may have edited it). Enables the caller
+    // to detect Dockerfile changes and rebuild the session if needed.
+    if !session.local {
+        let dockerfile_dest = repo_root.join(&config.dockerfile);
+        let container_path = format!("/home/runner/workspace/{}", config.dockerfile);
+        if DockerBuilder::copy_from_container(&session.container_name, &container_path, &dockerfile_dest) {
+            logger.log("Extracted updated Dockerfile from container.");
+        }
+    }
+
+    // Post-task host-side sync
+    logger.log("Post-run sync...");
+    if !session.local && session.file_remote_path.is_none() {
+        logger.log("Pulling code changes from remote...");
+        let pull_output = Command::new("git")
+            .args(["-C", &repo_root.to_string_lossy(), "pull", "--ff-only"])
+            .output();
+        match pull_output {
+            Ok(o) if o.status.success() => {}
+            Ok(o) => {
+                let stderr = String::from_utf8_lossy(&o.stderr);
+                if stderr.contains("Already up to date") || stderr.is_empty() {
+                    logger.log("No new commits to pull.");
+                } else {
+                    logger.log(&format!("Warning: git pull failed: {}", stderr.trim()));
+                }
+            }
+            Err(e) => logger.log(&format!("Warning: git pull failed: {e}")),
+        }
+    }
+
+    litebrite::init_and_sync(repo_root, Some(&logger));
+    logger.log(&format!("Done. Log saved: {}", log_path.display()));
+
+    if exit_code != 0 {
+        logger.flush();
+        let reason = classify_exit(exit_code, &log_path);
+        return Err(RunError::ContainerFailed { code: exit_code, reason, log_path: log_path.clone() });
+    }
+
+    Ok(logger)
+}
+
+/// Stop and remove the session container. Scripts dir is cleaned up when
+/// `session` is dropped.
+pub fn stop_session(session: Session, logger: Option<&Logger>) {
+    if let Some(l) = logger {
+        l.log(&format!("Stopping session {}...", session.container_name));
+    }
+    DockerBuilder::stop_container(&session.container_name);
+    DockerBuilder::remove_container(&session.container_name);
+    // scripts_dir TempDir is dropped at function end
 }
 
 /// True when MRMOUTH_SKIP_PREFLIGHT=1 is set — a user-facing escape hatch for
@@ -568,6 +895,10 @@ set -euo pipefail
 set -o errtrace
 trap 'rc=$?; echo "::mrmouth::script-error rc=$rc line=$LINENO cmd=$BASH_COMMAND" >&2' ERR
 
+_mm_t0=$(date +%s%N)
+_mm_mark() {{ now=$(date +%s%N); echo "::mrmouth::timing phase=$1 elapsed_ms=$(( (now - _mm_t0) / 1000000 ))"; }}
+_mm_mark script-start
+
 # --- Tool versions (cheap, always-on diagnostic) ---
 echo "::mrmouth::versions"
 git --version || true
@@ -575,6 +906,7 @@ lb --version 2>/dev/null || echo "lb: not installed"
 trk --version 2>/dev/null || echo "trk: not installed"
 claude --version 2>/dev/null || echo "claude: not installed"
 echo "::mrmouth::versions-end"
+_mm_mark versions-done
 
 repo_url="${{REPO_URL:-}}"
 branch="${{BRANCH:-main}}"
@@ -594,6 +926,7 @@ if [ ! -d "$work_dir/.git" ]; then
 fi
 cd "$work_dir"
 git config --global --add safe.directory "$work_dir"
+_mm_mark clone-done
 
 # --- Seed Dockerfile if absent (gives agent a file to read and modify) ---
 dockerfile_path="$work_dir/__DOCKERFILE_REL_PATH__"
@@ -622,6 +955,7 @@ if [ -d "$work_dir/.git" ]; then
     trk sync 2>/dev/null || true
   fi
 fi
+_mm_mark tooling-done
 
 # --- Restore .claude.json from persisted backup if missing ---
 claude_config="$HOME/.claude.json"
@@ -636,7 +970,9 @@ fi
 # --- Run agent ---
 command -v claude >/dev/null || {{ echo "::mrmouth::missing-tool tool=claude reason=claude binary not in image" >&2; exit 64; }}
 echo "Starting agent run..."
+_mm_mark claude-start
 CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING=1 claude -p --dangerously-skip-permissions --verbose --output-format stream-json --disallowedTools EnterPlanMode,ExitPlanMode --model {model} --effort xhigh '{escaped_prompt}'
+_mm_mark claude-done
 
 echo "Agent run complete."
 
@@ -647,6 +983,7 @@ if [ -d "$work_dir/.git" ]; then
   trk sync 2>/dev/null || true
   git push 2>/dev/null || true
 fi
+_mm_mark script-end
 "#
     );
 
@@ -675,12 +1012,204 @@ fi
     Ok(tmp_path)
 }
 
+/// Write `setup.sh` into `scripts_dir`. This script runs once per session —
+/// right after the container starts — and handles everything that doesn't
+/// change between tasks: tool checks, initial clone, Dockerfile seeding,
+/// litebrite/trapperkeeper init, claude.json restore.
+#[allow(clippy::useless_format)]
+pub(crate) fn write_setup_script(
+    scripts_dir: &Path,
+    dockerfile_content: &str,
+    dockerfile_path: &str,
+) -> Result<(), RunError> {
+    let script = format!(
+        r#"#!/usr/bin/env bash
+set -euo pipefail
+set -o errtrace
+trap 'rc=$?; echo "::mrmouth::script-error rc=$rc line=$LINENO cmd=$BASH_COMMAND" >&2' ERR
+
+_mm_t0=$(date +%s%N)
+_mm_mark() {{ now=$(date +%s%N); echo "::mrmouth::timing phase=$1 elapsed_ms=$(( (now - _mm_t0) / 1000000 ))"; }}
+_mm_mark setup-start
+
+# --- Tool versions ---
+echo "::mrmouth::versions"
+git --version || true
+lb --version 2>/dev/null || echo "lb: not installed"
+trk --version 2>/dev/null || echo "trk: not installed"
+claude --version 2>/dev/null || echo "claude: not installed"
+echo "::mrmouth::versions-end"
+_mm_mark versions-done
+
+repo_url="${{REPO_URL:-}}"
+branch="${{BRANCH:-main}}"
+work_dir="$HOME/workspace"
+
+# --- Clone repo (skip if workspace already mounted) ---
+if [ ! -d "$work_dir/.git" ]; then
+  if [ -n "$repo_url" ]; then
+    git config --global --add safe.directory /host-repo
+    echo "Cloning $repo_url (branch: $branch)..."
+    git clone --branch "$branch" "$repo_url" "$work_dir"
+  else
+    echo "No repo URL and no .git — starting fresh in $work_dir"
+    mkdir -p "$work_dir"
+  fi
+fi
+cd "$work_dir"
+git config --global --add safe.directory "$work_dir"
+_mm_mark clone-done
+
+# --- Seed Dockerfile if absent ---
+dockerfile_path="$work_dir/__DOCKERFILE_REL_PATH__"
+if [ ! -f "$dockerfile_path" ]; then
+  mkdir -p "$(dirname "$dockerfile_path")"
+  cat > "$dockerfile_path" << 'MRMOUTH_DOCKERFILE_EOF'
+__DOCKERFILE_CONTENT__
+MRMOUTH_DOCKERFILE_EOF
+  echo "Seeded Dockerfile into workspace."
+fi
+
+# --- Initialize task tooling ---
+if [ -d "$work_dir/.git" ]; then
+  if git show-ref --quiet refs/heads/litebrite refs/remotes/origin/litebrite 2>/dev/null; then
+    command -v lb >/dev/null || {{ echo "::mrmouth::missing-tool tool=lb reason=litebrite branch exists but binary not in image" >&2; exit 64; }}
+    echo "Initializing litebrite..."
+    lb init
+    lb setup claude 2>/dev/null || true
+    lb sync 2>/dev/null || true
+  fi
+  if git show-ref --quiet refs/heads/trapperkeeper refs/remotes/origin/trapperkeeper 2>/dev/null; then
+    command -v trk >/dev/null || {{ echo "::mrmouth::missing-tool tool=trk reason=trapperkeeper branch exists but binary not in image" >&2; exit 64; }}
+    echo "Initializing trapperkeeper..."
+    trk init
+    trk setup claude 2>/dev/null || true
+    trk sync 2>/dev/null || true
+  fi
+fi
+_mm_mark tooling-done
+
+# --- Restore .claude.json from persisted backup if missing ---
+claude_config="$HOME/.claude.json"
+if [ ! -f "$claude_config" ] && [ -d "$HOME/.claude/backups" ]; then
+  latest_backup=$(ls -t "$HOME/.claude/backups/.claude.json.backup."* 2>/dev/null | head -1 || true)
+  if [ -n "$latest_backup" ]; then
+    cp "$latest_backup" "$claude_config"
+    echo "Restored .claude.json from backup: $(basename "$latest_backup")"
+  fi
+fi
+
+command -v claude >/dev/null || {{ echo "::mrmouth::missing-tool tool=claude reason=claude binary not in image" >&2; exit 64; }}
+
+_mm_mark setup-end
+echo "::mrmouth::session-setup-complete"
+"#
+    );
+
+    let script = script
+        .replace("__DOCKERFILE_CONTENT__", dockerfile_content)
+        .replace("__DOCKERFILE_REL_PATH__", dockerfile_path);
+
+    write_script_file(scripts_dir, "setup.sh", &script)
+}
+
+/// Write `task.sh` into `scripts_dir`, overwriting any previous version.
+/// Called once per epic iteration with the task-specific prompt. The script
+/// switches to the task's branch (stashing any leftover state for safety),
+/// runs the agent, and does post-run sync/push.
+pub(crate) fn write_task_script(
+    scripts_dir: &Path,
+    model: &str,
+    prompt: &str,
+) -> Result<(), RunError> {
+    let escaped_prompt = prompt.replace('\'', "'\\''");
+
+    let script = format!(
+        r#"#!/usr/bin/env bash
+set -euo pipefail
+set -o errtrace
+trap 'rc=$?; echo "::mrmouth::script-error rc=$rc line=$LINENO cmd=$BASH_COMMAND" >&2' ERR
+
+_mm_t0=$(date +%s%N)
+_mm_mark() {{ now=$(date +%s%N); echo "::mrmouth::timing phase=$1 elapsed_ms=$(( (now - _mm_t0) / 1000000 ))"; }}
+_mm_mark task-start
+
+work_dir="$HOME/workspace"
+branch="${{BRANCH:-main}}"
+cd "$work_dir"
+
+# --- Sync workspace with host ---
+# Stash any leftover uncommitted state from a prior task (shouldn't happen if
+# the agent committed cleanly, but don't let it block the next task).
+if ! git diff --quiet || ! git diff --cached --quiet; then
+  echo "::mrmouth::warning uncommitted changes from prior task — stashing"
+  git stash push -u -m "mrmouth-leftover-$(date +%s)" || true
+fi
+
+echo "Fetching origin..."
+git fetch origin --prune 2>&1 | grep -v '^From ' || true
+
+# Switch to the task's branch (create local tracking branch if needed).
+if git show-ref --quiet "refs/heads/$branch"; then
+  git checkout "$branch"
+elif git show-ref --quiet "refs/remotes/origin/$branch"; then
+  git checkout -b "$branch" --track "origin/$branch"
+else
+  # Branch doesn't exist yet on origin — create a local one. Host will push later.
+  git checkout -b "$branch"
+fi
+git pull --ff-only origin "$branch" 2>/dev/null || true
+_mm_mark branch-ready
+
+# Sync lb/trk state after branch switch (belt-and-suspenders).
+lb sync 2>/dev/null || true
+trk sync 2>/dev/null || true
+
+# --- Run agent ---
+echo "Starting agent run..."
+_mm_mark claude-start
+CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING=1 claude -p --dangerously-skip-permissions --verbose --output-format stream-json --disallowedTools EnterPlanMode,ExitPlanMode --model {model} --effort xhigh '{escaped_prompt}'
+_mm_mark claude-done
+
+echo "Agent run complete."
+
+# --- Post-run sync/push ---
+if [ -d "$work_dir/.git" ]; then
+  echo "Post-agent cleanup: forcing sync and push..."
+  lb sync 2>/dev/null || true
+  trk sync 2>/dev/null || true
+  git push 2>/dev/null || true
+fi
+_mm_mark task-end
+"#
+    );
+
+    write_script_file(scripts_dir, "task.sh", &script)
+}
+
+fn write_script_file(scripts_dir: &Path, filename: &str, content: &str) -> Result<(), RunError> {
+    let path = scripts_dir.join(filename);
+    std::fs::write(&path, content.as_bytes())
+        .map_err(|e| RunError::Io(format!("writing {filename}"), e))?;
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let perms = std::fs::Permissions::from_mode(0o755);
+        std::fs::set_permissions(&path, perms)
+            .map_err(|e| RunError::Io(format!("chmod {filename}"), e))?;
+    }
+
+    Ok(())
+}
+
 #[derive(Debug)]
 pub enum RunError {
     Preflight(String),
     Docker(crate::docker::DockerError),
     Io(String, std::io::Error),
     ContainerFailed { code: i32, reason: String, log_path: PathBuf },
+    SessionSetupFailed { code: i32 },
 }
 
 impl std::fmt::Display for RunError {
@@ -691,6 +1220,9 @@ impl std::fmt::Display for RunError {
             Self::Io(ctx, e) => write!(f, "{ctx}: {e}"),
             Self::ContainerFailed { code, reason, .. } => {
                 write!(f, "container exited with code {code}: {reason}")
+            }
+            Self::SessionSetupFailed { code } => {
+                write!(f, "session setup failed (exit code {code})")
             }
         }
     }
@@ -1396,5 +1928,83 @@ mod tests {
         use std::sync::{Mutex, OnceLock};
         static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
         LOCK.get_or_init(|| Mutex::new(())).lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    #[test]
+    fn setup_script_contains_dockerfile_content() {
+        let dir = tempfile::tempdir().unwrap();
+        write_setup_script(dir.path(), TEST_DOCKERFILE, TEST_DOCKERFILE_PATH).unwrap();
+        let content = std::fs::read_to_string(dir.path().join("setup.sh")).unwrap();
+        assert!(content.contains("FROM rust:slim"), "setup.sh should embed Dockerfile content");
+        assert!(content.contains(TEST_DOCKERFILE_PATH));
+    }
+
+    #[test]
+    fn setup_script_has_shebang_and_timing_markers() {
+        let dir = tempfile::tempdir().unwrap();
+        write_setup_script(dir.path(), TEST_DOCKERFILE, TEST_DOCKERFILE_PATH).unwrap();
+        let content = std::fs::read_to_string(dir.path().join("setup.sh")).unwrap();
+        assert!(content.starts_with("#!/usr/bin/env bash"));
+        assert!(content.contains("_mm_mark setup-start"));
+        assert!(content.contains("_mm_mark setup-end"));
+        assert!(content.contains("::mrmouth::session-setup-complete"));
+    }
+
+    #[test]
+    fn setup_script_is_executable() {
+        let dir = tempfile::tempdir().unwrap();
+        write_setup_script(dir.path(), TEST_DOCKERFILE, TEST_DOCKERFILE_PATH).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let perms = std::fs::metadata(dir.path().join("setup.sh")).unwrap().permissions();
+            assert_eq!(perms.mode() & 0o111, 0o111, "setup.sh should be executable");
+        }
+    }
+
+    #[test]
+    fn task_script_embeds_model_and_prompt() {
+        let dir = tempfile::tempdir().unwrap();
+        write_task_script(dir.path(), "opus", "do the thing").unwrap();
+        let content = std::fs::read_to_string(dir.path().join("task.sh")).unwrap();
+        assert!(content.contains("--model opus"));
+        assert!(content.contains("'do the thing'"));
+    }
+
+    #[test]
+    fn task_script_escapes_single_quotes_in_prompt() {
+        let dir = tempfile::tempdir().unwrap();
+        write_task_script(dir.path(), "opus", "don't break").unwrap();
+        let content = std::fs::read_to_string(dir.path().join("task.sh")).unwrap();
+        assert!(content.contains(r#"'don'\''t break'"#));
+    }
+
+    #[test]
+    fn task_script_switches_branch() {
+        let dir = tempfile::tempdir().unwrap();
+        write_task_script(dir.path(), "opus", "prompt").unwrap();
+        let content = std::fs::read_to_string(dir.path().join("task.sh")).unwrap();
+        assert!(content.contains("git fetch origin"));
+        assert!(content.contains(r#"git checkout "$branch""#));
+    }
+
+    #[test]
+    fn task_script_stashes_leftover_state() {
+        let dir = tempfile::tempdir().unwrap();
+        write_task_script(dir.path(), "opus", "prompt").unwrap();
+        let content = std::fs::read_to_string(dir.path().join("task.sh")).unwrap();
+        assert!(content.contains("git stash push"));
+        assert!(content.contains("::mrmouth::warning uncommitted changes"));
+    }
+
+    #[test]
+    fn task_script_overwrites_previous() {
+        let dir = tempfile::tempdir().unwrap();
+        write_task_script(dir.path(), "opus", "first prompt").unwrap();
+        write_task_script(dir.path(), "sonnet", "second prompt").unwrap();
+        let content = std::fs::read_to_string(dir.path().join("task.sh")).unwrap();
+        assert!(content.contains("--model sonnet"));
+        assert!(content.contains("'second prompt'"));
+        assert!(!content.contains("first prompt"));
     }
 }

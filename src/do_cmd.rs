@@ -213,7 +213,28 @@ fn execute_epic(
 
     let head_before = git_head(repo_root);
 
-    loop {
+    // Start a long-lived session container, reused across iterations.
+    // Setup (clone, lb init, claude.json restore) runs once; each task then
+    // just execs task.sh, saving ~20-60s per iteration depending on repo size.
+    let epic_logger = match logger {
+        Some(l) => l,
+        None => {
+            emit(tui_tx, "ERROR: epic logger missing — cannot start session");
+            return Err(DoError::Command("epic logger missing".into()));
+        }
+    };
+
+    if let Some(t) = tui { t.set_stage("Session setup"); }
+    emit(tui_tx, "Starting session container...");
+    let mut session = match run::start_session(config, repo_root, feature_branch, tui, epic_logger) {
+        Ok(s) => s,
+        Err(e) => {
+            emit(tui_tx, &format!("Session start failed: {e}"));
+            return Err(DoError::TaskFailed(Box::new(e)));
+        }
+    };
+
+    let loop_result = (|| -> Result<(), DoError> { loop {
         if tui.is_some_and(|t| t.is_cancelled()) {
             emit(tui_tx, "Epic cancelled by user.");
             break;
@@ -252,7 +273,7 @@ fn execute_epic(
             branch: None,
         };
 
-        let run_result = run::execute(config, repo_root, run_opts, tui);
+        let run_result = run::execute_in_session(config, repo_root, run_opts, &session, tui);
 
         match run_result {
             Ok(ref run_logger) => {
@@ -293,7 +314,25 @@ fn execute_epic(
                 emit(tui_tx, line);
             }
         }
+
+        // Dockerfile-hash check: if the agent edited the Dockerfile during
+        // this task, the session's image is now stale. Rebuild (cheap if
+        // unchanged thanks to layer cache) and restart the session if the
+        // image ID moved.
+        if let Err(e) = maybe_restart_session_on_dockerfile_change(
+            config, repo_root, feature_branch, &mut session, tui, tui_tx, epic_logger,
+        ) {
+            emit(tui_tx, &format!("Session restart failed: {e}"));
+            return Err(DoError::TaskFailed(Box::new(e)));
+        }
     }
+    Ok(())
+    })();
+
+    // Clean up the session whether the loop succeeded or failed.
+    run::stop_session(session, logger);
+
+    loop_result?;
 
     // Run reviewer on the full epic diff if new commits were made
     let head_after = git_head(repo_root);
@@ -370,6 +409,36 @@ fn lb_show(repo_root: &Path, item_id: &str) -> Result<ItemInfo, DoError> {
         .unwrap_or_else(|| "task".to_string());
 
     Ok(ItemInfo { title, item_type })
+}
+
+/// Rebuild the Docker image (cheap if cached) and, if the new image ID
+/// differs from the session's, tear down `*session` and replace it with a
+/// fresh one. This is how we pick up Dockerfile edits the agent made during
+/// a task. A build failure is non-fatal — we keep the existing session and
+/// let the next iteration retry.
+fn maybe_restart_session_on_dockerfile_change(
+    config: &Config,
+    repo_root: &Path,
+    feature_branch: &str,
+    session: &mut crate::run::Session,
+    tui: Option<&TuiHandle>,
+    tui_tx: &Option<TuiSender>,
+    epic_logger: &crate::logger::Logger,
+) -> Result<(), RunError> {
+    let docker = crate::docker::DockerBuilder::new(&config.image);
+    if docker.build(repo_root, &config.dockerfile).is_err() {
+        return Ok(());
+    }
+    let new_image_id = docker.image_id().unwrap_or_default();
+    if new_image_id.is_empty() || new_image_id == session.image_id {
+        return Ok(());
+    }
+
+    emit(tui_tx, "Dockerfile changed — restarting session with new image...");
+    let fresh = crate::run::start_session(config, repo_root, feature_branch, tui, epic_logger)?;
+    let stale = std::mem::replace(session, fresh);
+    crate::run::stop_session(stale, Some(epic_logger));
+    Ok(())
 }
 
 fn count_remaining_tasks(repo_root: &Path, epic_id: &str) -> u32 {

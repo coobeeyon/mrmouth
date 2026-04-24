@@ -272,6 +272,142 @@ impl DockerBuilder {
             .stderr(Stdio::null())
             .status();
     }
+
+    /// Return the current image ID (sha256) for this builder's image, if it exists.
+    /// Used to detect whether a rebuild produced a new image (Dockerfile change).
+    pub fn image_id(&self) -> Option<String> {
+        let output = Command::new("docker")
+            .args(["images", "-q", "--no-trunc", &self.image_name])
+            .output()
+            .ok()?;
+        if !output.status.success() {
+            return None;
+        }
+        let id = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if id.is_empty() { None } else { Some(id) }
+    }
+
+    /// Start a long-lived detached container that stays alive until explicitly
+    /// stopped. The container's default process is `tail -f /dev/null`, leaving
+    /// the environment ready for `exec_script` to run individual task scripts.
+    /// Mounts `scripts_dir` at `/mrmouth-scripts:ro` so the host can update
+    /// scripts between tasks without restarting the container.
+    pub fn start_session(&self, args: &SessionArgs) -> Result<(), DockerError> {
+        let mut cmd = Command::new("docker");
+        cmd.arg("run");
+        cmd.arg("-d");
+        cmd.arg("--init");
+        cmd.args(["--name", &args.name]);
+
+        // Env vars that don't change per task — set once at session start.
+        cmd.args(["-e", &format!("REPO_URL={}", args.repo_url)]);
+        for var in ["ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"] {
+            if let Ok(val) = std::env::var(var) {
+                cmd.args(["-e", &format!("{var}={val}")]);
+            }
+        }
+
+        // SSH agent
+        if let Ok(sock) = std::env::var("SSH_AUTH_SOCK") {
+            cmd.args(["-v", &format!("{sock}:/ssh-agent")]);
+            cmd.args(["-e", "SSH_AUTH_SOCK=/ssh-agent"]);
+        }
+
+        // Scripts directory (bind-mount so host can rewrite task.sh between tasks).
+        cmd.args(["-v", &format!("{}:/mrmouth-scripts:ro", args.scripts_dir.to_string_lossy())]);
+
+        // Persistent volume for Claude memory
+        cmd.args(["-v", &format!("{}:/home/runner/.claude", args.volume)]);
+
+        // Local mode: bind-mount workspace
+        if args.local {
+            let cwd = std::env::current_dir()
+                .map_err(|e| DockerError::Io("getting cwd".into(), e))?;
+            cmd.args(["-v", &format!("{}:/home/runner/workspace", cwd.to_string_lossy())]);
+        }
+
+        // File-remote mode
+        if let Some(ref path) = args.file_remote_path {
+            cmd.args(["-v", &format!("{}:/host-repo", path.to_string_lossy())]);
+        }
+
+        cmd.arg(&self.image_name);
+        cmd.args(["-c", "tail -f /dev/null"]);
+
+        let output = cmd
+            .output()
+            .map_err(|e| DockerError::Io("running docker run -d".into(), e))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+            return Err(DockerError::SessionStartFailed(output.status.code().unwrap_or(-1), stderr));
+        }
+
+        Ok(())
+    }
+
+    /// Exec a script that lives at `/mrmouth-scripts/<script_name>` inside the
+    /// running session container, streaming output via the returned handle.
+    /// `env_vars` are set only for this exec. `timeout_secs`, if set, kills the
+    /// host-side `docker exec` process after the deadline (SIGTERM propagates
+    /// to the container-side process).
+    pub fn exec_script(
+        container_name: &str,
+        script_name: &str,
+        env_vars: &[(String, String)],
+        timeout_secs: Option<u64>,
+    ) -> Result<ContainerHandle, DockerError> {
+        let mut cmd = Command::new("docker");
+        cmd.arg("exec");
+        for (k, v) in env_vars {
+            cmd.args(["-e", &format!("{k}={v}")]);
+        }
+        cmd.arg(container_name);
+        cmd.arg("bash");
+        cmd.arg(format!("/mrmouth-scripts/{script_name}"));
+
+        cmd.stdout(Stdio::piped());
+        cmd.stderr(Stdio::piped());
+
+        let child = cmd
+            .spawn()
+            .map_err(|e| DockerError::Io("spawning docker exec".into(), e))?;
+
+        let cancelled = Arc::new(AtomicBool::new(false));
+        if let Some(timeout_secs) = timeout_secs {
+            let name = container_name.to_string();
+            let cancelled_clone = Arc::clone(&cancelled);
+            let pid = child.id();
+            std::thread::spawn(move || {
+                for _ in 0..timeout_secs {
+                    std::thread::sleep(std::time::Duration::from_secs(1));
+                    if cancelled_clone.load(Ordering::Relaxed) {
+                        return;
+                    }
+                }
+                if !cancelled_clone.load(Ordering::Relaxed) {
+                    // Kill the host-side docker exec; docker forwards the signal
+                    // to the in-container process. Also stop as belt-and-suspenders
+                    // in case something wedges.
+                    #[cfg(unix)]
+                    {
+                        unsafe { libc::kill(pid as i32, libc::SIGTERM); }
+                    }
+                    let _ = Command::new("docker")
+                        .args(["stop", "-t", "5", &name])
+                        .stdout(Stdio::null())
+                        .stderr(Stdio::null())
+                        .status();
+                }
+            });
+        }
+
+        Ok(ContainerHandle {
+            child,
+            watchdog_cancelled: cancelled,
+        })
+    }
+
 }
 
 pub struct ContainerArgs {
@@ -283,6 +419,18 @@ pub struct ContainerArgs {
     pub local: bool,
     pub file_remote_path: Option<std::path::PathBuf>,
     pub timeout_secs: Option<u64>,
+}
+
+/// Arguments for a long-lived session container (detached, reused across tasks).
+/// Unlike `ContainerArgs`, branch/timeout/script-path are per-task rather than
+/// per-container, so they're passed to `exec_script` instead.
+pub struct SessionArgs {
+    pub name: String,
+    pub repo_url: String,
+    pub scripts_dir: std::path::PathBuf,
+    pub volume: String,
+    pub local: bool,
+    pub file_remote_path: Option<std::path::PathBuf>,
 }
 
 pub struct ContainerHandle {
@@ -382,6 +530,7 @@ fn get_gid() -> u32 {
 pub enum DockerError {
     Io(String, std::io::Error),
     BuildFailed(i32, String),
+    SessionStartFailed(i32, String),
     NoStdout,
     NoStderr,
 }
@@ -392,6 +541,14 @@ impl std::fmt::Display for DockerError {
             Self::Io(ctx, e) => write!(f, "{ctx}: {e}"),
             Self::BuildFailed(code, stderr) => {
                 write!(f, "docker build failed (exit code {code})")?;
+                let stderr = stderr.trim();
+                if !stderr.is_empty() {
+                    write!(f, "\n{stderr}")?;
+                }
+                Ok(())
+            }
+            Self::SessionStartFailed(code, stderr) => {
+                write!(f, "docker run -d (session) failed (exit code {code})")?;
                 let stderr = stderr.trim();
                 if !stderr.is_empty() {
                     write!(f, "\n{stderr}")?;
