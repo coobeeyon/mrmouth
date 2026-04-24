@@ -348,9 +348,15 @@ impl DockerBuilder {
 
     /// Exec a script that lives at `/mrmouth-scripts/<script_name>` inside the
     /// running session container, streaming output via the returned handle.
-    /// `env_vars` are set only for this exec. `timeout_secs`, if set, kills the
-    /// host-side `docker exec` process after the deadline (SIGTERM propagates
-    /// to the container-side process).
+    /// `env_vars` are set only for this exec.
+    ///
+    /// On `timeout_secs` deadline, sends SIGTERM to the host-side `docker exec`
+    /// process (docker forwards it to the in-container process), then escalates
+    /// to SIGKILL after a 5s grace period if the exec hasn't exited. The session
+    /// container itself is left running so the caller can exec another script —
+    /// critical for session-reuse in epic mode. A SIGKILL-on-host can orphan the
+    /// container-side process, but that's a rare tail case acceptable in return
+    /// for preserving the session.
     pub fn exec_script(
         container_name: &str,
         script_name: &str,
@@ -375,7 +381,6 @@ impl DockerBuilder {
 
         let cancelled = Arc::new(AtomicBool::new(false));
         if let Some(timeout_secs) = timeout_secs {
-            let name = container_name.to_string();
             let cancelled_clone = Arc::clone(&cancelled);
             let pid = child.id();
             std::thread::spawn(move || {
@@ -385,19 +390,21 @@ impl DockerBuilder {
                         return;
                     }
                 }
-                if !cancelled_clone.load(Ordering::Relaxed) {
-                    // Kill the host-side docker exec; docker forwards the signal
-                    // to the in-container process. Also stop as belt-and-suspenders
-                    // in case something wedges.
-                    #[cfg(unix)]
-                    {
-                        unsafe { libc::kill(pid as i32, libc::SIGTERM); }
+                #[cfg(unix)]
+                {
+                    unsafe { libc::kill(pid as i32, libc::SIGTERM); }
+                }
+                // Grace period — SIGTERM may need a moment to propagate through
+                // docker exec to the in-container process and for it to clean up.
+                for _ in 0..5 {
+                    std::thread::sleep(std::time::Duration::from_secs(1));
+                    if cancelled_clone.load(Ordering::Relaxed) {
+                        return;
                     }
-                    let _ = Command::new("docker")
-                        .args(["stop", "-t", "5", &name])
-                        .stdout(Stdio::null())
-                        .stderr(Stdio::null())
-                        .status();
+                }
+                #[cfg(unix)]
+                {
+                    unsafe { libc::kill(pid as i32, libc::SIGKILL); }
                 }
             });
         }
