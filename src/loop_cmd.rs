@@ -388,6 +388,18 @@ enum Decision {
 fn should_continue(repo_root: &Path, decider_model: &str, logger: Option<&Logger>, log_dir: &Path) -> Result<Decision, LoopError> {
     crate::logger::log(logger, "DECISION");
 
+    // Short-circuit: if open tasks already exist in the tracker, the runner has
+    // work to do and we don't need to spend an LLM call on the decision. The
+    // decider only earns its keep when there's actual judgement required —
+    // decompose epics, check spec, decide ship/stop.
+    if let Some(n) = crate::litebrite::open_task_count(repo_root) {
+        if n > 0 {
+            let msg = format!("open tasks: {n}");
+            crate::logger::log(logger, &format!("decision: continue ({msg}) — skipped LLM"));
+            return Ok(Decision::Continue(msg));
+        }
+    }
+
     // Create dedicated decider log + jsonl files
     let timestamp = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
     let decider_log_path = log_dir.join(format!("decider-{timestamp}.log"));

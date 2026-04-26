@@ -73,6 +73,31 @@ pub fn init_and_sync(repo_root: &Path, logger: Option<&Logger>) {
     }
 }
 
+/// Count open tasks in the litebrite tracker. Returns None when `lb` is not
+/// installed or the command fails — caller should fall back to the LLM path.
+/// Used by the decider short-circuit: when open leaf tasks exist, the runner
+/// has work to do and no LLM judgement is required.
+pub fn open_task_count(repo_root: &Path) -> Option<usize> {
+    if !has_lb() {
+        return None;
+    }
+    let output = Command::new("lb")
+        .args(["list", "-s", "open", "-t", "task"])
+        .current_dir(repo_root)
+        .stderr(std::process::Stdio::null())
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    Some(count_lb_rows(&stdout))
+}
+
+fn count_lb_rows(stdout: &str) -> usize {
+    stdout.lines().filter(|l| l.starts_with("lb-")).count()
+}
+
 /// Sync-only: just run `lb sync` to exchange state with remote.
 /// Used between loop iterations where init is already done.
 pub fn sync(repo_root: &Path, logger: Option<&Logger>) {
@@ -104,5 +129,22 @@ mod tests {
     fn benign_only_applies_to_init() {
         assert!(!is_benign_lb_error(&["sync"], "already initialized"));
         assert!(!is_benign_lb_error(&["setup", "claude"], "already initialized"));
+    }
+
+    #[test]
+    fn count_lb_rows_skips_header_and_separator() {
+        let out = "ID         TYPE     STATUS         PRI  TITLE\n\
+                   ------------------------------------------------------------\n\
+                   lb-6zk8    task open (claimed) P2   Skip decider LLM call when open brites exist\n\
+                   lb-abcd    task open           P1   Another task\n";
+        assert_eq!(count_lb_rows(out), 2);
+    }
+
+    #[test]
+    fn count_lb_rows_zero_when_no_matches() {
+        let out = "ID         TYPE     STATUS         PRI  TITLE\n\
+                   ------------------------------------------------------------\n";
+        assert_eq!(count_lb_rows(out), 0);
+        assert_eq!(count_lb_rows(""), 0);
     }
 }
