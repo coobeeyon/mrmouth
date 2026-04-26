@@ -405,11 +405,10 @@
       "title": "Skip decider LLM call when open brites exist",
       "description": "Decider's step 1 is 'run lb list'; if leaf tasks exist it returns continue without needing an LLM decision. Short-circuit in loop_cmd.rs::should_continue: run lb list --tree on the host first, if any open leaf tasks exist, return Continue(\"open tasks: N\") directly without invoking claude. Falls back to the LLM only when lb list shows no leaf tasks (the actual judgement calls: decompose epics, check spec, decide ship/stop).",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 2,
-      "claimed_by": "Michael Daum",
       "created_at": "2026-04-24T18:08:30.007098103Z",
-      "updated_at": "2026-04-26T12:35:29.100286264Z"
+      "updated_at": "2026-04-26T12:37:29.790592411Z"
     },
     "lb-731u": {
       "id": "lb-731u",
