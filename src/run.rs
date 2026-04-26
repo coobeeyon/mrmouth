@@ -270,6 +270,7 @@ pub fn start_session(
     initial_branch: &str,
     tui: Option<&TuiHandle>,
     logger: &Logger,
+    log_path: &Path,
 ) -> Result<Session, RunError> {
     // 1. Preflight
     let local = has_local_only_tooling_branch(repo_root);
@@ -381,7 +382,12 @@ pub fn start_session(
         logger.flush();
         DockerBuilder::stop_container(&container_name);
         DockerBuilder::remove_container(&container_name);
-        return Err(RunError::SessionSetupFailed { code: exit });
+        let reason = classify_exit(exit, log_path);
+        return Err(RunError::SessionSetupFailed {
+            code: exit,
+            reason,
+            log_path: log_path.to_path_buf(),
+        });
     }
 
     Ok(Session {
@@ -897,6 +903,23 @@ trap 'rc=$?; echo "::mrmouth::script-error rc=$rc line=$LINENO cmd=$BASH_COMMAND
 
 _mm_t0=$(date +%s%N)
 _mm_mark() {{ now=$(date +%s%N); echo "::mrmouth::timing phase=$1 elapsed_ms=$(( (now - _mm_t0) / 1000000 ))"; }}
+
+# Run a tool init (lb/trk) that may exit non-zero with "already initialized"
+# against an existing repo. Treat that one case as benign; real failures still
+# propagate. Matches the host-side litebrite.rs silencing.
+_mm_tool_init() {{
+  local _out
+  if _out=$("$@" 2>&1); then
+    [ -n "$_out" ] && echo "$_out"
+    return 0
+  fi
+  if echo "$_out" | grep -q "already initialized"; then
+    return 0
+  fi
+  echo "$_out" >&2
+  return 1
+}}
+
 _mm_mark script-start
 
 # --- Tool versions (cheap, always-on diagnostic) ---
@@ -943,14 +966,14 @@ if [ -d "$work_dir/.git" ]; then
   if git show-ref --quiet refs/heads/litebrite refs/remotes/origin/litebrite 2>/dev/null; then
     command -v lb >/dev/null || {{ echo "::mrmouth::missing-tool tool=lb reason=litebrite branch exists but binary not in image" >&2; exit 64; }}
     echo "Initializing litebrite..."
-    lb init
+    _mm_tool_init lb init
     lb setup claude 2>/dev/null || true
     lb sync 2>/dev/null || true
   fi
   if git show-ref --quiet refs/heads/trapperkeeper refs/remotes/origin/trapperkeeper 2>/dev/null; then
     command -v trk >/dev/null || {{ echo "::mrmouth::missing-tool tool=trk reason=trapperkeeper branch exists but binary not in image" >&2; exit 64; }}
     echo "Initializing trapperkeeper..."
-    trk init
+    _mm_tool_init trk init
     trk setup claude 2>/dev/null || true
     trk sync 2>/dev/null || true
   fi
@@ -1030,6 +1053,23 @@ trap 'rc=$?; echo "::mrmouth::script-error rc=$rc line=$LINENO cmd=$BASH_COMMAND
 
 _mm_t0=$(date +%s%N)
 _mm_mark() {{ now=$(date +%s%N); echo "::mrmouth::timing phase=$1 elapsed_ms=$(( (now - _mm_t0) / 1000000 ))"; }}
+
+# Run a tool init (lb/trk) that may exit non-zero with "already initialized"
+# against an existing repo. Treat that one case as benign; real failures still
+# propagate. Matches the host-side litebrite.rs silencing.
+_mm_tool_init() {{
+  local _out
+  if _out=$("$@" 2>&1); then
+    [ -n "$_out" ] && echo "$_out"
+    return 0
+  fi
+  if echo "$_out" | grep -q "already initialized"; then
+    return 0
+  fi
+  echo "$_out" >&2
+  return 1
+}}
+
 _mm_mark setup-start
 
 # --- Tool versions ---
@@ -1075,14 +1115,14 @@ if [ -d "$work_dir/.git" ]; then
   if git show-ref --quiet refs/heads/litebrite refs/remotes/origin/litebrite 2>/dev/null; then
     command -v lb >/dev/null || {{ echo "::mrmouth::missing-tool tool=lb reason=litebrite branch exists but binary not in image" >&2; exit 64; }}
     echo "Initializing litebrite..."
-    lb init
+    _mm_tool_init lb init
     lb setup claude 2>/dev/null || true
     lb sync 2>/dev/null || true
   fi
   if git show-ref --quiet refs/heads/trapperkeeper refs/remotes/origin/trapperkeeper 2>/dev/null; then
     command -v trk >/dev/null || {{ echo "::mrmouth::missing-tool tool=trk reason=trapperkeeper branch exists but binary not in image" >&2; exit 64; }}
     echo "Initializing trapperkeeper..."
-    trk init
+    _mm_tool_init trk init
     trk setup claude 2>/dev/null || true
     trk sync 2>/dev/null || true
   fi
@@ -1209,7 +1249,7 @@ pub enum RunError {
     Docker(crate::docker::DockerError),
     Io(String, std::io::Error),
     ContainerFailed { code: i32, reason: String, log_path: PathBuf },
-    SessionSetupFailed { code: i32 },
+    SessionSetupFailed { code: i32, reason: String, log_path: PathBuf },
 }
 
 impl std::fmt::Display for RunError {
@@ -1221,8 +1261,8 @@ impl std::fmt::Display for RunError {
             Self::ContainerFailed { code, reason, .. } => {
                 write!(f, "container exited with code {code}: {reason}")
             }
-            Self::SessionSetupFailed { code } => {
-                write!(f, "session setup failed (exit code {code})")
+            Self::SessionSetupFailed { code, reason, .. } => {
+                write!(f, "session setup failed (exit code {code}): {reason}")
             }
         }
     }
@@ -1236,6 +1276,7 @@ impl RunError {
     pub fn log_path(&self) -> Option<&Path> {
         match self {
             Self::ContainerFailed { log_path, .. } => Some(log_path),
+            Self::SessionSetupFailed { log_path, .. } => Some(log_path),
             _ => None,
         }
     }
@@ -1244,6 +1285,7 @@ impl RunError {
     pub fn exit_code(&self) -> Option<i32> {
         match self {
             Self::ContainerFailed { code, .. } => Some(*code),
+            Self::SessionSetupFailed { code, .. } => Some(*code),
             _ => None,
         }
     }
@@ -1253,6 +1295,7 @@ impl RunError {
     pub fn short_reason(&self) -> String {
         match self {
             Self::ContainerFailed { code, reason, .. } => format!("exit {code} — {reason}"),
+            Self::SessionSetupFailed { code, reason, .. } => format!("session setup exit {code} — {reason}"),
             other => other.to_string(),
         }
     }
@@ -1265,6 +1308,12 @@ impl RunError {
         match self {
             Self::ContainerFailed { code, reason, log_path } => {
                 let mut d = crate::debrief::FailureDebrief::new(format!("container exited with code {code}: {reason}"));
+                d.exit_code = Some(*code);
+                d.log_path = Some(log_path.clone());
+                d
+            }
+            Self::SessionSetupFailed { code, reason, log_path } => {
+                let mut d = crate::debrief::FailureDebrief::new(format!("session setup failed (exit code {code}): {reason}"));
                 d.exit_code = Some(*code);
                 d.log_path = Some(log_path.clone());
                 d

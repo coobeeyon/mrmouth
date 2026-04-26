@@ -226,7 +226,8 @@ fn execute_epic(
 
     if let Some(t) = tui { t.set_stage("Session setup"); }
     emit(tui_tx, "Starting session container...");
-    let mut session = match run::start_session(config, repo_root, feature_branch, tui, epic_logger) {
+    let epic_log_path = repo_root.join(&config.log_dir).join("epic.log");
+    let mut session = match run::start_session(config, repo_root, feature_branch, tui, epic_logger, &epic_log_path) {
         Ok(s) => s,
         Err(e) => {
             emit(tui_tx, &format!("Session start failed: {e}"));
@@ -435,7 +436,8 @@ fn maybe_restart_session_on_dockerfile_change(
     }
 
     emit(tui_tx, "Dockerfile changed — restarting session with new image...");
-    let fresh = crate::run::start_session(config, repo_root, feature_branch, tui, epic_logger)?;
+    let epic_log_path = repo_root.join(&config.log_dir).join("epic.log");
+    let fresh = crate::run::start_session(config, repo_root, feature_branch, tui, epic_logger, &epic_log_path)?;
     let stale = std::mem::replace(session, fresh);
     crate::run::stop_session(stale, Some(epic_logger));
     Ok(())
