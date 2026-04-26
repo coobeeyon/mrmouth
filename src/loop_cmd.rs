@@ -324,7 +324,7 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions, tui: Option
         // restart the session only if the image ID moved.
         if let Err(e) = maybe_restart_session_on_dockerfile_change(
             config, repo_root, &current_branch, &mut session, tui, &tui_tx,
-            session_logger, &session_log_path,
+            session_logger,
         ) {
             emit(&tui_tx, &format!("Session restart failed: {e}"));
             return Err(LoopError::SessionStart(Box::new(e)));
@@ -361,7 +361,6 @@ fn maybe_restart_session_on_dockerfile_change(
     tui: Option<&TuiHandle>,
     tui_tx: &Option<TuiSender>,
     session_logger: &Logger,
-    session_log_path: &Path,
 ) -> Result<(), crate::run::RunError> {
     let docker = crate::docker::DockerBuilder::new(&config.image);
     if docker.build(repo_root, &config.dockerfile).is_err() {
@@ -373,7 +372,8 @@ fn maybe_restart_session_on_dockerfile_change(
     }
 
     emit(tui_tx, "Dockerfile changed — restarting session with new image...");
-    let fresh = crate::run::start_session(config, repo_root, current_branch, tui, session_logger, session_log_path)?;
+    let session_log_path = repo_root.join(&config.log_dir).join("session.log");
+    let fresh = crate::run::start_session(config, repo_root, current_branch, tui, session_logger, &session_log_path)?;
     let stale = std::mem::replace(session, fresh);
     crate::run::stop_session(stale, Some(session_logger));
     Ok(())
