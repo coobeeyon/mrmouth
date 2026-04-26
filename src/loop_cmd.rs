@@ -177,9 +177,22 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions, tui: Option
     };
     emit(&tui_tx, &format!("Agent loop: {}s between runs, max={}, Ctrl-C to stop", opts.delay, max_label));
 
+    // Boot a long-lived session container, reused across iterations. Setup
+    // (clone, lb init, claude.json restore) runs once; each iteration execs
+    // task.sh instead of starting a fresh container. The loop_logger here is
+    // required — we need a place to stream session setup output.
+    let session_logger = loop_logger.as_ref().ok_or_else(|| {
+        LoopError::Bootstrap("loop logger missing — cannot start session".into())
+    })?;
+    let session_log_path = log_dir.join("session.log");
+    if let Some(t) = tui { t.set_stage("Session setup"); }
+    emit(&tui_tx, "Starting session container...");
+    let mut session = run::start_session(config, repo_root, &current_branch, tui, session_logger, &session_log_path)
+        .map_err(|e| LoopError::SessionStart(Box::new(e)))?;
+
     let mut run_number: u32 = 0;
 
-    loop {
+    let loop_result = (|| -> Result<(), LoopError> { loop {
         run_number += 1;
 
         // Check if TUI user cancelled
@@ -255,7 +268,7 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions, tui: Option
         let head_before = git_head(repo_root);
 
         if let Some(t) = tui { t.set_run(Some(format!("Run {run_number}"))); }
-        let run_result = run::execute(config, repo_root, run_opts, tui);
+        let run_result = run::execute_in_session(config, repo_root, run_opts, &session, tui);
         let run_logger: Option<Logger> = match run_result {
             Ok(logger) => Some(logger),
             Err(e) => {
@@ -306,6 +319,17 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions, tui: Option
             }
         }
 
+        // Dockerfile-hash check: if the agent or decider edited the Dockerfile,
+        // the session's image is now stale. Rebuild (cheap on cache hit) and
+        // restart the session only if the image ID moved.
+        if let Err(e) = maybe_restart_session_on_dockerfile_change(
+            config, repo_root, &current_branch, &mut session, tui, &tui_tx,
+            session_logger, &session_log_path,
+        ) {
+            emit(&tui_tx, &format!("Session restart failed: {e}"));
+            return Err(LoopError::SessionStart(Box::new(e)));
+        }
+
         // Check if TUI user cancelled before sleeping
         if tui.is_some_and(|t| t.is_cancelled()) {
             emit(&tui_tx, "LOOP CANCELLED BY USER");
@@ -317,7 +341,41 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions, tui: Option
             std::thread::sleep(std::time::Duration::from_secs(opts.delay as u64));
         }
     }
+    Ok(())
+    })();
 
+    // Tear down the session regardless of how the loop exited.
+    run::stop_session(session, loop_logger.as_ref());
+
+    loop_result
+}
+
+/// Rebuild the Docker image (cheap if cached) and, if the new image ID
+/// differs from the session's, tear down `*session` and replace it with a
+/// fresh one. A build failure is non-fatal — we keep the existing session.
+fn maybe_restart_session_on_dockerfile_change(
+    config: &Config,
+    repo_root: &Path,
+    current_branch: &str,
+    session: &mut crate::run::Session,
+    tui: Option<&TuiHandle>,
+    tui_tx: &Option<TuiSender>,
+    session_logger: &Logger,
+    session_log_path: &Path,
+) -> Result<(), crate::run::RunError> {
+    let docker = crate::docker::DockerBuilder::new(&config.image);
+    if docker.build(repo_root, &config.dockerfile).is_err() {
+        return Ok(());
+    }
+    let new_image_id = docker.image_id().unwrap_or_default();
+    if new_image_id.is_empty() || new_image_id == session.image_id {
+        return Ok(());
+    }
+
+    emit(tui_tx, "Dockerfile changed — restarting session with new image...");
+    let fresh = crate::run::start_session(config, repo_root, current_branch, tui, session_logger, session_log_path)?;
+    let stale = std::mem::replace(session, fresh);
+    crate::run::stop_session(stale, Some(session_logger));
     Ok(())
 }
 
@@ -329,6 +387,18 @@ enum Decision {
 
 fn should_continue(repo_root: &Path, decider_model: &str, logger: Option<&Logger>, log_dir: &Path) -> Result<Decision, LoopError> {
     crate::logger::log(logger, "DECISION");
+
+    // Short-circuit: if open tasks already exist in the tracker, the runner has
+    // work to do and we don't need to spend an LLM call on the decision. The
+    // decider only earns its keep when there's actual judgement required —
+    // decompose epics, check spec, decide ship/stop.
+    if let Some(n) = crate::litebrite::open_task_count(repo_root) {
+        if n > 0 {
+            let msg = format!("open tasks: {n}");
+            crate::logger::log(logger, &format!("decision: continue ({msg}) — skipped LLM"));
+            return Ok(Decision::Continue(msg));
+        }
+    }
 
     // Create dedicated decider log + jsonl files
     let timestamp = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
@@ -459,6 +529,7 @@ pub enum LoopError {
     Bootstrap(String),
     Decider(String),
     BranchCreation(String),
+    SessionStart(Box<crate::run::RunError>),
 }
 
 impl std::fmt::Display for LoopError {
@@ -467,6 +538,7 @@ impl std::fmt::Display for LoopError {
             Self::Bootstrap(msg) => write!(f, "bootstrap error: {msg}"),
             Self::Decider(msg) => write!(f, "decider error: {msg}"),
             Self::BranchCreation(msg) => write!(f, "branch creation error: {msg}"),
+            Self::SessionStart(e) => write!(f, "session start error: {e}"),
         }
     }
 }
@@ -474,9 +546,13 @@ impl std::fmt::Display for LoopError {
 impl std::error::Error for LoopError {}
 
 impl LoopError {
-    /// LoopError variants all fail before a run log exists, so the debrief
-    /// just carries the Display message.
+    /// Most LoopError variants fail before a run log exists, so the debrief
+    /// just carries the Display message. SessionStart delegates to the inner
+    /// RunError so the session-setup log path + tail are surfaced.
     pub fn debrief(&self) -> crate::debrief::FailureDebrief {
-        crate::debrief::FailureDebrief::new(self.to_string())
+        match self {
+            Self::SessionStart(e) => e.debrief(),
+            _ => crate::debrief::FailureDebrief::new(self.to_string()),
+        }
     }
 }
