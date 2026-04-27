@@ -7,6 +7,7 @@ use std::time::Duration;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
+use crate::agent::AgentKind;
 use crate::config::Config;
 use crate::docker::{ContainerArgs, DockerBuilder};
 use crate::litebrite;
@@ -48,20 +49,25 @@ pub struct Session {
 
 /// Execute one agent run. Returns the Logger so callers can continue writing to the same
 /// log file for subsequent stages (reviewer, decider, summary, etc.).
-pub fn execute(config: &Config, repo_root: &Path, opts: RunOptions, tui: Option<&TuiHandle>) -> Result<Logger, RunError> {
-    if let Some(t) = tui { t.set_stage("Agent"); }
+pub fn execute(
+    config: &Config,
+    repo_root: &Path,
+    opts: RunOptions,
+    tui: Option<&TuiHandle>,
+) -> Result<Logger, RunError> {
+    if let Some(t) = tui {
+        t.set_stage("Agent");
+    }
     // 0. Set up logging first so every stage is captured
     let log_dir = repo_root.join(&config.log_dir);
-    fs::create_dir_all(&log_dir)
-        .map_err(|e| RunError::Io("creating log directory".into(), e))?;
+    fs::create_dir_all(&log_dir).map_err(|e| RunError::Io("creating log directory".into(), e))?;
     let timestamp = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
     let log_filename = format!("run-{timestamp}.log");
     let log_path = log_dir.join(&log_filename);
     let logger = match tui {
         Some(t) => Logger::with_tui(&log_path, t.sender("AGENT SESSION"))
             .map_err(|e| RunError::Io("creating log file".into(), e))?,
-        None => Logger::new(&log_path)
-            .map_err(|e| RunError::Io("creating log file".into(), e))?,
+        None => Logger::new(&log_path).map_err(|e| RunError::Io("creating log file".into(), e))?,
     };
 
     // Resolve branch early so we can include it in the opening banner
@@ -78,13 +84,16 @@ pub fn execute(config: &Config, repo_root: &Path, opts: RunOptions, tui: Option<
     if local && !opts.local {
         logger.log("Tooling branch exists locally but not on remote — using local mode.");
     }
-    let effective_dockerfile = crate::docker::effective_dockerfile_content(repo_root, &config.dockerfile);
+    let effective_dockerfile =
+        crate::docker::effective_dockerfile_content(repo_root, &config.dockerfile);
     if preflight_skipped() {
         logger.log("MRMOUTH_SKIP_PREFLIGHT=1 — skipping preflight checks.");
     } else {
         logger.log("Checking preflight conditions...");
     }
-    preflight(repo_root, local, &effective_dockerfile, Some(&logger)).inspect_err(|_| { logger.flush(); })?;
+    preflight(repo_root, local, &effective_dockerfile, Some(&logger)).inspect_err(|_| {
+        logger.flush();
+    })?;
 
     // 2. Resolve repo URL
     let (repo_url, file_remote_path) = if local {
@@ -94,7 +103,10 @@ pub fn execute(config: &Config, repo_root: &Path, opts: RunOptions, tui: Option<
             Some(url) => (url, None),
             None => {
                 configure_file_remote(repo_root)?;
-                ("file:///host-repo".to_string(), Some(repo_root.to_path_buf()))
+                (
+                    "file:///host-repo".to_string(),
+                    Some(repo_root.to_path_buf()),
+                )
             }
         }
     };
@@ -104,7 +116,15 @@ pub fn execute(config: &Config, repo_root: &Path, opts: RunOptions, tui: Option<
     litebrite::init_and_sync(repo_root, Some(&logger));
 
     // 4. Write runner entrypoint script
-    let runner_script = write_runner_script(repo_root, &opts.model, opts.prompt_override.as_deref(), &effective_dockerfile, &config.dockerfile, Some(&logger))?;
+    let runner_script = write_runner_script(
+        config.agent,
+        repo_root,
+        &opts.model,
+        opts.prompt_override.as_deref(),
+        &effective_dockerfile,
+        &config.dockerfile,
+        Some(&logger),
+    )?;
 
     // 5. Build Docker image
     logger.log("Docker build starting...");
@@ -113,13 +133,14 @@ pub fn execute(config: &Config, repo_root: &Path, opts: RunOptions, tui: Option<
     docker
         .build(repo_root, &config.dockerfile)
         .map_err(RunError::Docker)?;
-    logger.log(&format!("::mrmouth::timing phase=docker-build elapsed_ms={}", build_start.elapsed().as_millis()));
+    logger.log(&format!(
+        "::mrmouth::timing phase=docker-build elapsed_ms={}",
+        build_start.elapsed().as_millis()
+    ));
 
     // 6. Ensure persistent volume
     let volume = config.effective_volume(repo_root);
-    docker
-        .ensure_volume(&volume)
-        .map_err(RunError::Docker)?;
+    docker.ensure_volume(&volume).map_err(RunError::Docker)?;
 
     // 7. Set up JSONL log alongside the text log
     let jsonl_filename = format!("run-{timestamp}.jsonl");
@@ -140,6 +161,7 @@ pub fn execute(config: &Config, repo_root: &Path, opts: RunOptions, tui: Option<
         branch: branch.clone(),
         runner_script: runner_script.to_path_buf(),
         volume,
+        agent_home: config.agent.home_mount(),
         local,
         file_remote_path: file_remote_path.clone(),
         timeout_secs: opts.timeout.map(|m| m as u64 * 60),
@@ -170,8 +192,8 @@ pub fn execute(config: &Config, repo_root: &Path, opts: RunOptions, tui: Option<
     };
 
     // 9. Stream output — raw JSONL to .jsonl file, formatted text to terminal + .log file
-    let jsonl_file = File::create(&jsonl_path)
-        .map_err(|e| RunError::Io("creating jsonl file".into(), e))?;
+    let jsonl_file =
+        File::create(&jsonl_path).map_err(|e| RunError::Io("creating jsonl file".into(), e))?;
     let mut jsonl_writer = BufWriter::new(jsonl_file);
     let is_tty = logger.has_tui() || std::io::stdout().is_terminal();
 
@@ -202,8 +224,13 @@ pub fn execute(config: &Config, repo_root: &Path, opts: RunOptions, tui: Option<
     // 10. Wait for container exit
     let exit_code = handle.wait().map_err(RunError::Docker)?;
     watcher_done.store(true, Ordering::Relaxed);
-    logger.log(&format!("::mrmouth::timing phase=container-wall elapsed_ms={}", container_start.elapsed().as_millis()));
-    logger.log(&format!("Container {container_name} finished (exit code {exit_code})."));
+    logger.log(&format!(
+        "::mrmouth::timing phase=container-wall elapsed_ms={}",
+        container_start.elapsed().as_millis()
+    ));
+    logger.log(&format!(
+        "Container {container_name} finished (exit code {exit_code})."
+    ));
 
     // 11. Update symlinks atomically (latest.jsonl and latest.log)
     let latest_jsonl = log_dir.join("latest.jsonl");
@@ -255,7 +282,11 @@ pub fn execute(config: &Config, repo_root: &Path, opts: RunOptions, tui: Option<
         // Flush so classify_exit reads everything the runner script wrote.
         logger.flush();
         let reason = classify_exit(exit_code, &log_path);
-        return Err(RunError::ContainerFailed { code: exit_code, reason, log_path: log_path.clone() });
+        return Err(RunError::ContainerFailed {
+            code: exit_code,
+            reason,
+            log_path: log_path.clone(),
+        });
     }
 
     Ok(logger)
@@ -274,13 +305,15 @@ pub fn start_session(
 ) -> Result<Session, RunError> {
     // 1. Preflight
     let local = has_local_only_tooling_branch(repo_root);
-    let effective_dockerfile = crate::docker::effective_dockerfile_content(repo_root, &config.dockerfile);
+    let effective_dockerfile =
+        crate::docker::effective_dockerfile_content(repo_root, &config.dockerfile);
     if preflight_skipped() {
         logger.log("MRMOUTH_SKIP_PREFLIGHT=1 — skipping preflight checks.");
     } else {
         logger.log("Checking preflight conditions...");
     }
-    preflight(repo_root, local, &effective_dockerfile, Some(logger)).inspect_err(|_| logger.flush())?;
+    preflight(repo_root, local, &effective_dockerfile, Some(logger))
+        .inspect_err(|_| logger.flush())?;
 
     // 2. Repo URL
     let (repo_url, file_remote_path) = if local {
@@ -290,7 +323,10 @@ pub fn start_session(
             Some(url) => (url, None),
             None => {
                 configure_file_remote(repo_root)?;
-                ("file:///host-repo".to_string(), Some(repo_root.to_path_buf()))
+                (
+                    "file:///host-repo".to_string(),
+                    Some(repo_root.to_path_buf()),
+                )
             }
         }
     };
@@ -303,7 +339,9 @@ pub fn start_session(
     logger.log("Docker build starting...");
     let docker = DockerBuilder::new(&config.image);
     let build_start = std::time::Instant::now();
-    docker.build(repo_root, &config.dockerfile).map_err(RunError::Docker)?;
+    docker
+        .build(repo_root, &config.dockerfile)
+        .map_err(RunError::Docker)?;
     logger.log(&format!(
         "::mrmouth::timing phase=docker-build elapsed_ms={}",
         build_start.elapsed().as_millis()
@@ -315,15 +353,20 @@ pub fn start_session(
     docker.ensure_volume(&volume).map_err(RunError::Docker)?;
 
     // 6. Scripts dir + setup.sh
-    let scripts_dir = tempfile::tempdir()
-        .map_err(|e| RunError::Io("creating scripts dir".into(), e))?;
+    let scripts_dir =
+        tempfile::tempdir().map_err(|e| RunError::Io("creating scripts dir".into(), e))?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         let perms = std::fs::Permissions::from_mode(0o755);
         let _ = std::fs::set_permissions(scripts_dir.path(), perms);
     }
-    write_setup_script(scripts_dir.path(), &effective_dockerfile, &config.dockerfile)?;
+    write_setup_script(
+        config.agent,
+        scripts_dir.path(),
+        &effective_dockerfile,
+        &config.dockerfile,
+    )?;
 
     // 7. Start detached container
     let timestamp = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
@@ -335,11 +378,16 @@ pub fn start_session(
         repo_url: repo_url.clone(),
         scripts_dir: scripts_dir.path().to_path_buf(),
         volume: volume.clone(),
+        agent_home: config.agent.home_mount(),
         local,
         file_remote_path: file_remote_path.clone(),
     };
-    docker.start_session(&session_args).map_err(RunError::Docker)?;
-    logger.log(&format!("SESSION START  container={container_name}  image={image_id}"));
+    docker
+        .start_session(&session_args)
+        .map_err(RunError::Docker)?;
+    logger.log(&format!(
+        "SESSION START  container={container_name}  image={image_id}"
+    ));
 
     // 8. Run setup.sh (generous timeout — includes clone + deps)
     let env_vars = vec![
@@ -347,8 +395,13 @@ pub fn start_session(
         ("BRANCH".to_string(), initial_branch.to_string()),
     ];
     let setup_start = std::time::Instant::now();
-    let mut handle = crate::docker::DockerBuilder::exec_script(&container_name, "setup.sh", &env_vars, Some(600))
-        .map_err(RunError::Docker)?;
+    let mut handle = crate::docker::DockerBuilder::exec_script(
+        &container_name,
+        "setup.sh",
+        &env_vars,
+        Some(600),
+    )
+    .map_err(RunError::Docker)?;
 
     // Cancel watcher: if user hits quit during setup, stop the container so
     // setup.sh aborts instead of running to its 10-minute timeout.
@@ -370,7 +423,9 @@ pub fn start_session(
         None
     };
 
-    handle.stream_output(|line| logger.log(line)).map_err(RunError::Docker)?;
+    handle
+        .stream_output(|line| logger.log(line))
+        .map_err(RunError::Docker)?;
     let exit = handle.wait().map_err(RunError::Docker)?;
     watcher_done.store(true, Ordering::Relaxed);
     logger.log(&format!(
@@ -409,7 +464,9 @@ pub fn execute_in_session(
     session: &Session,
     tui: Option<&TuiHandle>,
 ) -> Result<Logger, RunError> {
-    if let Some(t) = tui { t.set_stage("Agent"); }
+    if let Some(t) = tui {
+        t.set_stage("Agent");
+    }
 
     // 0. Per-task log
     let log_dir = repo_root.join(&config.log_dir);
@@ -420,8 +477,7 @@ pub fn execute_in_session(
     let logger = match tui {
         Some(t) => Logger::with_tui(&log_path, t.sender("AGENT SESSION"))
             .map_err(|e| RunError::Io("creating log file".into(), e))?,
-        None => Logger::new(&log_path)
-            .map_err(|e| RunError::Io("creating log file".into(), e))?,
+        None => Logger::new(&log_path).map_err(|e| RunError::Io("creating log file".into(), e))?,
     };
 
     let branch = opts
@@ -440,7 +496,12 @@ pub fn execute_in_session(
         Some(p) => p.to_string(),
         None => prompt::load_prompt(repo_root, Some(&logger)),
     };
-    write_task_script(session.scripts_dir.path(), &opts.model, &prompt_text)?;
+    write_task_script(
+        config.agent,
+        session.scripts_dir.path(),
+        &opts.model,
+        &prompt_text,
+    )?;
 
     // 2. Exec task.sh
     let env_vars = vec![("BRANCH".to_string(), branch.clone())];
@@ -448,8 +509,8 @@ pub fn execute_in_session(
 
     let jsonl_filename = format!("run-{timestamp}.jsonl");
     let jsonl_path = log_dir.join(&jsonl_filename);
-    let jsonl_file = File::create(&jsonl_path)
-        .map_err(|e| RunError::Io("creating jsonl file".into(), e))?;
+    let jsonl_file =
+        File::create(&jsonl_path).map_err(|e| RunError::Io("creating jsonl file".into(), e))?;
     let mut jsonl_writer = BufWriter::new(jsonl_file);
     let is_tty = logger.has_tui() || std::io::stdout().is_terminal();
 
@@ -529,7 +590,11 @@ pub fn execute_in_session(
     if !session.local {
         let dockerfile_dest = repo_root.join(&config.dockerfile);
         let container_path = format!("/home/runner/workspace/{}", config.dockerfile);
-        if DockerBuilder::copy_from_container(&session.container_name, &container_path, &dockerfile_dest) {
+        if DockerBuilder::copy_from_container(
+            &session.container_name,
+            &container_path,
+            &dockerfile_dest,
+        ) {
             logger.log("Extracted updated Dockerfile from container.");
         }
     }
@@ -561,7 +626,11 @@ pub fn execute_in_session(
     if exit_code != 0 {
         logger.flush();
         let reason = classify_exit(exit_code, &log_path);
-        return Err(RunError::ContainerFailed { code: exit_code, reason, log_path: log_path.clone() });
+        return Err(RunError::ContainerFailed {
+            code: exit_code,
+            reason,
+            log_path: log_path.clone(),
+        });
     }
 
     Ok(logger)
@@ -602,7 +671,11 @@ fn preflight(
         .status();
     match docker_check {
         Ok(s) if s.success() => {}
-        _ => return Err(RunError::Preflight("Docker is not available. Is Docker running?".into())),
+        _ => {
+            return Err(RunError::Preflight(
+                "Docker is not available. Is Docker running?".into(),
+            ))
+        }
     }
 
     // Best-effort diagnostic — never blocks preflight.
@@ -626,7 +699,13 @@ fn preflight(
             .status()
             .map_err(|e| RunError::Io("checking git diff".into(), e))?;
         let cached_status = Command::new("git")
-            .args(["-C", &repo_root.to_string_lossy(), "diff", "--cached", "--quiet"])
+            .args([
+                "-C",
+                &repo_root.to_string_lossy(),
+                "diff",
+                "--cached",
+                "--quiet",
+            ])
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .status()
@@ -683,12 +762,16 @@ fn check_disk_space(logger: Option<&Logger>) {
     const DOCKER_DIR: &str = "/var/lib/docker";
     const WARN_THRESHOLD_GB: u64 = 2;
 
-    let Ok(output) = Command::new("df").args(["-P", DOCKER_DIR]).output() else { return };
+    let Ok(output) = Command::new("df").args(["-P", DOCKER_DIR]).output() else {
+        return;
+    };
     if !output.status.success() {
         return;
     }
     let text = String::from_utf8_lossy(&output.stdout);
-    let Some(avail_kb) = parse_df_available_kb(&text) else { return };
+    let Some(avail_kb) = parse_df_available_kb(&text) else {
+        return;
+    };
 
     let avail_gb = avail_kb / (1024 * 1024);
     if avail_gb < WARN_THRESHOLD_GB {
@@ -713,9 +796,18 @@ fn parse_df_available_kb(text: &str) -> Option<u64> {
 
 /// Returns true if `branch` exists locally or on origin.
 fn tooling_branch_exists(repo_root: &Path, branch: &str) -> bool {
-    for reference in [format!("refs/heads/{branch}"), format!("refs/remotes/origin/{branch}")] {
+    for reference in [
+        format!("refs/heads/{branch}"),
+        format!("refs/remotes/origin/{branch}"),
+    ] {
         let ok = Command::new("git")
-            .args(["-C", &repo_root.to_string_lossy(), "show-ref", "--quiet", &reference])
+            .args([
+                "-C",
+                &repo_root.to_string_lossy(),
+                "show-ref",
+                "--quiet",
+                &reference,
+            ])
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .status()
@@ -752,9 +844,17 @@ fn run_with_timeout(mut cmd: Command, timeout: Duration) -> std::io::Result<Time
             Some(status) => {
                 let mut stdout = Vec::new();
                 let mut stderr = Vec::new();
-                if let Some(mut s) = child.stdout.take() { let _ = s.read_to_end(&mut stdout); }
-                if let Some(mut s) = child.stderr.take() { let _ = s.read_to_end(&mut stderr); }
-                return Ok(TimeoutOutcome::Completed(std::process::Output { status, stdout, stderr }));
+                if let Some(mut s) = child.stdout.take() {
+                    let _ = s.read_to_end(&mut stdout);
+                }
+                if let Some(mut s) = child.stderr.take() {
+                    let _ = s.read_to_end(&mut stderr);
+                }
+                return Ok(TimeoutOutcome::Completed(std::process::Output {
+                    status,
+                    stdout,
+                    stderr,
+                }));
             }
             None => {
                 if start.elapsed() >= timeout {
@@ -773,7 +873,14 @@ fn run_with_timeout(mut cmd: Command, timeout: Duration) -> std::io::Result<Time
 /// opaquely inside `git clone`; this catches it before docker build.
 fn check_origin_reachable(repo_root: &Path) -> Result<(), RunError> {
     let mut cmd = Command::new("git");
-    cmd.args(["-C", &repo_root.to_string_lossy(), "ls-remote", "--exit-code", "origin", "HEAD"]);
+    cmd.args([
+        "-C",
+        &repo_root.to_string_lossy(),
+        "ls-remote",
+        "--exit-code",
+        "origin",
+        "HEAD",
+    ]);
 
     let outcome = run_with_timeout(cmd, Duration::from_secs(8))
         .map_err(|e| RunError::Io("running git ls-remote".into(), e))?;
@@ -807,7 +914,9 @@ fn is_ssh_remote(url: &str) -> bool {
 /// without it, the container has no way to authenticate git@ clones/pushes
 /// and will either hang on a password prompt or fail with a permission error.
 fn check_ssh_agent() -> Result<(), RunError> {
-    let sock = std::env::var("SSH_AUTH_SOCK").ok().filter(|s| !s.is_empty());
+    let sock = std::env::var("SSH_AUTH_SOCK")
+        .ok()
+        .filter(|s| !s.is_empty());
     match sock {
         None => Err(RunError::Preflight(
             "origin is SSH (git@...) but SSH_AUTH_SOCK is not set — start an ssh-agent and ssh-add your key.".into(),
@@ -821,7 +930,13 @@ fn check_ssh_agent() -> Result<(), RunError> {
 
 fn git_remote_url(repo_root: &Path) -> Option<String> {
     let output = Command::new("git")
-        .args(["-C", &repo_root.to_string_lossy(), "remote", "get-url", "origin"])
+        .args([
+            "-C",
+            &repo_root.to_string_lossy(),
+            "remote",
+            "get-url",
+            "origin",
+        ])
         .output()
         .ok()?;
     if output.status.success() {
@@ -833,13 +948,21 @@ fn git_remote_url(repo_root: &Path) -> Option<String> {
 
 fn configure_file_remote(repo_root: &Path) -> Result<(), RunError> {
     let status = Command::new("git")
-        .args(["-C", &repo_root.to_string_lossy(), "config", "receive.denyCurrentBranch", "updateInstead"])
+        .args([
+            "-C",
+            &repo_root.to_string_lossy(),
+            "config",
+            "receive.denyCurrentBranch",
+            "updateInstead",
+        ])
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .status()
         .map_err(|e| RunError::Io("configuring git receive policy".into(), e))?;
     if !status.success() {
-        return Err(RunError::Preflight("failed to set receive.denyCurrentBranch = updateInstead".into()));
+        return Err(RunError::Preflight(
+            "failed to set receive.denyCurrentBranch = updateInstead".into(),
+        ));
     }
     Ok(())
 }
@@ -848,7 +971,13 @@ fn configure_file_remote(repo_root: &Path) -> Result<(), RunError> {
 fn has_local_only_tooling_branch(repo_root: &Path) -> bool {
     for branch in &["litebrite", "trapperkeeper"] {
         let local_exists = Command::new("git")
-            .args(["-C", &repo_root.to_string_lossy(), "show-ref", "--quiet", &format!("refs/heads/{branch}")])
+            .args([
+                "-C",
+                &repo_root.to_string_lossy(),
+                "show-ref",
+                "--quiet",
+                &format!("refs/heads/{branch}"),
+            ])
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .status()
@@ -859,7 +988,13 @@ fn has_local_only_tooling_branch(repo_root: &Path) -> bool {
         }
 
         let remote_exists = Command::new("git")
-            .args(["-C", &repo_root.to_string_lossy(), "show-ref", "--quiet", &format!("refs/remotes/origin/{branch}")])
+            .args([
+                "-C",
+                &repo_root.to_string_lossy(),
+                "show-ref",
+                "--quiet",
+                &format!("refs/remotes/origin/{branch}"),
+            ])
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .status()
@@ -874,7 +1009,12 @@ fn has_local_only_tooling_branch(repo_root: &Path) -> bool {
 
 fn git_current_branch(repo_root: &Path) -> Result<String, RunError> {
     let output = Command::new("git")
-        .args(["-C", &repo_root.to_string_lossy(), "branch", "--show-current"])
+        .args([
+            "-C",
+            &repo_root.to_string_lossy(),
+            "branch",
+            "--show-current",
+        ])
         .output()
         .map_err(|e| RunError::Io("getting current branch".into(), e))?;
 
@@ -882,6 +1022,7 @@ fn git_current_branch(repo_root: &Path) -> Result<String, RunError> {
 }
 
 fn write_runner_script(
+    agent: AgentKind,
     repo_root: &Path,
     model: &str,
     prompt_override: Option<&str>,
@@ -894,6 +1035,11 @@ fn write_runner_script(
         None => prompt::load_prompt(repo_root, logger),
     };
     let escaped_prompt = prompt_text.replace('\'', "'\\''");
+    let agent_name = agent.as_str();
+    let agent_bin = agent.binary();
+    let agent_version_line = agent.version_line();
+    let agent_restore_block = agent.restore_block();
+    let agent_command = agent.shell_command_with_disallowed_tools(model, &escaped_prompt);
 
     let script = format!(
         r#"#!/usr/bin/env bash
@@ -927,7 +1073,7 @@ echo "::mrmouth::versions"
 git --version || true
 lb --version 2>/dev/null || echo "lb: not installed"
 trk --version 2>/dev/null || echo "trk: not installed"
-claude --version 2>/dev/null || echo "claude: not installed"
+{agent_version_line}
 echo "::mrmouth::versions-end"
 _mm_mark versions-done
 
@@ -967,35 +1113,27 @@ if [ -d "$work_dir/.git" ]; then
     command -v lb >/dev/null || {{ echo "::mrmouth::missing-tool tool=lb reason=litebrite branch exists but binary not in image" >&2; exit 64; }}
     echo "Initializing litebrite..."
     _mm_tool_init lb init
-    lb setup claude 2>/dev/null || true
+    lb setup {agent_name} 2>/dev/null || true
     lb sync 2>/dev/null || true
   fi
   if git show-ref --quiet refs/heads/trapperkeeper refs/remotes/origin/trapperkeeper 2>/dev/null; then
     command -v trk >/dev/null || {{ echo "::mrmouth::missing-tool tool=trk reason=trapperkeeper branch exists but binary not in image" >&2; exit 64; }}
     echo "Initializing trapperkeeper..."
     _mm_tool_init trk init
-    trk setup claude 2>/dev/null || true
+    trk setup {agent_name} 2>/dev/null || true
     trk sync 2>/dev/null || true
   fi
 fi
 _mm_mark tooling-done
 
-# --- Restore .claude.json from persisted backup if missing ---
-claude_config="$HOME/.claude.json"
-if [ ! -f "$claude_config" ] && [ -d "$HOME/.claude/backups" ]; then
-  latest_backup=$(ls -t "$HOME/.claude/backups/.claude.json.backup."* 2>/dev/null | head -1 || true)
-  if [ -n "$latest_backup" ]; then
-    cp "$latest_backup" "$claude_config"
-    echo "Restored .claude.json from backup: $(basename "$latest_backup")"
-  fi
-fi
+{agent_restore_block}
 
 # --- Run agent ---
-command -v claude >/dev/null || {{ echo "::mrmouth::missing-tool tool=claude reason=claude binary not in image" >&2; exit 64; }}
+command -v {agent_bin} >/dev/null || {{ echo "::mrmouth::missing-tool tool={agent_bin} reason={agent_bin} binary not in image" >&2; exit 64; }}
 echo "Starting agent run..."
-_mm_mark claude-start
-CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING=1 claude -p --dangerously-skip-permissions --verbose --output-format stream-json --disallowedTools EnterPlanMode,ExitPlanMode --model {model} --effort xhigh '{escaped_prompt}'
-_mm_mark claude-done
+_mm_mark agent-start
+{agent_command}
+_mm_mark agent-done
 
 echo "Agent run complete."
 
@@ -1041,10 +1179,15 @@ _mm_mark script-end
 /// litebrite/trapperkeeper init, claude.json restore.
 #[allow(clippy::useless_format)]
 pub(crate) fn write_setup_script(
+    agent: AgentKind,
     scripts_dir: &Path,
     dockerfile_content: &str,
     dockerfile_path: &str,
 ) -> Result<(), RunError> {
+    let agent_name = agent.as_str();
+    let agent_bin = agent.binary();
+    let agent_version_line = agent.version_line();
+    let agent_restore_block = agent.restore_block();
     let script = format!(
         r#"#!/usr/bin/env bash
 set -euo pipefail
@@ -1077,7 +1220,7 @@ echo "::mrmouth::versions"
 git --version || true
 lb --version 2>/dev/null || echo "lb: not installed"
 trk --version 2>/dev/null || echo "trk: not installed"
-claude --version 2>/dev/null || echo "claude: not installed"
+{agent_version_line}
 echo "::mrmouth::versions-end"
 _mm_mark versions-done
 
@@ -1116,30 +1259,22 @@ if [ -d "$work_dir/.git" ]; then
     command -v lb >/dev/null || {{ echo "::mrmouth::missing-tool tool=lb reason=litebrite branch exists but binary not in image" >&2; exit 64; }}
     echo "Initializing litebrite..."
     _mm_tool_init lb init
-    lb setup claude 2>/dev/null || true
+    lb setup {agent_name} 2>/dev/null || true
     lb sync 2>/dev/null || true
   fi
   if git show-ref --quiet refs/heads/trapperkeeper refs/remotes/origin/trapperkeeper 2>/dev/null; then
     command -v trk >/dev/null || {{ echo "::mrmouth::missing-tool tool=trk reason=trapperkeeper branch exists but binary not in image" >&2; exit 64; }}
     echo "Initializing trapperkeeper..."
     _mm_tool_init trk init
-    trk setup claude 2>/dev/null || true
+    trk setup {agent_name} 2>/dev/null || true
     trk sync 2>/dev/null || true
   fi
 fi
 _mm_mark tooling-done
 
-# --- Restore .claude.json from persisted backup if missing ---
-claude_config="$HOME/.claude.json"
-if [ ! -f "$claude_config" ] && [ -d "$HOME/.claude/backups" ]; then
-  latest_backup=$(ls -t "$HOME/.claude/backups/.claude.json.backup."* 2>/dev/null | head -1 || true)
-  if [ -n "$latest_backup" ]; then
-    cp "$latest_backup" "$claude_config"
-    echo "Restored .claude.json from backup: $(basename "$latest_backup")"
-  fi
-fi
+{agent_restore_block}
 
-command -v claude >/dev/null || {{ echo "::mrmouth::missing-tool tool=claude reason=claude binary not in image" >&2; exit 64; }}
+command -v {agent_bin} >/dev/null || {{ echo "::mrmouth::missing-tool tool={agent_bin} reason={agent_bin} binary not in image" >&2; exit 64; }}
 
 _mm_mark setup-end
 echo "::mrmouth::session-setup-complete"
@@ -1158,11 +1293,13 @@ echo "::mrmouth::session-setup-complete"
 /// switches to the task's branch (stashing any leftover state for safety),
 /// runs the agent, and does post-run sync/push.
 pub(crate) fn write_task_script(
+    agent: AgentKind,
     scripts_dir: &Path,
     model: &str,
     prompt: &str,
 ) -> Result<(), RunError> {
     let escaped_prompt = prompt.replace('\'', "'\\''");
+    let agent_command = agent.shell_command_with_disallowed_tools(model, &escaped_prompt);
 
     let script = format!(
         r#"#!/usr/bin/env bash
@@ -1207,9 +1344,9 @@ trk sync 2>/dev/null || true
 
 # --- Run agent ---
 echo "Starting agent run..."
-_mm_mark claude-start
-CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING=1 claude -p --dangerously-skip-permissions --verbose --output-format stream-json --disallowedTools EnterPlanMode,ExitPlanMode --model {model} --effort xhigh '{escaped_prompt}'
-_mm_mark claude-done
+_mm_mark agent-start
+{agent_command}
+_mm_mark agent-done
 
 echo "Agent run complete."
 
@@ -1248,8 +1385,16 @@ pub enum RunError {
     Preflight(String),
     Docker(crate::docker::DockerError),
     Io(String, std::io::Error),
-    ContainerFailed { code: i32, reason: String, log_path: PathBuf },
-    SessionSetupFailed { code: i32, reason: String, log_path: PathBuf },
+    ContainerFailed {
+        code: i32,
+        reason: String,
+        log_path: PathBuf,
+    },
+    SessionSetupFailed {
+        code: i32,
+        reason: String,
+        log_path: PathBuf,
+    },
 }
 
 impl std::fmt::Display for RunError {
@@ -1295,7 +1440,9 @@ impl RunError {
     pub fn short_reason(&self) -> String {
         match self {
             Self::ContainerFailed { code, reason, .. } => format!("exit {code} — {reason}"),
-            Self::SessionSetupFailed { code, reason, .. } => format!("session setup exit {code} — {reason}"),
+            Self::SessionSetupFailed { code, reason, .. } => {
+                format!("session setup exit {code} — {reason}")
+            }
             other => other.to_string(),
         }
     }
@@ -1306,14 +1453,26 @@ impl RunError {
     /// file exists, so there's nothing to tail.
     pub fn debrief(&self) -> crate::debrief::FailureDebrief {
         match self {
-            Self::ContainerFailed { code, reason, log_path } => {
-                let mut d = crate::debrief::FailureDebrief::new(format!("container exited with code {code}: {reason}"));
+            Self::ContainerFailed {
+                code,
+                reason,
+                log_path,
+            } => {
+                let mut d = crate::debrief::FailureDebrief::new(format!(
+                    "container exited with code {code}: {reason}"
+                ));
                 d.exit_code = Some(*code);
                 d.log_path = Some(log_path.clone());
                 d
             }
-            Self::SessionSetupFailed { code, reason, log_path } => {
-                let mut d = crate::debrief::FailureDebrief::new(format!("session setup failed (exit code {code}): {reason}"));
+            Self::SessionSetupFailed {
+                code,
+                reason,
+                log_path,
+            } => {
+                let mut d = crate::debrief::FailureDebrief::new(format!(
+                    "session setup failed (exit code {code}): {reason}"
+                ));
                 d.exit_code = Some(*code);
                 d.log_path = Some(log_path.clone());
                 d
@@ -1379,7 +1538,8 @@ fn classify_exit_with_tail(code: i32, tail: &str) -> String {
         64 => "missing required tool in container (runner script guard fired — see log)".into(),
         124 => "timed out (timeout wrapper)".into(),
         126 => "permission denied / not executable".into(),
-        127 => "missing command in container (check your Dockerfile includes all expected tools)".into(),
+        127 => "missing command in container (check your Dockerfile includes all expected tools)"
+            .into(),
         137 => "container killed (likely OOM)".into(),
         143 => "timed out (SIGTERM)".into(),
         _ => format!("unrecognised exit code {code}"),
@@ -1390,7 +1550,9 @@ fn classify_exit_with_tail(code: i32, tail: &str) -> String {
 /// any I/O error so callers can keep classifying with what they have.
 fn read_log_tail(log_path: &Path, n_bytes: usize) -> String {
     use std::io::{Read, Seek, SeekFrom};
-    let Ok(mut file) = std::fs::File::open(log_path) else { return String::new(); };
+    let Ok(mut file) = std::fs::File::open(log_path) else {
+        return String::new();
+    };
     let len = file.metadata().map(|m| m.len()).unwrap_or(0);
     let start = len.saturating_sub(n_bytes as u64);
     if file.seek(SeekFrom::Start(start)).is_err() {
@@ -1442,18 +1604,42 @@ mod tests {
     #[test]
     fn runner_script_contains_model() {
         let dir = tempfile::tempdir().unwrap();
-        let tmp = write_runner_script(dir.path(), "sonnet", None, TEST_DOCKERFILE, TEST_DOCKERFILE_PATH, None).unwrap();
+        let tmp = write_runner_script(
+            crate::agent::AgentKind::Claude,
+            dir.path(),
+            "sonnet",
+            None,
+            TEST_DOCKERFILE,
+            TEST_DOCKERFILE_PATH,
+            None,
+        )
+        .unwrap();
         let mut content = String::new();
-        File::open(&tmp).unwrap().read_to_string(&mut content).unwrap();
+        File::open(&tmp)
+            .unwrap()
+            .read_to_string(&mut content)
+            .unwrap();
         assert!(content.contains("--model sonnet"));
     }
 
     #[test]
     fn runner_script_contains_lb_sync() {
         let dir = tempfile::tempdir().unwrap();
-        let tmp = write_runner_script(dir.path(), "opus", None, TEST_DOCKERFILE, TEST_DOCKERFILE_PATH, None).unwrap();
+        let tmp = write_runner_script(
+            crate::agent::AgentKind::Claude,
+            dir.path(),
+            "opus",
+            None,
+            TEST_DOCKERFILE,
+            TEST_DOCKERFILE_PATH,
+            None,
+        )
+        .unwrap();
         let mut content = String::new();
-        File::open(&tmp).unwrap().read_to_string(&mut content).unwrap();
+        File::open(&tmp)
+            .unwrap()
+            .read_to_string(&mut content)
+            .unwrap();
         let init_pos = content.find("lb init").unwrap();
         let sync_pos = content.find("lb sync 2>/dev/null || true").unwrap();
         assert!(sync_pos > init_pos, "lb sync should come after lb init");
@@ -1462,25 +1648,58 @@ mod tests {
     #[test]
     fn runner_script_uses_prompt_override() {
         let dir = tempfile::tempdir().unwrap();
-        let tmp = write_runner_script(dir.path(), "opus", Some("custom prompt here"), TEST_DOCKERFILE, TEST_DOCKERFILE_PATH, None).unwrap();
+        let tmp = write_runner_script(
+            crate::agent::AgentKind::Claude,
+            dir.path(),
+            "opus",
+            Some("custom prompt here"),
+            TEST_DOCKERFILE,
+            TEST_DOCKERFILE_PATH,
+            None,
+        )
+        .unwrap();
         let mut content = String::new();
-        File::open(&tmp).unwrap().read_to_string(&mut content).unwrap();
+        File::open(&tmp)
+            .unwrap()
+            .read_to_string(&mut content)
+            .unwrap();
         assert!(content.contains("custom prompt here"));
     }
 
     #[test]
     fn runner_script_escapes_single_quotes_in_prompt() {
         let dir = tempfile::tempdir().unwrap();
-        let tmp = write_runner_script(dir.path(), "opus", Some("don't break"), TEST_DOCKERFILE, TEST_DOCKERFILE_PATH, None).unwrap();
+        let tmp = write_runner_script(
+            crate::agent::AgentKind::Claude,
+            dir.path(),
+            "opus",
+            Some("don't break"),
+            TEST_DOCKERFILE,
+            TEST_DOCKERFILE_PATH,
+            None,
+        )
+        .unwrap();
         let mut content = String::new();
-        File::open(&tmp).unwrap().read_to_string(&mut content).unwrap();
+        File::open(&tmp)
+            .unwrap()
+            .read_to_string(&mut content)
+            .unwrap();
         assert!(content.contains(r"don'\''t break"));
     }
 
     #[test]
     fn runner_script_is_executable() {
         let dir = tempfile::tempdir().unwrap();
-        let tmp = write_runner_script(dir.path(), "opus", None, TEST_DOCKERFILE, TEST_DOCKERFILE_PATH, None).unwrap();
+        let tmp = write_runner_script(
+            crate::agent::AgentKind::Claude,
+            dir.path(),
+            "opus",
+            None,
+            TEST_DOCKERFILE,
+            TEST_DOCKERFILE_PATH,
+            None,
+        )
+        .unwrap();
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
@@ -1492,9 +1711,21 @@ mod tests {
     #[test]
     fn runner_script_has_shebang() {
         let dir = tempfile::tempdir().unwrap();
-        let tmp = write_runner_script(dir.path(), "opus", None, TEST_DOCKERFILE, TEST_DOCKERFILE_PATH, None).unwrap();
+        let tmp = write_runner_script(
+            crate::agent::AgentKind::Claude,
+            dir.path(),
+            "opus",
+            None,
+            TEST_DOCKERFILE,
+            TEST_DOCKERFILE_PATH,
+            None,
+        )
+        .unwrap();
         let mut content = String::new();
-        File::open(&tmp).unwrap().read_to_string(&mut content).unwrap();
+        File::open(&tmp)
+            .unwrap()
+            .read_to_string(&mut content)
+            .unwrap();
         assert!(content.starts_with("#!/usr/bin/env bash"));
     }
 
@@ -1502,21 +1733,48 @@ mod tests {
     fn runner_script_seeds_dockerfile() {
         let dir = tempfile::tempdir().unwrap();
         let dockerfile = "FROM node:22\nRUN echo hello\nARG HOST_UID=${HOST_UID}";
-        let tmp = write_runner_script(dir.path(), "opus", None, dockerfile, ".mrmouth/Dockerfile", None).unwrap();
+        let tmp = write_runner_script(
+            crate::agent::AgentKind::Claude,
+            dir.path(),
+            "opus",
+            None,
+            dockerfile,
+            ".mrmouth/Dockerfile",
+            None,
+        )
+        .unwrap();
         let mut content = String::new();
-        File::open(&tmp).unwrap().read_to_string(&mut content).unwrap();
+        File::open(&tmp)
+            .unwrap()
+            .read_to_string(&mut content)
+            .unwrap();
         assert!(content.contains("MRMOUTH_DOCKERFILE_EOF"));
         assert!(content.contains("FROM node:22"));
-        assert!(content.contains("ARG HOST_UID=${HOST_UID}"), "Docker ARG syntax must be preserved literally");
+        assert!(
+            content.contains("ARG HOST_UID=${HOST_UID}"),
+            "Docker ARG syntax must be preserved literally"
+        );
         assert!(content.contains(".mrmouth/Dockerfile"));
     }
 
     #[test]
     fn runner_script_has_err_trap() {
         let dir = tempfile::tempdir().unwrap();
-        let tmp = write_runner_script(dir.path(), "opus", None, TEST_DOCKERFILE, TEST_DOCKERFILE_PATH, None).unwrap();
+        let tmp = write_runner_script(
+            crate::agent::AgentKind::Claude,
+            dir.path(),
+            "opus",
+            None,
+            TEST_DOCKERFILE,
+            TEST_DOCKERFILE_PATH,
+            None,
+        )
+        .unwrap();
         let mut content = String::new();
-        File::open(&tmp).unwrap().read_to_string(&mut content).unwrap();
+        File::open(&tmp)
+            .unwrap()
+            .read_to_string(&mut content)
+            .unwrap();
         assert!(content.contains("set -o errtrace"));
         assert!(content.contains("::mrmouth::script-error"));
         assert!(content.contains("$LINENO"));
@@ -1527,12 +1785,28 @@ mod tests {
     #[test]
     fn runner_script_echoes_tool_versions() {
         let dir = tempfile::tempdir().unwrap();
-        let tmp = write_runner_script(dir.path(), "opus", None, TEST_DOCKERFILE, TEST_DOCKERFILE_PATH, None).unwrap();
+        let tmp = write_runner_script(
+            crate::agent::AgentKind::Claude,
+            dir.path(),
+            "opus",
+            None,
+            TEST_DOCKERFILE,
+            TEST_DOCKERFILE_PATH,
+            None,
+        )
+        .unwrap();
         let mut content = String::new();
-        File::open(&tmp).unwrap().read_to_string(&mut content).unwrap();
+        File::open(&tmp)
+            .unwrap()
+            .read_to_string(&mut content)
+            .unwrap();
 
-        let begin = content.find("::mrmouth::versions").expect("missing versions begin marker");
-        let end = content.find("::mrmouth::versions-end").expect("missing versions end marker");
+        let begin = content
+            .find("::mrmouth::versions")
+            .expect("missing versions begin marker");
+        let end = content
+            .find("::mrmouth::versions-end")
+            .expect("missing versions end marker");
         assert!(begin < end, "versions begin must precede end");
 
         let block = &content[begin..end];
@@ -1552,10 +1826,24 @@ mod tests {
     #[test]
     fn runner_script_guards_lb_binary() {
         let dir = tempfile::tempdir().unwrap();
-        let tmp = write_runner_script(dir.path(), "opus", None, TEST_DOCKERFILE, TEST_DOCKERFILE_PATH, None).unwrap();
+        let tmp = write_runner_script(
+            crate::agent::AgentKind::Claude,
+            dir.path(),
+            "opus",
+            None,
+            TEST_DOCKERFILE,
+            TEST_DOCKERFILE_PATH,
+            None,
+        )
+        .unwrap();
         let mut content = String::new();
-        File::open(&tmp).unwrap().read_to_string(&mut content).unwrap();
-        let guard_pos = content.find("command -v lb >/dev/null").expect("missing lb guard");
+        File::open(&tmp)
+            .unwrap()
+            .read_to_string(&mut content)
+            .unwrap();
+        let guard_pos = content
+            .find("command -v lb >/dev/null")
+            .expect("missing lb guard");
         let init_pos = content.find("lb init").expect("missing lb init");
         assert!(guard_pos < init_pos, "lb guard must precede lb init");
         assert!(content.contains("::mrmouth::missing-tool tool=lb"));
@@ -1565,10 +1853,24 @@ mod tests {
     #[test]
     fn runner_script_guards_trk_binary() {
         let dir = tempfile::tempdir().unwrap();
-        let tmp = write_runner_script(dir.path(), "opus", None, TEST_DOCKERFILE, TEST_DOCKERFILE_PATH, None).unwrap();
+        let tmp = write_runner_script(
+            crate::agent::AgentKind::Claude,
+            dir.path(),
+            "opus",
+            None,
+            TEST_DOCKERFILE,
+            TEST_DOCKERFILE_PATH,
+            None,
+        )
+        .unwrap();
         let mut content = String::new();
-        File::open(&tmp).unwrap().read_to_string(&mut content).unwrap();
-        let guard_pos = content.find("command -v trk >/dev/null").expect("missing trk guard");
+        File::open(&tmp)
+            .unwrap()
+            .read_to_string(&mut content)
+            .unwrap();
+        let guard_pos = content
+            .find("command -v trk >/dev/null")
+            .expect("missing trk guard");
         let init_pos = content.find("trk init").expect("missing trk init");
         assert!(guard_pos < init_pos, "trk guard must precede trk init");
         assert!(content.contains("::mrmouth::missing-tool tool=trk"));
@@ -1577,13 +1879,58 @@ mod tests {
     #[test]
     fn runner_script_guards_claude_binary() {
         let dir = tempfile::tempdir().unwrap();
-        let tmp = write_runner_script(dir.path(), "opus", None, TEST_DOCKERFILE, TEST_DOCKERFILE_PATH, None).unwrap();
+        let tmp = write_runner_script(
+            crate::agent::AgentKind::Claude,
+            dir.path(),
+            "opus",
+            None,
+            TEST_DOCKERFILE,
+            TEST_DOCKERFILE_PATH,
+            None,
+        )
+        .unwrap();
         let mut content = String::new();
-        File::open(&tmp).unwrap().read_to_string(&mut content).unwrap();
-        let guard_pos = content.find("command -v claude >/dev/null").expect("missing claude guard");
-        let claude_pos = content.find("claude -p --dangerously-skip-permissions").expect("missing claude invocation");
-        assert!(guard_pos < claude_pos, "claude guard must precede claude invocation");
+        File::open(&tmp)
+            .unwrap()
+            .read_to_string(&mut content)
+            .unwrap();
+        let guard_pos = content
+            .find("command -v claude >/dev/null")
+            .expect("missing claude guard");
+        let claude_pos = content
+            .find("claude -p --dangerously-skip-permissions")
+            .expect("missing claude invocation");
+        assert!(
+            guard_pos < claude_pos,
+            "claude guard must precede claude invocation"
+        );
         assert!(content.contains("::mrmouth::missing-tool tool=claude"));
+    }
+
+    #[test]
+    fn runner_script_supports_codex_agent() {
+        let dir = tempfile::tempdir().unwrap();
+        let tmp = write_runner_script(
+            crate::agent::AgentKind::Codex,
+            dir.path(),
+            "gpt-5.2",
+            Some("do it"),
+            TEST_DOCKERFILE,
+            TEST_DOCKERFILE_PATH,
+            None,
+        )
+        .unwrap();
+        let mut content = String::new();
+        File::open(&tmp)
+            .unwrap()
+            .read_to_string(&mut content)
+            .unwrap();
+        assert!(content.contains("codex --version"));
+        assert!(content.contains("lb setup codex"));
+        assert!(content.contains("trk setup codex"));
+        assert!(content.contains("command -v codex >/dev/null"));
+        assert!(content.contains("codex exec --json --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check --model gpt-5.2 'do it'"));
+        assert!(!content.contains("claude -p --dangerously-skip-permissions"));
     }
 
     #[test]
@@ -1592,7 +1939,10 @@ mod tests {
                     ::mrmouth::missing-tool tool=trk reason=trapperkeeper branch exists but binary not in image\n";
         let msg = classify_exit_with_tail(64, tail);
         assert!(msg.contains("missing tool 'trk'"), "got: {msg}");
-        assert!(msg.contains("trapperkeeper branch exists but binary not in image"), "got: {msg}");
+        assert!(
+            msg.contains("trapperkeeper branch exists but binary not in image"),
+            "got: {msg}"
+        );
     }
 
     #[test]
@@ -1686,7 +2036,9 @@ mod tests {
         let prev = std::env::var_os("SSH_AUTH_SOCK");
         std::env::remove_var("SSH_AUTH_SOCK");
         let result = check_ssh_agent();
-        if let Some(v) = prev { std::env::set_var("SSH_AUTH_SOCK", v); }
+        if let Some(v) = prev {
+            std::env::set_var("SSH_AUTH_SOCK", v);
+        }
         let err = result.unwrap_err();
         assert!(format!("{err}").contains("SSH_AUTH_SOCK is not set"));
     }
@@ -1695,7 +2047,10 @@ mod tests {
     fn check_ssh_agent_nonexistent_socket_errs() {
         let _guard = env_lock();
         let prev = std::env::var_os("SSH_AUTH_SOCK");
-        std::env::set_var("SSH_AUTH_SOCK", "/tmp/definitely-not-a-real-socket-xyz-mrmouth");
+        std::env::set_var(
+            "SSH_AUTH_SOCK",
+            "/tmp/definitely-not-a-real-socket-xyz-mrmouth",
+        );
         let result = check_ssh_agent();
         match prev {
             Some(v) => std::env::set_var("SSH_AUTH_SOCK", v),
@@ -1746,7 +2101,10 @@ mod tests {
         let elapsed = start.elapsed();
         assert!(matches!(outcome, TimeoutOutcome::TimedOut));
         // Should return well before the 30s sleep completes.
-        assert!(elapsed < Duration::from_secs(5), "run_with_timeout blocked for {elapsed:?}");
+        assert!(
+            elapsed < Duration::from_secs(5),
+            "run_with_timeout blocked for {elapsed:?}"
+        );
     }
 
     #[test]
@@ -1789,7 +2147,15 @@ mod tests {
 
         let work_dir = tempfile::tempdir().unwrap();
         git(work_dir.path(), &["init", "-q"]);
-        git(work_dir.path(), &["remote", "add", "origin", &origin_dir.path().to_string_lossy()]);
+        git(
+            work_dir.path(),
+            &[
+                "remote",
+                "add",
+                "origin",
+                &origin_dir.path().to_string_lossy(),
+            ],
+        );
 
         check_origin_reachable(work_dir.path()).expect("local origin should be reachable");
     }
@@ -1799,7 +2165,10 @@ mod tests {
     fn check_origin_reachable_fails_for_missing_remote() {
         let work_dir = tempfile::tempdir().unwrap();
         git(work_dir.path(), &["init", "-q"]);
-        git(work_dir.path(), &["remote", "add", "origin", "/nonexistent/path/mrmouth-y5z9"]);
+        git(
+            work_dir.path(),
+            &["remote", "add", "origin", "/nonexistent/path/mrmouth-y5z9"],
+        );
 
         let err = check_origin_reachable(work_dir.path()).unwrap_err();
         let msg = format!("{err}");
@@ -1830,8 +2199,10 @@ mod tests {
     #[cfg(unix)]
     fn check_tooling_coherence_ok_when_dockerfile_mentions_branch() {
         let dir = make_repo_with_branch(Some("trapperkeeper"));
-        let dockerfile = "FROM rust\nRUN cargo install --git https://example.com/trapperkeeper.git\n";
-        check_tooling_coherence(dir.path(), dockerfile).expect("dockerfile mentions trapperkeeper → pass");
+        let dockerfile =
+            "FROM rust\nRUN cargo install --git https://example.com/trapperkeeper.git\n";
+        check_tooling_coherence(dir.path(), dockerfile)
+            .expect("dockerfile mentions trapperkeeper → pass");
     }
 
     #[test]
@@ -1904,7 +2275,10 @@ mod tests {
             Some(v) => std::env::set_var("MRMOUTH_SKIP_PREFLIGHT", v),
             None => std::env::remove_var("MRMOUTH_SKIP_PREFLIGHT"),
         }
-        assert!(result.is_ok(), "skip env should bypass all preflight failures");
+        assert!(
+            result.is_ok(),
+            "skip env should bypass all preflight failures"
+        );
     }
 
     #[test]
@@ -1917,7 +2291,8 @@ mod tests {
     #[test]
     fn parse_df_available_kb_macos_format() {
         // macOS df -P has 512-byte blocks by default without -k, but -P uses 1024-blocks too.
-        let text = "Filesystem  1024-blocks     Used Available Capacity iused ifree %iused Mounted on\n\
+        let text =
+            "Filesystem  1024-blocks     Used Available Capacity iused ifree %iused Mounted on\n\
                     /dev/disk1s1  487893504  63218928 420000000    14% 500000 1000000   33%   /\n";
         assert_eq!(parse_df_available_kb(text), Some(420000000));
     }
@@ -1960,8 +2335,16 @@ mod tests {
         let d = err.debrief();
         assert_eq!(d.exit_code, Some(127));
         assert_eq!(d.log_path.as_deref(), Some(Path::new("/logs/run-abc.log")));
-        assert!(d.message.contains("container exited with code 127"), "got: {}", d.message);
-        assert!(d.message.contains("trk: command not found"), "got: {}", d.message);
+        assert!(
+            d.message.contains("container exited with code 127"),
+            "got: {}",
+            d.message
+        );
+        assert!(
+            d.message.contains("trk: command not found"),
+            "got: {}",
+            d.message
+        );
     }
 
     #[test]
@@ -1976,22 +2359,39 @@ mod tests {
     fn env_lock() -> std::sync::MutexGuard<'static, ()> {
         use std::sync::{Mutex, OnceLock};
         static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        LOCK.get_or_init(|| Mutex::new(())).lock().unwrap_or_else(|e| e.into_inner())
+        LOCK.get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
     }
 
     #[test]
     fn setup_script_contains_dockerfile_content() {
         let dir = tempfile::tempdir().unwrap();
-        write_setup_script(dir.path(), TEST_DOCKERFILE, TEST_DOCKERFILE_PATH).unwrap();
+        write_setup_script(
+            crate::agent::AgentKind::Claude,
+            dir.path(),
+            TEST_DOCKERFILE,
+            TEST_DOCKERFILE_PATH,
+        )
+        .unwrap();
         let content = std::fs::read_to_string(dir.path().join("setup.sh")).unwrap();
-        assert!(content.contains("FROM rust:slim"), "setup.sh should embed Dockerfile content");
+        assert!(
+            content.contains("FROM rust:slim"),
+            "setup.sh should embed Dockerfile content"
+        );
         assert!(content.contains(TEST_DOCKERFILE_PATH));
     }
 
     #[test]
     fn setup_script_has_shebang_and_timing_markers() {
         let dir = tempfile::tempdir().unwrap();
-        write_setup_script(dir.path(), TEST_DOCKERFILE, TEST_DOCKERFILE_PATH).unwrap();
+        write_setup_script(
+            crate::agent::AgentKind::Claude,
+            dir.path(),
+            TEST_DOCKERFILE,
+            TEST_DOCKERFILE_PATH,
+        )
+        .unwrap();
         let content = std::fs::read_to_string(dir.path().join("setup.sh")).unwrap();
         assert!(content.starts_with("#!/usr/bin/env bash"));
         assert!(content.contains("_mm_mark setup-start"));
@@ -2000,13 +2400,39 @@ mod tests {
     }
 
     #[test]
+    fn setup_script_supports_codex_agent() {
+        let dir = tempfile::tempdir().unwrap();
+        write_setup_script(
+            crate::agent::AgentKind::Codex,
+            dir.path(),
+            TEST_DOCKERFILE,
+            TEST_DOCKERFILE_PATH,
+        )
+        .unwrap();
+        let content = std::fs::read_to_string(dir.path().join("setup.sh")).unwrap();
+        assert!(content.contains("codex --version"));
+        assert!(content.contains("lb setup codex"));
+        assert!(content.contains("trk setup codex"));
+        assert!(content.contains("command -v codex >/dev/null"));
+        assert!(content.contains("Codex state is persisted"));
+    }
+
+    #[test]
     fn setup_script_is_executable() {
         let dir = tempfile::tempdir().unwrap();
-        write_setup_script(dir.path(), TEST_DOCKERFILE, TEST_DOCKERFILE_PATH).unwrap();
+        write_setup_script(
+            crate::agent::AgentKind::Claude,
+            dir.path(),
+            TEST_DOCKERFILE,
+            TEST_DOCKERFILE_PATH,
+        )
+        .unwrap();
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            let perms = std::fs::metadata(dir.path().join("setup.sh")).unwrap().permissions();
+            let perms = std::fs::metadata(dir.path().join("setup.sh"))
+                .unwrap()
+                .permissions();
             assert_eq!(perms.mode() & 0o111, 0o111, "setup.sh should be executable");
         }
     }
@@ -2014,16 +2440,43 @@ mod tests {
     #[test]
     fn task_script_embeds_model_and_prompt() {
         let dir = tempfile::tempdir().unwrap();
-        write_task_script(dir.path(), "opus", "do the thing").unwrap();
+        write_task_script(
+            crate::agent::AgentKind::Claude,
+            dir.path(),
+            "opus",
+            "do the thing",
+        )
+        .unwrap();
         let content = std::fs::read_to_string(dir.path().join("task.sh")).unwrap();
         assert!(content.contains("--model opus"));
         assert!(content.contains("'do the thing'"));
     }
 
     #[test]
+    fn task_script_supports_codex_agent() {
+        let dir = tempfile::tempdir().unwrap();
+        write_task_script(
+            crate::agent::AgentKind::Codex,
+            dir.path(),
+            "gpt-5.2",
+            "do the thing",
+        )
+        .unwrap();
+        let content = std::fs::read_to_string(dir.path().join("task.sh")).unwrap();
+        assert!(content.contains("codex exec --json --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check --model gpt-5.2 'do the thing'"));
+        assert!(!content.contains("claude -p --dangerously-skip-permissions"));
+    }
+
+    #[test]
     fn task_script_escapes_single_quotes_in_prompt() {
         let dir = tempfile::tempdir().unwrap();
-        write_task_script(dir.path(), "opus", "don't break").unwrap();
+        write_task_script(
+            crate::agent::AgentKind::Claude,
+            dir.path(),
+            "opus",
+            "don't break",
+        )
+        .unwrap();
         let content = std::fs::read_to_string(dir.path().join("task.sh")).unwrap();
         assert!(content.contains(r#"'don'\''t break'"#));
     }
@@ -2031,7 +2484,13 @@ mod tests {
     #[test]
     fn task_script_switches_branch() {
         let dir = tempfile::tempdir().unwrap();
-        write_task_script(dir.path(), "opus", "prompt").unwrap();
+        write_task_script(
+            crate::agent::AgentKind::Claude,
+            dir.path(),
+            "opus",
+            "prompt",
+        )
+        .unwrap();
         let content = std::fs::read_to_string(dir.path().join("task.sh")).unwrap();
         assert!(content.contains("git fetch origin"));
         assert!(content.contains(r#"git checkout "$branch""#));
@@ -2040,7 +2499,13 @@ mod tests {
     #[test]
     fn task_script_stashes_leftover_state() {
         let dir = tempfile::tempdir().unwrap();
-        write_task_script(dir.path(), "opus", "prompt").unwrap();
+        write_task_script(
+            crate::agent::AgentKind::Claude,
+            dir.path(),
+            "opus",
+            "prompt",
+        )
+        .unwrap();
         let content = std::fs::read_to_string(dir.path().join("task.sh")).unwrap();
         assert!(content.contains("git stash push"));
         assert!(content.contains("::mrmouth::warning uncommitted changes"));
@@ -2049,8 +2514,20 @@ mod tests {
     #[test]
     fn task_script_overwrites_previous() {
         let dir = tempfile::tempdir().unwrap();
-        write_task_script(dir.path(), "opus", "first prompt").unwrap();
-        write_task_script(dir.path(), "sonnet", "second prompt").unwrap();
+        write_task_script(
+            crate::agent::AgentKind::Claude,
+            dir.path(),
+            "opus",
+            "first prompt",
+        )
+        .unwrap();
+        write_task_script(
+            crate::agent::AgentKind::Claude,
+            dir.path(),
+            "sonnet",
+            "second prompt",
+        )
+        .unwrap();
         let content = std::fs::read_to_string(dir.path().join("task.sh")).unwrap();
         assert!(content.contains("--model sonnet"));
         assert!(content.contains("'second prompt'"));

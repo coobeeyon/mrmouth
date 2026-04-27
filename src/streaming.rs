@@ -2,6 +2,7 @@ use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, IsTerminal, Write};
 use std::process::{Child, Stdio};
 
+use crate::agent::AgentKind;
 use crate::logger::Logger;
 use crate::stream_fmt::{self, StreamFormatter};
 use crate::tui::TuiSender;
@@ -77,9 +78,9 @@ pub fn run_streaming_claude(
                 let _ = writeln!(w, "{trimmed}");
             }
 
-            // Check for the "result" event to capture its result field.
-            // When --json-schema is used, the structured output is in
-            // "structured_output" (a JSON object), not "result" (empty string).
+            // Capture final output from Claude stream-json and Codex exec
+            // JSONL. Claude uses `type=result`; Codex has used message-style
+            // final events across versions, so keep the extraction tolerant.
             if let Ok(event) = serde_json::from_str::<serde_json::Value>(trimmed) {
                 if event.get("type").and_then(|v| v.as_str()) == Some("result") {
                     if let Some(so) = event.get("structured_output") {
@@ -91,6 +92,8 @@ pub fn run_streaming_claude(
                     } else if let Some(r) = event.get("result").and_then(|v| v.as_str()) {
                         result_text = r.to_string();
                     }
+                } else if let Some(text) = extract_codex_result_text(&event) {
+                    result_text = text;
                 }
             }
 
@@ -121,6 +124,71 @@ pub fn run_streaming_claude(
     Ok((result_text, exit_code))
 }
 
+fn extract_codex_result_text(event: &serde_json::Value) -> Option<String> {
+    let event_type = event.get("type").and_then(|v| v.as_str()).unwrap_or("");
+    let looks_final = event_type.contains("message")
+        || event_type.contains("response")
+        || event_type.contains("final")
+        || event_type == "agent_message";
+    if !looks_final {
+        return None;
+    }
+
+    for key in [
+        "message",
+        "content",
+        "text",
+        "last_message",
+        "final_response",
+    ] {
+        if let Some(s) = event.get(key).and_then(|v| v.as_str()) {
+            if !s.trim().is_empty() {
+                return Some(s.to_string());
+            }
+        }
+    }
+
+    if let Some(item) = event.get("item") {
+        for key in ["message", "content", "text"] {
+            if let Some(s) = item.get(key).and_then(|v| v.as_str()) {
+                if !s.trim().is_empty() {
+                    return Some(s.to_string());
+                }
+            }
+        }
+    }
+
+    None
+}
+
+/// Build a provider-specific non-interactive agent command.
+pub fn agent_stream_cmd(
+    agent: AgentKind,
+    repo_root: &std::path::Path,
+    model: &str,
+    allowed_tools: &str,
+) -> std::process::Command {
+    match agent {
+        AgentKind::Claude => claude_stream_cmd(repo_root, model, allowed_tools),
+        AgentKind::Codex => codex_stream_cmd(repo_root, model, None),
+    }
+}
+
+/// Build a provider-specific non-interactive agent command with structured
+/// output when the provider supports a schema flag.
+pub fn agent_stream_cmd_with_schema(
+    agent: AgentKind,
+    repo_root: &std::path::Path,
+    model: &str,
+    allowed_tools: &str,
+    schema: &str,
+) -> std::process::Command {
+    match agent {
+        AgentKind::Claude => claude_stream_cmd_with_schema(repo_root, model, allowed_tools, schema),
+        AgentKind::Codex => codex_stream_cmd(repo_root, model, Some(schema)),
+    }
+}
+
 /// Build a claude CLI Command with `--output-format stream-json` and standard
 /// piping (stdin piped, stdout piped, stderr piped).
 pub fn claude_stream_cmd(
@@ -148,6 +216,46 @@ pub fn claude_stream_cmd(
     .stderr(Stdio::piped())
     .current_dir(repo_root);
     cmd
+}
+
+fn codex_stream_cmd(
+    repo_root: &std::path::Path,
+    model: &str,
+    schema: Option<&str>,
+) -> std::process::Command {
+    let mut cmd = std::process::Command::new("codex");
+    cmd.args([
+        "exec",
+        "--json",
+        "--dangerously-bypass-approvals-and-sandbox",
+        "--skip-git-repo-check",
+        "--model",
+        model,
+        "-C",
+        &repo_root.to_string_lossy(),
+    ]);
+    if let Some(schema) = schema {
+        if let Some(path) = write_schema_tempfile(schema) {
+            cmd.args(["--output-schema", &path.to_string_lossy()]);
+        }
+    }
+    cmd.stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .current_dir(repo_root);
+    cmd
+}
+
+fn write_schema_tempfile(schema: &str) -> Option<std::path::PathBuf> {
+    let path = std::env::temp_dir().join(format!(
+        "mrmouth-schema-{}-{}.json",
+        std::process::id(),
+        chrono::Local::now()
+            .timestamp_nanos_opt()
+            .unwrap_or_default()
+    ));
+    std::fs::write(&path, schema).ok()?;
+    Some(path)
 }
 
 /// Build a claude CLI Command with `--output-format stream-json` plus
@@ -194,5 +302,42 @@ fn display(text: &str, target: &StreamTarget) {
         StreamTarget::Tui(sender) => sender.send_line(text),
         StreamTarget::Stderr => eprintln!("{text}"),
         StreamTarget::Stdout => println!("{text}"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn codex_agent_command_uses_exec_json() {
+        let cmd = agent_stream_cmd(
+            AgentKind::Codex,
+            std::path::Path::new("/tmp/workspace"),
+            "gpt-5.2",
+            "Read",
+        );
+        assert_eq!(cmd.get_program().to_string_lossy(), "codex");
+        let args: Vec<String> = cmd
+            .get_args()
+            .map(|a| a.to_string_lossy().to_string())
+            .collect();
+        assert!(args.contains(&"exec".to_string()));
+        assert!(args.contains(&"--json".to_string()));
+        assert!(args.contains(&"--dangerously-bypass-approvals-and-sandbox".to_string()));
+        assert!(args.contains(&"--model".to_string()));
+        assert!(args.contains(&"gpt-5.2".to_string()));
+    }
+
+    #[test]
+    fn codex_result_extractor_accepts_message_events() {
+        let event = serde_json::json!({
+            "type": "agent_message",
+            "message": "{\"action\":\"continue\",\"reason\":\"work remains\"}"
+        });
+        assert_eq!(
+            extract_codex_result_text(&event).as_deref(),
+            Some("{\"action\":\"continue\",\"reason\":\"work remains\"}")
+        );
     }
 }

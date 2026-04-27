@@ -1,12 +1,15 @@
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
 
+use crate::agent::AgentKind;
+
 const CONFIG_DIR: &str = ".mrmouth";
 const CONFIG_FILE: &str = "config.toml";
 
 #[derive(Debug, Deserialize)]
 #[serde(default)]
 pub struct Config {
+    pub agent: AgentKind,
     pub model: String,
     pub image: String,
     pub dockerfile: String,
@@ -40,6 +43,7 @@ pub struct DoConfig {
 impl Default for Config {
     fn default() -> Self {
         Self {
+            agent: AgentKind::Claude,
             model: "opus".into(),
             image: "mrmouth-runner".into(),
             dockerfile: ".mrmouth/Dockerfile".into(),
@@ -76,7 +80,7 @@ impl Default for DoConfig {
 
 impl Config {
     /// Returns the effective volume name: user-configured value, or a name derived
-    /// from the repo root directory so each project gets isolated Claude memory.
+    /// from the repo root directory so each project gets isolated agent memory.
     pub fn effective_volume(&self, repo_root: &Path) -> String {
         if let Some(ref v) = self.volume {
             return v.clone();
@@ -86,9 +90,15 @@ impl Config {
             .and_then(|n| n.to_str())
             .unwrap_or("default")
             .chars()
-            .map(|c| if c.is_alphanumeric() || c == '-' { c } else { '-' })
+            .map(|c| {
+                if c.is_alphanumeric() || c == '-' {
+                    c
+                } else {
+                    '-'
+                }
+            })
             .collect();
-        format!("mrmouth-claude-home-{slug}")
+        format!("{}-{slug}", self.agent.default_volume_prefix())
     }
 
     /// Load config from `.mrmouth/config.toml` relative to `repo_root`.
@@ -105,8 +115,10 @@ impl Config {
             source: e,
         })?;
 
-        let config: Self =
-            toml::from_str(&contents).map_err(|e| ConfigError::Parse { path: config_path, source: e })?;
+        let config: Self = toml::from_str(&contents).map_err(|e| ConfigError::Parse {
+            path: config_path,
+            source: e,
+        })?;
 
         Ok(config)
     }
@@ -175,6 +187,7 @@ mod tests {
     fn defaults_when_no_config_file() {
         let tmp = tempfile::tempdir().unwrap();
         let config = Config::load(tmp.path()).unwrap();
+        assert_eq!(config.agent, AgentKind::Claude);
         assert_eq!(config.model, "opus");
         assert_eq!(config.image, "mrmouth-runner");
         assert_eq!(config.loop_config.decider_model, "sonnet");
@@ -202,6 +215,7 @@ mod tests {
         fs::write(
             config_dir.join("config.toml"),
             r#"
+agent = "codex"
 model = "haiku"
 image = "my-image"
 dockerfile = "custom/Dockerfile"
@@ -225,6 +239,7 @@ max_failures = 5
         .unwrap();
 
         let config = Config::load(tmp.path()).unwrap();
+        assert_eq!(config.agent, AgentKind::Codex);
         assert_eq!(config.model, "haiku");
         assert_eq!(config.image, "my-image");
         assert_eq!(config.dockerfile, "custom/Dockerfile");
@@ -245,19 +260,41 @@ max_failures = 5
     fn effective_volume_uses_repo_name_when_not_configured() {
         let config = Config::default();
         let path = std::path::Path::new("/some/path/myproject");
-        assert_eq!(config.effective_volume(path), "mrmouth-claude-home-myproject");
+        assert_eq!(
+            config.effective_volume(path),
+            "mrmouth-claude-home-myproject"
+        );
     }
 
     #[test]
     fn effective_volume_sanitizes_special_chars() {
         let config = Config::default();
         let path = std::path::Path::new("/some/path/my.project_v2");
-        assert_eq!(config.effective_volume(path), "mrmouth-claude-home-my-project-v2");
+        assert_eq!(
+            config.effective_volume(path),
+            "mrmouth-claude-home-my-project-v2"
+        );
+    }
+
+    #[test]
+    fn effective_volume_uses_agent_prefix() {
+        let config = Config {
+            agent: AgentKind::Codex,
+            ..Config::default()
+        };
+        let path = std::path::Path::new("/some/path/myproject");
+        assert_eq!(
+            config.effective_volume(path),
+            "mrmouth-codex-home-myproject"
+        );
     }
 
     #[test]
     fn effective_volume_uses_configured_value() {
-        let config = Config { volume: Some("custom-vol".into()), ..Config::default() };
+        let config = Config {
+            volume: Some("custom-vol".into()),
+            ..Config::default()
+        };
         let path = std::path::Path::new("/some/path/myproject");
         assert_eq!(config.effective_volume(path), "custom-vol");
     }

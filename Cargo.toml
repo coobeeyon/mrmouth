@@ -2,10 +2,10 @@
 name = "mrmouth"
 version = "0.1.0"
 edition = "2021"
-description = "Run Claude Code as an autonomous coding agent in Docker containers"
+description = "Run Claude Code or Codex as an autonomous coding agent in Docker containers"
 license = "MIT"
 repository = "https://github.com/coobeeyon/mrmouth"
-keywords = ["claude", "agent", "docker", "automation"]
+keywords = ["claude", "codex", "agent", "docker", "automation"]
 categories = ["command-line-utilities", "development-tools"]
 
 [dependencies]

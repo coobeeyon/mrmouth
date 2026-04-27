@@ -16,14 +16,32 @@ pub struct ShipperOptions {
 }
 
 /// Run the shipper agent: check readiness and merge branch into parent.
-pub fn execute(config: &Config, repo_root: &Path, opts: &ShipperOptions, logger: Option<&Logger>) -> Result<(), ShipperError> {
-    crate::logger::log(logger, &format!("SHIPPING  {} -> {}", opts.current_branch, opts.parent_branch));
+pub fn execute(
+    config: &Config,
+    repo_root: &Path,
+    opts: &ShipperOptions,
+    logger: Option<&Logger>,
+) -> Result<(), ShipperError> {
+    crate::logger::log(
+        logger,
+        &format!(
+            "SHIPPING  {} -> {}",
+            opts.current_branch, opts.parent_branch
+        ),
+    );
 
     let log_dir = repo_root.join(&config.log_dir);
     let _ = std::fs::create_dir_all(&log_dir);
 
     // 1. Check readiness
-    check_ready(config, repo_root, &opts.current_branch, &opts.model, logger, &log_dir)?;
+    check_ready(
+        config,
+        repo_root,
+        &opts.current_branch,
+        &opts.model,
+        logger,
+        &log_dir,
+    )?;
 
     // 2. Merge current branch into parent
     merge_branch(repo_root, &opts.current_branch, &opts.parent_branch, logger)?;
@@ -31,7 +49,14 @@ pub fn execute(config: &Config, repo_root: &Path, opts: &ShipperOptions, logger:
     Ok(())
 }
 
-fn check_ready(config: &Config, repo_root: &Path, current_branch: &str, model: &str, logger: Option<&Logger>, log_dir: &Path) -> Result<(), ShipperError> {
+fn check_ready(
+    config: &Config,
+    repo_root: &Path,
+    current_branch: &str,
+    model: &str,
+    logger: Option<&Logger>,
+    log_dir: &Path,
+) -> Result<(), ShipperError> {
     let schema = r#"{"type":"object","properties":{"status":{"type":"string","enum":["READY","BLOCKED"]},"reason":{"type":"string"}},"required":["status","reason"]}"#;
 
     let preamble = crate::prompt::SYSTEM_PREAMBLE;
@@ -50,6 +75,11 @@ fn check_ready(config: &Config, repo_root: &Path, current_branch: &str, model: &
 
     let escaped_prompt = prompt.replace('\'', "'\\''");
     let escaped_schema = schema.replace('\'', "'\\''");
+    let agent = config.agent;
+    let agent_name = agent.as_str();
+    let agent_bin = agent.binary();
+    let agent_restore_block = agent.restore_block();
+    let agent_command = agent.shell_command(model, &escaped_prompt, Some(&escaped_schema));
 
     let script = format!(
         r#"#!/usr/bin/env bash
@@ -75,30 +105,23 @@ if [ -d "$work_dir/.git" ]; then
   if git show-ref --quiet refs/heads/litebrite refs/remotes/origin/litebrite 2>/dev/null; then
     echo "Initializing litebrite..."
     lb init
-    lb setup claude 2>/dev/null || true
+    lb setup {agent_name} 2>/dev/null || true
     lb sync 2>/dev/null || true
   fi
   if git show-ref --quiet refs/heads/trapperkeeper refs/remotes/origin/trapperkeeper 2>/dev/null; then
     echo "Initializing trapperkeeper..."
     trk init
-    trk setup claude 2>/dev/null || true
+    trk setup {agent_name} 2>/dev/null || true
     trk sync 2>/dev/null || true
   fi
 fi
 
-# Restore .claude.json from persisted backup if missing
-claude_config="$HOME/.claude.json"
-if [ ! -f "$claude_config" ] && [ -d "$HOME/.claude/backups" ]; then
-  latest_backup=$(ls -t "$HOME/.claude/backups/.claude.json.backup."* 2>/dev/null | head -1)
-  if [ -n "$latest_backup" ]; then
-    cp "$latest_backup" "$claude_config"
-    echo "Restored .claude.json from backup."
-  fi
-fi
+{agent_restore_block}
 
 # Run readiness check
 echo "Starting readiness check..."
-CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING=1 claude -p --dangerously-skip-permissions --verbose --output-format stream-json --model {model} --effort xhigh --json-schema '{escaped_schema}' '{escaped_prompt}'
+command -v {agent_bin} >/dev/null || {{ echo "::mrmouth::missing-tool tool={agent_bin} reason={agent_bin} binary not in image" >&2; exit 64; }}
+{agent_command}
 echo "Readiness check complete."
 
 # Push state changes back so the host loop can sync them
@@ -125,7 +148,10 @@ fi
 
     let (repo_url, file_remote_path) = match git_remote_url(repo_root) {
         Some(url) => (url, None),
-        None => ("file:///host-repo".to_string(), Some(repo_root.to_path_buf())),
+        None => (
+            "file:///host-repo".to_string(),
+            Some(repo_root.to_path_buf()),
+        ),
     };
 
     let timestamp = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
@@ -139,11 +165,11 @@ fi
     let ship_logger = match logger.and_then(|l| l.tui_sender()) {
         Some(tui) => Logger::with_tui(&ship_log_path, tui.clone()),
         None => Logger::new(&ship_log_path),
-    }.ok();
+    }
+    .ok();
 
-    let mut jsonl_writer: Option<BufWriter<File>> = File::create(&ship_jsonl_path)
-        .ok()
-        .map(BufWriter::new);
+    let mut jsonl_writer: Option<BufWriter<File>> =
+        File::create(&ship_jsonl_path).ok().map(BufWriter::new);
 
     DockerBuilder::remove_container(&container_name);
 
@@ -158,6 +184,7 @@ fi
         branch: current_branch.to_string(),
         runner_script: tmp.path().to_path_buf(),
         volume,
+        agent_home: config.agent.home_mount(),
         local: false,
         file_remote_path,
         timeout_secs: None,
@@ -227,8 +254,13 @@ fi
     let parsed: serde_json::Value = match serde_json::from_str(&result_text) {
         Ok(v) => v,
         Err(e) => {
-            crate::logger::log(logger, &format!("WARNING: readiness check returned invalid JSON: {e}"));
-            return Err(ShipperError(format!("readiness check returned invalid JSON: {e}")));
+            crate::logger::log(
+                logger,
+                &format!("WARNING: readiness check returned invalid JSON: {e}"),
+            );
+            return Err(ShipperError(format!(
+                "readiness check returned invalid JSON: {e}"
+            )));
         }
     };
     let status = parsed["status"].as_str().unwrap_or("BLOCKED");
@@ -244,7 +276,13 @@ fi
 
 fn git_remote_url(repo_root: &Path) -> Option<String> {
     let output = Command::new("git")
-        .args(["-C", &repo_root.to_string_lossy(), "remote", "get-url", "origin"])
+        .args([
+            "-C",
+            &repo_root.to_string_lossy(),
+            "remote",
+            "get-url",
+            "origin",
+        ])
         .output()
         .ok()?;
     if output.status.success() {
@@ -261,21 +299,35 @@ fn merge_branch(
     logger: Option<&Logger>,
 ) -> Result<(), ShipperError> {
     let has_github_remote = Command::new("git")
-        .args(["-C", &repo_root.to_string_lossy(), "remote", "get-url", "origin"])
+        .args([
+            "-C",
+            &repo_root.to_string_lossy(),
+            "remote",
+            "get-url",
+            "origin",
+        ])
         .output()
         .map(|o| o.status.success() && String::from_utf8_lossy(&o.stdout).contains("github.com"))
         .unwrap_or(false);
 
     if has_github_remote {
-        crate::logger::log(logger, &format!("Creating and merging PR: {current_branch} -> {parent_branch}"));
+        crate::logger::log(
+            logger,
+            &format!("Creating and merging PR: {current_branch} -> {parent_branch}"),
+        );
 
         let pr_create = Command::new("gh")
             .args([
-                "pr", "create",
-                "--base", parent_branch,
-                "--head", current_branch,
-                "--title", &format!("Merge {current_branch}"),
-                "--body", "Auto-merged by mrmouth shipper.",
+                "pr",
+                "create",
+                "--base",
+                parent_branch,
+                "--head",
+                current_branch,
+                "--title",
+                &format!("Merge {current_branch}"),
+                "--body",
+                "Auto-merged by mrmouth shipper.",
             ])
             .current_dir(repo_root)
             .output()
@@ -299,7 +351,12 @@ fn merge_branch(
         }
 
         let _ = Command::new("git")
-            .args(["-C", &repo_root.to_string_lossy(), "checkout", parent_branch])
+            .args([
+                "-C",
+                &repo_root.to_string_lossy(),
+                "checkout",
+                parent_branch,
+            ])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .status();
@@ -309,10 +366,18 @@ fn merge_branch(
             .stderr(Stdio::null())
             .status();
     } else {
-        crate::logger::log(logger, &format!("Merging {current_branch} into {parent_branch} (no-ff)..."));
+        crate::logger::log(
+            logger,
+            &format!("Merging {current_branch} into {parent_branch} (no-ff)..."),
+        );
 
         let checkout = Command::new("git")
-            .args(["-C", &repo_root.to_string_lossy(), "checkout", parent_branch])
+            .args([
+                "-C",
+                &repo_root.to_string_lossy(),
+                "checkout",
+                parent_branch,
+            ])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .status()
@@ -323,9 +388,13 @@ fn merge_branch(
 
         let merge = Command::new("git")
             .args([
-                "-C", &repo_root.to_string_lossy(),
-                "merge", "--no-ff", current_branch,
-                "-m", &format!("Merge branch '{current_branch}'"),
+                "-C",
+                &repo_root.to_string_lossy(),
+                "merge",
+                "--no-ff",
+                current_branch,
+                "-m",
+                &format!("Merge branch '{current_branch}'"),
             ])
             .output()
             .map_err(|e| ShipperError(format!("merge failed: {e}")))?;
@@ -334,7 +403,13 @@ fn merge_branch(
         }
 
         let _ = Command::new("git")
-            .args(["-C", &repo_root.to_string_lossy(), "branch", "-d", current_branch])
+            .args([
+                "-C",
+                &repo_root.to_string_lossy(),
+                "branch",
+                "-d",
+                current_branch,
+            ])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .status();
@@ -343,7 +418,12 @@ fn merge_branch(
     Ok(())
 }
 
-pub fn generate_branch_name(repo_root: &Path, model: &str, logger: Option<&Logger>) -> Result<String, ShipperError> {
+pub fn generate_branch_name(
+    config: &Config,
+    repo_root: &Path,
+    model: &str,
+    logger: Option<&Logger>,
+) -> Result<String, ShipperError> {
     let schema = r#"{"type":"object","properties":{"name":{"type":"string","description":"2-4 word kebab-case slug for the branch"}},"required":["name"]}"#;
 
     let prompt = "Read SPEC.md and the current litebrite task state (lb ready). \
@@ -351,16 +431,20 @@ pub fn generate_branch_name(repo_root: &Path, model: &str, logger: Option<&Logge
         Examples: review-ship-flow, docker-caching, test-coverage. \
         Just the slug, no 'feat-' prefix.";
 
-    let mut cmd = streaming::claude_stream_cmd_with_schema(
+    let mut cmd = streaming::agent_stream_cmd_with_schema(
+        config.agent,
         repo_root,
         model,
         "Read,Bash(lb *)",
         schema,
     );
 
-    let mut child = cmd
-        .spawn()
-        .map_err(|e| ShipperError(format!("failed to generate branch name: {e}")))?;
+    let mut child = cmd.spawn().map_err(|e| {
+        ShipperError(format!(
+            "failed to generate branch name with {}: {e}",
+            config.agent.as_str()
+        ))
+    })?;
 
     streaming::send_prompt(&mut child, prompt);
 
@@ -371,8 +455,9 @@ pub fn generate_branch_name(repo_root: &Path, model: &str, logger: Option<&Logge
 
     let mut formatter = StreamFormatter::new(target.supports_color());
 
-    let (result_text, exit_code) = streaming::run_streaming_claude(child, &mut formatter, logger, &target, &mut None)
-        .map_err(|e| ShipperError(format!("branch name generation failed: {e}")))?;
+    let (result_text, exit_code) =
+        streaming::run_streaming_claude(child, &mut formatter, logger, &target, &mut None)
+            .map_err(|e| ShipperError(format!("branch name generation failed: {e}")))?;
 
     if exit_code != 0 {
         let ts = chrono::Local::now().format("%Y%m%d-%H%M%S");
@@ -402,7 +487,11 @@ pub fn generate_branch_name(repo_root: &Path, model: &str, logger: Option<&Logge
     }
 }
 
-pub fn create_and_push_branch(repo_root: &Path, branch_name: &str, logger: Option<&Logger>) -> Result<(), ShipperError> {
+pub fn create_and_push_branch(
+    repo_root: &Path,
+    branch_name: &str,
+    logger: Option<&Logger>,
+) -> Result<(), ShipperError> {
     let branch_exists = Command::new("git")
         .args([
             "-C",
@@ -434,23 +523,41 @@ pub fn create_and_push_branch(repo_root: &Path, branch_name: &str, logger: Optio
         .map_err(|e| ShipperError(format!("failed to create branch {branch_name}: {e}")))?;
 
     if !status.success() {
-        return Err(ShipperError(format!("git checkout -b {branch_name} failed")));
+        return Err(ShipperError(format!(
+            "git checkout -b {branch_name} failed"
+        )));
     }
 
     let has_remote = Command::new("git")
-        .args(["-C", &repo_root.to_string_lossy(), "remote", "get-url", "origin"])
+        .args([
+            "-C",
+            &repo_root.to_string_lossy(),
+            "remote",
+            "get-url",
+            "origin",
+        ])
         .output()
         .map(|o| o.status.success())
         .unwrap_or(false);
 
     if has_remote {
         let push = Command::new("git")
-            .args(["-C", &repo_root.to_string_lossy(), "push", "-u", "origin", branch_name])
+            .args([
+                "-C",
+                &repo_root.to_string_lossy(),
+                "push",
+                "-u",
+                "origin",
+                branch_name,
+            ])
             .output()
             .map_err(|e| ShipperError(format!("failed to push branch: {e}")))?;
 
         if !push.status.success() {
-            crate::logger::log(logger, &format!("Warning: failed to push branch {branch_name} to origin"));
+            crate::logger::log(
+                logger,
+                &format!("Warning: failed to push branch {branch_name} to origin"),
+            );
         }
     }
 

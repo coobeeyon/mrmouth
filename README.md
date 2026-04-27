@@ -1,8 +1,8 @@
 # Mr Mouth
 
-Run Claude Code as an autonomous coding agent inside Docker containers.
+Run Claude Code or Codex as an autonomous coding agent inside Docker containers.
 
-You run `mrmouth` from inside any git repo. It builds a Docker image, launches a container with the repo cloned, runs Claude Code with a structured prompt, streams formatted output, and pulls changes when the agent exits.
+You run `mrmouth` from inside any git repo. It builds a Docker image, launches a container with the repo cloned, runs an agent CLI with a structured prompt, streams formatted output, and pulls changes when the agent exits.
 
 ## Install
 
@@ -14,7 +14,7 @@ cargo install --git https://github.com/coobeeyon/mrmouth.git
 
 - **Docker** — container runtime for agent isolation
 - **SSH agent** — running with keys that have access to your repo (`ssh-add`)
-- **Credentials** — set `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN` in your environment
+- **Credentials** — for Claude, set `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN`; for Codex, set `OPENAI_API_KEY` or log in with Codex in the persisted container home
 
 Optional:
 - **lb** ([litebrite](https://github.com/coobeeyon/litebrite)) — task tracking CLI for the relay pattern
@@ -40,7 +40,7 @@ mrmouth run [--raw] [--model <model>] [--timeout <minutes>] [--local]
 ```
 
 - `--raw` — output raw JSONL instead of formatted stream
-- `--model` — override the Claude model (default: `opus`)
+- `--model` — override the agent model (default: `opus`)
 - `--timeout` — kill container after N minutes
 - `--local` — bind-mount current directory instead of cloning
 
@@ -92,9 +92,10 @@ All fields are optional — defaults shown:
 
 ```toml
 model = "opus"
+agent = "claude" # or "codex"
 image = "mrmouth-runner"
 dockerfile = ".mrmouth/Dockerfile"
-volume = "mrmouth-claude-home"
+# volume is optional; defaults to mrmouth-<agent>-home-<repo>
 log_dir = "logs"
 branch = "main"
 
@@ -113,13 +114,13 @@ max_failures = 3
 
 ### `.mrmouth/Dockerfile`
 
-The Docker image the agent runs in. mrmouth has a built-in default (Node 22 + Claude Code + litebrite + SSH). To add project-specific dependencies, create this file with your customizations and commit it.
+The Docker image the agent runs in. mrmouth has a built-in default (Node 22 + Claude Code + Codex + litebrite + SSH). To add project-specific dependencies, create this file with your customizations and commit it.
 
 The agent itself can create or edit this file during a run — changes are committed and rebuilt on the next run.
 
 ### `.mrmouth/prompt.md`
 
-The prompt given to Claude Code. The built-in default implements the relay pattern: read tasks, claim one, do the work, commit, push, exit. Override this to change agent behavior.
+The prompt given to the agent. The built-in default implements the relay pattern: read tasks, claim one, do the work, commit, push, exit. Override this to change agent behavior.
 
 ## How It Works
 
@@ -128,13 +129,17 @@ The prompt given to Claude Code. The built-in default implements the relay patte
 **Container lifecycle:**
 1. Host builds Docker image (from `.mrmouth/Dockerfile` or built-in default)
 2. Container clones the repo fresh (or bind-mounts in `--local` mode)
-3. Claude Code runs with `--dangerously-skip-permissions` and the agent prompt
+3. The configured agent runs with the agent prompt
 4. Agent reads spec, claims a task, implements, commits, pushes
 5. Container exits; host pulls changes
 
 **Self-modification:** The agent can create or edit `.mrmouth/Dockerfile` to add tools and dependencies. Changes are committed and rebuilt on the next run.
 
 **Local mode:** `mrmouth run --local` bind-mounts the current directory. Works with repos that have no remote, or even directories that aren't git repos yet.
+
+## Roadmap
+
+- Allow per-role agent configuration so runner, decider, reviewer, summary, and shipper roles can mix Claude and Codex when that is useful. Today `agent = "codex"` switches all AI calls to Codex.
 
 ## License
 

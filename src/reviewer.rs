@@ -20,10 +20,19 @@ pub struct ReviewerOptions {
 /// to the project's build toolchain. Inspects changes on the current branch
 /// vs SPEC.md, verifies the build and tests pass, and creates/closes litebrite
 /// items for issues found. Non-fatal — errors are logged but don't stop the loop.
-pub fn execute(config: &Config, repo_root: &Path, opts: &ReviewerOptions, logger: Option<&Logger>) -> Result<(), ReviewerError> {
-    crate::logger::log(logger, &format!("CODE REVIEW  branch={}", opts.current_branch));
+pub fn execute(
+    config: &Config,
+    repo_root: &Path,
+    opts: &ReviewerOptions,
+    logger: Option<&Logger>,
+) -> Result<(), ReviewerError> {
+    crate::logger::log(
+        logger,
+        &format!("CODE REVIEW  branch={}", opts.current_branch),
+    );
 
-    let effective_dockerfile = crate::docker::effective_dockerfile_content(repo_root, &config.dockerfile);
+    let effective_dockerfile =
+        crate::docker::effective_dockerfile_content(repo_root, &config.dockerfile);
 
     let preamble = crate::prompt::SYSTEM_PREAMBLE;
 
@@ -68,6 +77,11 @@ pub fn execute(config: &Config, repo_root: &Path, opts: &ReviewerOptions, logger
 
     let escaped_prompt = prompt.replace('\'', "'\\''");
     let model = &opts.model;
+    let agent = config.agent;
+    let agent_name = agent.as_str();
+    let agent_bin = agent.binary();
+    let agent_restore_block = agent.restore_block();
+    let agent_command = agent.shell_command(model, &escaped_prompt, None);
 
     let script = format!(
         r#"#!/usr/bin/env bash
@@ -103,30 +117,23 @@ if [ -d "$work_dir/.git" ]; then
   if git show-ref --quiet refs/heads/litebrite refs/remotes/origin/litebrite 2>/dev/null; then
     echo "Initializing litebrite..."
     lb init
-    lb setup claude 2>/dev/null || true
+    lb setup {agent_name} 2>/dev/null || true
     lb sync 2>/dev/null || true
   fi
   if git show-ref --quiet refs/heads/trapperkeeper refs/remotes/origin/trapperkeeper 2>/dev/null; then
     echo "Initializing trapperkeeper..."
     trk init
-    trk setup claude 2>/dev/null || true
+    trk setup {agent_name} 2>/dev/null || true
     trk sync 2>/dev/null || true
   fi
 fi
 
-# Restore .claude.json from persisted backup if missing
-claude_config="$HOME/.claude.json"
-if [ ! -f "$claude_config" ] && [ -d "$HOME/.claude/backups" ]; then
-  latest_backup=$(ls -t "$HOME/.claude/backups/.claude.json.backup."* 2>/dev/null | head -1)
-  if [ -n "$latest_backup" ]; then
-    cp "$latest_backup" "$claude_config"
-    echo "Restored .claude.json from backup."
-  fi
-fi
+{agent_restore_block}
 
 # Run reviewer
 echo "Starting code review..."
-CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING=1 claude -p --dangerously-skip-permissions --verbose --output-format stream-json --model {model} --effort xhigh '{escaped_prompt}'
+command -v {agent_bin} >/dev/null || {{ echo "::mrmouth::missing-tool tool={agent_bin} reason={agent_bin} binary not in image" >&2; exit 64; }}
+{agent_command}
 echo "Code review complete."
 
 # Push state changes back so the host loop can sync them
@@ -162,7 +169,10 @@ fi
 
     let (repo_url, file_remote_path) = match git_remote_url(repo_root) {
         Some(url) => (url, None),
-        None => ("file:///host-repo".to_string(), Some(repo_root.to_path_buf())),
+        None => (
+            "file:///host-repo".to_string(),
+            Some(repo_root.to_path_buf()),
+        ),
     };
 
     let timestamp = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
@@ -178,11 +188,11 @@ fi
     let review_logger = match logger.and_then(|l| l.tui_sender()) {
         Some(tui) => Logger::with_tui(&review_log_path, tui.clone()),
         None => Logger::new(&review_log_path),
-    }.ok();
+    }
+    .ok();
 
-    let mut jsonl_writer: Option<BufWriter<File>> = File::create(&review_jsonl_path)
-        .ok()
-        .map(BufWriter::new);
+    let mut jsonl_writer: Option<BufWriter<File>> =
+        File::create(&review_jsonl_path).ok().map(BufWriter::new);
 
     DockerBuilder::remove_container(&container_name);
 
@@ -197,6 +207,7 @@ fi
         branch: opts.current_branch.clone(),
         runner_script: tmp_path.to_path_buf(),
         volume,
+        agent_home: config.agent.home_mount(),
         local: false,
         file_remote_path,
         timeout_secs: None,
@@ -243,14 +254,22 @@ fi
     let dockerfile_dest = repo_root.join(&config.dockerfile);
     let container_path = format!("/home/runner/workspace/{}", config.dockerfile);
     if DockerBuilder::copy_from_container(&container_name, &container_path, &dockerfile_dest) {
-        crate::logger::log(logger, "Extracted updated Dockerfile from reviewer container.");
+        crate::logger::log(
+            logger,
+            "Extracted updated Dockerfile from reviewer container.",
+        );
     }
 
     DockerBuilder::remove_container(&container_name);
 
     if exit_code != 0 {
-        crate::logger::log(logger, &format!("Reviewer container exited with code {exit_code}"));
-        return Err(ReviewerError(format!("reviewer container exited with code {exit_code}")));
+        crate::logger::log(
+            logger,
+            &format!("Reviewer container exited with code {exit_code}"),
+        );
+        return Err(ReviewerError(format!(
+            "reviewer container exited with code {exit_code}"
+        )));
     }
 
     crate::logger::log(logger, "Reviewer pass complete.");
@@ -259,7 +278,13 @@ fi
 
 fn git_remote_url(repo_root: &Path) -> Option<String> {
     let output = Command::new("git")
-        .args(["-C", &repo_root.to_string_lossy(), "remote", "get-url", "origin"])
+        .args([
+            "-C",
+            &repo_root.to_string_lossy(),
+            "remote",
+            "get-url",
+            "origin",
+        ])
         .output()
         .ok()?;
     if output.status.success() {

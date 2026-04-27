@@ -1,7 +1,8 @@
+mod agent;
 mod config;
 mod debrief;
-mod docker;
 mod do_cmd;
+mod docker;
 mod litebrite;
 mod logger;
 mod loop_cmd;
@@ -20,7 +21,11 @@ use config::Config;
 use debrief::FailureDebrief;
 
 #[derive(Parser)]
-#[command(name = "mrmouth", version, about = "Run Claude Code as an autonomous coding agent in Docker containers")]
+#[command(
+    name = "mrmouth",
+    version,
+    about = "Run Claude Code or Codex as an autonomous coding agent in Docker containers"
+)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -34,7 +39,7 @@ enum Commands {
         #[arg(long)]
         raw: bool,
 
-        /// Override the Claude model (default: from config or opus)
+        /// Override the agent model (default: from config)
         #[arg(long)]
         model: Option<String>,
 
@@ -61,7 +66,7 @@ enum Commands {
         #[arg(long)]
         no_summary: bool,
 
-        /// Override the Claude model (default: from config or opus)
+        /// Override the agent model (default: from config)
         #[arg(long)]
         model: Option<String>,
     },
@@ -79,7 +84,7 @@ enum Commands {
         #[arg(long)]
         max_failures: Option<u32>,
 
-        /// Override the Claude model (default: from config or opus)
+        /// Override the agent model (default: from config)
         #[arg(long)]
         model: Option<String>,
     },
@@ -94,7 +99,7 @@ enum Commands {
         #[arg(long)]
         max_failures: Option<u32>,
 
-        /// Override the Claude model (default: from config or opus)
+        /// Override the agent model (default: from config)
         #[arg(long)]
         model: Option<String>,
     },
@@ -144,7 +149,10 @@ fn main() {
         .file_name()
         .and_then(|n| n.to_str())
         .unwrap_or("mrmouth");
-    let use_raw = matches!(cli.command, Commands::Run { raw: true, .. } | Commands::Summary { .. });
+    let use_raw = matches!(
+        cli.command,
+        Commands::Run { raw: true, .. } | Commands::Summary { .. }
+    );
     let tui = if use_raw {
         None
     } else {
@@ -152,7 +160,12 @@ fn main() {
     };
 
     let result: Result<(), FailureDebrief> = match cli.command {
-        Commands::Run { raw, model, timeout, local } => {
+        Commands::Run {
+            raw,
+            model,
+            timeout,
+            local,
+        } => {
             let opts = run::RunOptions {
                 raw,
                 model: model.unwrap_or_else(|| config.model.clone()),
@@ -161,18 +174,34 @@ fn main() {
                 prompt_override: None,
                 branch: None,
             };
-            run::execute(&config, &repo_root, opts, tui.as_ref()).map(|_| ()).map_err(|e| e.debrief())
+            run::execute(&config, &repo_root, opts, tui.as_ref())
+                .map(|_| ())
+                .map_err(|e| e.debrief())
         }
-        Commands::Loop { delay, max_runs, no_summary, model } => {
+        Commands::Loop {
+            delay,
+            max_runs,
+            no_summary,
+            model,
+        } => {
             let opts = loop_cmd::LoopOptions {
-                delay: if delay > 0 { delay } else { config.loop_config.delay },
+                delay: if delay > 0 {
+                    delay
+                } else {
+                    config.loop_config.delay
+                },
                 max_runs: max_runs.unwrap_or(config.loop_config.max_runs),
                 no_summary,
                 model: model.unwrap_or_else(|| config.model.clone()),
             };
             loop_cmd::execute(&config, &repo_root, opts, tui.as_ref()).map_err(|e| e.debrief())
         }
-        Commands::Do { item_id, timeout, max_failures, model } => {
+        Commands::Do {
+            item_id,
+            timeout,
+            max_failures,
+            model,
+        } => {
             let opts = do_cmd::DoOptions {
                 item_id,
                 timeout: timeout.unwrap_or(config.do_config.timeout),
@@ -181,7 +210,11 @@ fn main() {
             };
             do_cmd::execute(&config, &repo_root, opts, tui.as_ref()).map_err(|e| e.debrief())
         }
-        Commands::Ready { timeout, max_failures, model } => {
+        Commands::Ready {
+            timeout,
+            max_failures,
+            model,
+        } => {
             let opts = ready::ReadyOptions {
                 timeout: timeout.unwrap_or(config.do_config.timeout),
                 max_failures: max_failures.unwrap_or(config.do_config.max_failures),
@@ -190,9 +223,7 @@ fn main() {
             ready::execute(&config, &repo_root, opts, tui.as_ref()).map_err(|e| e.debrief())
         }
         Commands::Summary { log_file } => {
-            let log_file = log_file.unwrap_or_else(|| {
-                format!("{}/latest.jsonl", config.log_dir)
-            });
+            let log_file = log_file.unwrap_or_else(|| format!("{}/latest.jsonl", config.log_dir));
             summary::execute(&config, &repo_root, &log_file, None).map_err(|e| e.debrief())
         }
     };

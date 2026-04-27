@@ -29,7 +29,12 @@ fn emit(tui_tx: &Option<TuiSender>, msg: &str) {
     }
 }
 
-pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions, tui: Option<&TuiHandle>) -> Result<(), LoopError> {
+pub fn execute(
+    config: &Config,
+    repo_root: &Path,
+    opts: LoopOptions,
+    tui: Option<&TuiHandle>,
+) -> Result<(), LoopError> {
     // Use the same TUI pane name as run::execute so all output is visible
     // in one place — the user watches "AGENT SESSION" during runs and should
     // see post-run activity (reviewer, decider, etc.) on the same pane.
@@ -42,13 +47,20 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions, tui: Option
     let loop_logger = match tui {
         Some(t) => Logger::with_tui(&log_dir.join("loop.log"), t.sender("AGENT SESSION")),
         None => Logger::new(&log_dir.join("loop.log")),
-    }.ok();
+    }
+    .ok();
 
     // Cold-start: no git repo yet — init one and run in local (bind-mount) mode
     let bootstrap_mode = !repo_root.join(".git").exists();
     if bootstrap_mode {
         emit(&tui_tx, "BOOTSTRAP");
-        emit(&tui_tx, &format!("No git repository found in {}. Running git init...", repo_root.display()));
+        emit(
+            &tui_tx,
+            &format!(
+                "No git repository found in {}. Running git init...",
+                repo_root.display()
+            ),
+        );
         let init_output = Command::new("git")
             .arg("init")
             .current_dir(repo_root)
@@ -103,10 +115,15 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions, tui: Option
                     .args(["commit", "-m", "Initial commit"])
                     .current_dir(repo_root)
                     .output()
-                    .map_err(|e| LoopError::Bootstrap(format!("failed to commit initial files: {e}")))?;
+                    .map_err(|e| {
+                        LoopError::Bootstrap(format!("failed to commit initial files: {e}"))
+                    })?;
                 if !commit_output.status.success() {
                     let stderr = String::from_utf8_lossy(&commit_output.stderr);
-                    emit(&tui_tx, &format!("Initial commit failed: {}", stderr.trim()));
+                    emit(
+                        &tui_tx,
+                        &format!("Initial commit failed: {}", stderr.trim()),
+                    );
                     return Err(LoopError::Bootstrap("initial commit failed".into()));
                 }
             }
@@ -163,8 +180,13 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions, tui: Option
         parent_branch.clone()
     } else {
         emit(&tui_tx, "BRANCH SETUP");
-        let branch_name = shipper::generate_branch_name(repo_root, &config.loop_config.shipper_model, loop_logger.as_ref())
-            .map_err(|e| LoopError::BranchCreation(format!("failed to generate branch name: {e}")))?;
+        let branch_name = shipper::generate_branch_name(
+            config,
+            repo_root,
+            &config.loop_config.shipper_model,
+            loop_logger.as_ref(),
+        )
+        .map_err(|e| LoopError::BranchCreation(format!("failed to generate branch name: {e}")))?;
         shipper::create_and_push_branch(repo_root, &branch_name, loop_logger.as_ref())
             .map_err(|e| LoopError::BranchCreation(format!("failed to create branch: {e}")))?;
         branch_name
@@ -175,173 +197,229 @@ pub fn execute(config: &Config, repo_root: &Path, opts: LoopOptions, tui: Option
     } else {
         opts.max_runs.to_string()
     };
-    emit(&tui_tx, &format!("Agent loop: {}s between runs, max={}, Ctrl-C to stop", opts.delay, max_label));
+    emit(
+        &tui_tx,
+        &format!(
+            "Agent loop: {}s between runs, max={}, Ctrl-C to stop",
+            opts.delay, max_label
+        ),
+    );
 
     // Boot a long-lived session container, reused across iterations. Setup
     // (clone, lb init, claude.json restore) runs once; each iteration execs
     // task.sh instead of starting a fresh container. The loop_logger here is
     // required — we need a place to stream session setup output.
-    let session_logger = loop_logger.as_ref().ok_or_else(|| {
-        LoopError::Bootstrap("loop logger missing — cannot start session".into())
-    })?;
+    let session_logger = loop_logger
+        .as_ref()
+        .ok_or_else(|| LoopError::Bootstrap("loop logger missing — cannot start session".into()))?;
     let session_log_path = log_dir.join("session.log");
-    if let Some(t) = tui { t.set_stage("Session setup"); }
+    if let Some(t) = tui {
+        t.set_stage("Session setup");
+    }
     emit(&tui_tx, "Starting session container...");
-    let mut session = run::start_session(config, repo_root, &current_branch, tui, session_logger, &session_log_path)
-        .map_err(|e| LoopError::SessionStart(Box::new(e)))?;
+    let mut session = run::start_session(
+        config,
+        repo_root,
+        &current_branch,
+        tui,
+        session_logger,
+        &session_log_path,
+    )
+    .map_err(|e| LoopError::SessionStart(Box::new(e)))?;
 
     let mut run_number: u32 = 0;
 
-    let loop_result = (|| -> Result<(), LoopError> { loop {
-        run_number += 1;
+    let loop_result = (|| -> Result<(), LoopError> {
+        loop {
+            run_number += 1;
 
-        // Check if TUI user cancelled
-        if tui.is_some_and(|t| t.is_cancelled()) {
-            emit(&tui_tx, "LOOP CANCELLED BY USER");
-            break;
-        }
-
-        if opts.max_runs > 0 && run_number > opts.max_runs {
-            emit(&tui_tx, "");
-            emit(&tui_tx, &format!("LOOP COMPLETE  {} runs", opts.max_runs));
-            break;
-        }
-
-        // --- Decider (runs first; uses loop_logger since no run logger exists yet) ---
-        if let Some(t) = tui { t.set_stage("Deciding"); }
-        let decider_model = config.loop_config.decider_model.clone();
-        let decision = should_continue(repo_root, &decider_model, loop_logger.as_ref(), &log_dir);
-
-        match decision {
-            Ok(Decision::Continue(reason)) => {
-                crate::logger::log(loop_logger.as_ref(), &format!("Decider: continue — {reason}"));
-            }
-            Ok(Decision::Ship(reason)) => {
-                crate::logger::log(loop_logger.as_ref(), &format!("Decider: ship — {reason}"));
-
-                if let Some(t) = tui { t.set_stage("Shipper"); }
-                let ship_opts = shipper::ShipperOptions {
-                    model: config.loop_config.shipper_model.clone(),
-                    current_branch: current_branch.clone(),
-                    parent_branch: parent_branch.clone(),
-                };
-
-                match shipper::execute(config, repo_root, &ship_opts, loop_logger.as_ref()) {
-                    Ok(()) => {
-                        crate::logger::log(loop_logger.as_ref(), "Shipped! Merged to parent branch.");
-                        let completed = run_number - 1;
-                        emit(&tui_tx, &format!("LOOP COMPLETE  {completed} runs (shipped)"));
-                        break;
-                    }
-                    Err(e) => {
-                        crate::logger::log(loop_logger.as_ref(), &format!("Ship failed (continuing on current branch): {e}"));
-                    }
-                }
-            }
-            Ok(Decision::Stop(reason)) => {
-                crate::logger::log(loop_logger.as_ref(), &format!("Decider: stop — {reason}"));
-                let completed = run_number - 1;
-                emit(&tui_tx, &format!("LOOP COMPLETE  {completed} runs"));
+            // Check if TUI user cancelled
+            if tui.is_some_and(|t| t.is_cancelled()) {
+                emit(&tui_tx, "LOOP CANCELLED BY USER");
                 break;
             }
-            Err(e) => {
-                crate::logger::log(loop_logger.as_ref(), &format!("Decider error (continuing anyway): {e}"));
+
+            if opts.max_runs > 0 && run_number > opts.max_runs {
+                emit(&tui_tx, "");
+                emit(&tui_tx, &format!("LOOP COMPLETE  {} runs", opts.max_runs));
+                break;
             }
-        }
 
-        // Check if TUI user cancelled after decider
-        if tui.is_some_and(|t| t.is_cancelled()) {
-            emit(&tui_tx, "LOOP CANCELLED BY USER");
-            break;
-        }
-
-        // --- Runner ---
-        let run_opts = RunOptions {
-            raw: false,
-            model: opts.model.clone(),
-            timeout: None,
-            local: false,
-            prompt_override: None,
-            branch: Some(current_branch.clone()),
-        };
-
-        let head_before = git_head(repo_root);
-
-        if let Some(t) = tui { t.set_run(Some(format!("Run {run_number}"))); }
-        let run_result = run::execute_in_session(config, repo_root, run_opts, &session, tui);
-        let run_logger: Option<Logger> = match run_result {
-            Ok(logger) => Some(logger),
-            Err(e) => {
-                emit(&tui_tx, &format!("Run {run_number} failed: {e}"));
-                None
+            // --- Decider (runs first; uses loop_logger since no run logger exists yet) ---
+            if let Some(t) = tui {
+                t.set_stage("Deciding");
             }
-        };
-        // Use the run's logger if available, otherwise fall back to the loop logger.
-        let logger_opt: Option<&Logger> = run_logger.as_ref().or(loop_logger.as_ref());
+            let decider_model = config.loop_config.decider_model.clone();
+            let decision = should_continue(
+                config,
+                repo_root,
+                &decider_model,
+                loop_logger.as_ref(),
+                &log_dir,
+            );
 
-        // Check if TUI user cancelled during the run
-        if tui.is_some_and(|t| t.is_cancelled()) {
-            emit(&tui_tx, "LOOP CANCELLED BY USER");
-            break;
-        }
+            match decision {
+                Ok(Decision::Continue(reason)) => {
+                    crate::logger::log(
+                        loop_logger.as_ref(),
+                        &format!("Decider: continue — {reason}"),
+                    );
+                }
+                Ok(Decision::Ship(reason)) => {
+                    crate::logger::log(loop_logger.as_ref(), &format!("Decider: ship — {reason}"));
 
-        // Sync litebrite so reviewer sees fresh task state
-        litebrite::sync(repo_root, logger_opt);
+                    if let Some(t) = tui {
+                        t.set_stage("Shipper");
+                    }
+                    let ship_opts = shipper::ShipperOptions {
+                        model: config.loop_config.shipper_model.clone(),
+                        current_branch: current_branch.clone(),
+                        parent_branch: parent_branch.clone(),
+                    };
 
-        // --- Reviewer (only if the agent actually committed something) ---
-        let head_after = git_head(repo_root);
-        let commit_range = match (&head_before, &head_after) {
-            (Ok(before), Ok(after)) if before != after => Some((before.clone(), after.clone())),
-            _ => None,
-        };
+                    match shipper::execute(config, repo_root, &ship_opts, loop_logger.as_ref()) {
+                        Ok(()) => {
+                            crate::logger::log(
+                                loop_logger.as_ref(),
+                                "Shipped! Merged to parent branch.",
+                            );
+                            let completed = run_number - 1;
+                            emit(
+                                &tui_tx,
+                                &format!("LOOP COMPLETE  {completed} runs (shipped)"),
+                            );
+                            break;
+                        }
+                        Err(e) => {
+                            crate::logger::log(
+                                loop_logger.as_ref(),
+                                &format!("Ship failed (continuing on current branch): {e}"),
+                            );
+                        }
+                    }
+                }
+                Ok(Decision::Stop(reason)) => {
+                    crate::logger::log(loop_logger.as_ref(), &format!("Decider: stop — {reason}"));
+                    let completed = run_number - 1;
+                    emit(&tui_tx, &format!("LOOP COMPLETE  {completed} runs"));
+                    break;
+                }
+                Err(e) => {
+                    crate::logger::log(
+                        loop_logger.as_ref(),
+                        &format!("Decider error (continuing anyway): {e}"),
+                    );
+                }
+            }
 
-        if commit_range.is_some() {
-            if let Some(t) = tui { t.set_stage("Reviewer"); }
-            let reviewer_opts = reviewer::ReviewerOptions {
-                model: config.loop_config.reviewer_model.clone(),
-                current_branch: current_branch.clone(),
-                commit_range,
+            // Check if TUI user cancelled after decider
+            if tui.is_some_and(|t| t.is_cancelled()) {
+                emit(&tui_tx, "LOOP CANCELLED BY USER");
+                break;
+            }
+
+            // --- Runner ---
+            let run_opts = RunOptions {
+                raw: false,
+                model: opts.model.clone(),
+                timeout: None,
+                local: false,
+                prompt_override: None,
+                branch: Some(current_branch.clone()),
             };
-            if let Err(e) = reviewer::execute(config, repo_root, &reviewer_opts, logger_opt) {
-                crate::logger::log(logger_opt, &format!("Reviewer failed (non-fatal): {e}"));
+
+            let head_before = git_head(repo_root);
+
+            if let Some(t) = tui {
+                t.set_run(Some(format!("Run {run_number}")));
             }
-            // Sync lb state pushed by reviewer container back to host
+            let run_result = run::execute_in_session(config, repo_root, run_opts, &session, tui);
+            let run_logger: Option<Logger> = match run_result {
+                Ok(logger) => Some(logger),
+                Err(e) => {
+                    emit(&tui_tx, &format!("Run {run_number} failed: {e}"));
+                    None
+                }
+            };
+            // Use the run's logger if available, otherwise fall back to the loop logger.
+            let logger_opt: Option<&Logger> = run_logger.as_ref().or(loop_logger.as_ref());
+
+            // Check if TUI user cancelled during the run
+            if tui.is_some_and(|t| t.is_cancelled()) {
+                emit(&tui_tx, "LOOP CANCELLED BY USER");
+                break;
+            }
+
+            // Sync litebrite so reviewer sees fresh task state
             litebrite::sync(repo_root, logger_opt);
-        } else {
-            crate::logger::log(logger_opt, "Reviewer skipped: no new commits from this run.");
-        }
 
-        // --- Summary (runs after reviewer) ---
-        if !opts.no_summary {
-            let log_file = format!("{}/latest.jsonl", config.log_dir);
-            if let Err(e) = summary::execute(config, repo_root, &log_file, logger_opt) {
-                crate::logger::log(logger_opt, &format!("Summary generation failed: {e}"));
+            // --- Reviewer (only if the agent actually committed something) ---
+            let head_after = git_head(repo_root);
+            let commit_range = match (&head_before, &head_after) {
+                (Ok(before), Ok(after)) if before != after => Some((before.clone(), after.clone())),
+                _ => None,
+            };
+
+            if commit_range.is_some() {
+                if let Some(t) = tui {
+                    t.set_stage("Reviewer");
+                }
+                let reviewer_opts = reviewer::ReviewerOptions {
+                    model: config.loop_config.reviewer_model.clone(),
+                    current_branch: current_branch.clone(),
+                    commit_range,
+                };
+                if let Err(e) = reviewer::execute(config, repo_root, &reviewer_opts, logger_opt) {
+                    crate::logger::log(logger_opt, &format!("Reviewer failed (non-fatal): {e}"));
+                }
+                // Sync lb state pushed by reviewer container back to host
+                litebrite::sync(repo_root, logger_opt);
+            } else {
+                crate::logger::log(
+                    logger_opt,
+                    "Reviewer skipped: no new commits from this run.",
+                );
+            }
+
+            // --- Summary (runs after reviewer) ---
+            if !opts.no_summary {
+                let log_file = format!("{}/latest.jsonl", config.log_dir);
+                if let Err(e) = summary::execute(config, repo_root, &log_file, logger_opt) {
+                    crate::logger::log(logger_opt, &format!("Summary generation failed: {e}"));
+                }
+            }
+
+            // Dockerfile-hash check: if the agent or decider edited the Dockerfile,
+            // the session's image is now stale. Rebuild (cheap on cache hit) and
+            // restart the session only if the image ID moved.
+            if let Err(e) = maybe_restart_session_on_dockerfile_change(
+                config,
+                repo_root,
+                &current_branch,
+                &mut session,
+                tui,
+                &tui_tx,
+                session_logger,
+            ) {
+                emit(&tui_tx, &format!("Session restart failed: {e}"));
+                return Err(LoopError::SessionStart(Box::new(e)));
+            }
+
+            // Check if TUI user cancelled before sleeping
+            if tui.is_some_and(|t| t.is_cancelled()) {
+                emit(&tui_tx, "LOOP CANCELLED BY USER");
+                break;
+            }
+
+            if opts.delay > 0 {
+                emit(
+                    &tui_tx,
+                    &format!("Waiting {}s until next run...", opts.delay),
+                );
+                std::thread::sleep(std::time::Duration::from_secs(opts.delay as u64));
             }
         }
-
-        // Dockerfile-hash check: if the agent or decider edited the Dockerfile,
-        // the session's image is now stale. Rebuild (cheap on cache hit) and
-        // restart the session only if the image ID moved.
-        if let Err(e) = maybe_restart_session_on_dockerfile_change(
-            config, repo_root, &current_branch, &mut session, tui, &tui_tx,
-            session_logger,
-        ) {
-            emit(&tui_tx, &format!("Session restart failed: {e}"));
-            return Err(LoopError::SessionStart(Box::new(e)));
-        }
-
-        // Check if TUI user cancelled before sleeping
-        if tui.is_some_and(|t| t.is_cancelled()) {
-            emit(&tui_tx, "LOOP CANCELLED BY USER");
-            break;
-        }
-
-        if opts.delay > 0 {
-            emit(&tui_tx, &format!("Waiting {}s until next run...", opts.delay));
-            std::thread::sleep(std::time::Duration::from_secs(opts.delay as u64));
-        }
-    }
-    Ok(())
+        Ok(())
     })();
 
     // Tear down the session regardless of how the loop exited.
@@ -371,9 +449,19 @@ fn maybe_restart_session_on_dockerfile_change(
         return Ok(());
     }
 
-    emit(tui_tx, "Dockerfile changed — restarting session with new image...");
+    emit(
+        tui_tx,
+        "Dockerfile changed — restarting session with new image...",
+    );
     let session_log_path = repo_root.join(&config.log_dir).join("session.log");
-    let fresh = crate::run::start_session(config, repo_root, current_branch, tui, session_logger, &session_log_path)?;
+    let fresh = crate::run::start_session(
+        config,
+        repo_root,
+        current_branch,
+        tui,
+        session_logger,
+        &session_log_path,
+    )?;
     let stale = std::mem::replace(session, fresh);
     crate::run::stop_session(stale, Some(session_logger));
     Ok(())
@@ -385,7 +473,13 @@ enum Decision {
     Stop(String),
 }
 
-fn should_continue(repo_root: &Path, decider_model: &str, logger: Option<&Logger>, log_dir: &Path) -> Result<Decision, LoopError> {
+fn should_continue(
+    config: &Config,
+    repo_root: &Path,
+    decider_model: &str,
+    logger: Option<&Logger>,
+    log_dir: &Path,
+) -> Result<Decision, LoopError> {
     crate::logger::log(logger, "DECISION");
 
     // Short-circuit: if open tasks already exist in the tracker, the runner has
@@ -408,11 +502,11 @@ fn should_continue(repo_root: &Path, decider_model: &str, logger: Option<&Logger
     let decider_logger = match logger.and_then(|l| l.tui_sender()) {
         Some(tui) => Logger::with_tui(&decider_log_path, tui.clone()),
         None => Logger::new(&decider_log_path),
-    }.ok();
+    }
+    .ok();
 
-    let mut jsonl_writer: Option<BufWriter<File>> = File::create(&decider_jsonl_path)
-        .ok()
-        .map(BufWriter::new);
+    let mut jsonl_writer: Option<BufWriter<File>> =
+        File::create(&decider_jsonl_path).ok().map(BufWriter::new);
 
     let schema = r#"{"type":"object","properties":{"action":{"type":"string","enum":["continue","ship","stop"],"description":"continue = more work to do, ship = all done and ready to merge, stop = nothing to merge"},"reason":{"type":"string","description":"Brief explanation of the decision"}},"required":["action","reason"]}"#;
 
@@ -449,16 +543,17 @@ fn should_continue(repo_root: &Path, decider_model: &str, logger: Option<&Logger
         - \"stop\": nothing was done, nothing to merge",
         crate::prompt::SYSTEM_PREAMBLE);
 
-    let mut cmd = streaming::claude_stream_cmd_with_schema(
+    let mut cmd = streaming::agent_stream_cmd_with_schema(
+        config.agent,
         repo_root,
         decider_model,
         "Read,Edit,Write,Bash(git *),Bash(lb *)",
         schema,
     );
 
-    let mut child = cmd
-        .spawn()
-        .map_err(|e| LoopError::Decider(format!("failed to run claude CLI: {e}")))?;
+    let mut child = cmd.spawn().map_err(|e| {
+        LoopError::Decider(format!("failed to run {} CLI: {e}", config.agent.as_str()))
+    })?;
 
     streaming::send_prompt(&mut child, &prompt);
 
@@ -470,12 +565,19 @@ fn should_continue(repo_root: &Path, decider_model: &str, logger: Option<&Logger
     let mut formatter = StreamFormatter::new(target.supports_color());
 
     let effective_logger = decider_logger.as_ref().or(logger);
-    let (result_text, exit_code) = streaming::run_streaming_claude(child, &mut formatter, effective_logger, &target, &mut jsonl_writer)
-        .map_err(|e| LoopError::Decider(format!("streaming error: {e}")))?;
+    let (result_text, exit_code) = streaming::run_streaming_claude(
+        child,
+        &mut formatter,
+        effective_logger,
+        &target,
+        &mut jsonl_writer,
+    )
+    .map_err(|e| LoopError::Decider(format!("streaming error: {e}")))?;
 
     if exit_code != 0 {
         return Err(LoopError::Decider(format!(
-            "claude CLI exited with code {exit_code}"
+            "{} CLI exited with code {exit_code}",
+            config.agent.as_str()
         )));
     }
 
@@ -483,13 +585,21 @@ fn should_continue(repo_root: &Path, decider_model: &str, logger: Option<&Logger
     let parsed: serde_json::Value = match serde_json::from_str(&result_text) {
         Ok(v) => v,
         Err(e) => {
-            crate::logger::log(effective_logger, &format!("WARNING: decider returned invalid JSON (defaulting to 'continue'): {e}"));
+            crate::logger::log(
+                effective_logger,
+                &format!("WARNING: decider returned invalid JSON (defaulting to 'continue'): {e}"),
+            );
             crate::logger::log(effective_logger, &format!("  raw output: {result_text}"));
-            return Ok(Decision::Continue("JSON parse failure — defaulting to continue".into()));
+            return Ok(Decision::Continue(
+                "JSON parse failure — defaulting to continue".into(),
+            ));
         }
     };
     let action = parsed["action"].as_str().unwrap_or("continue");
-    let reason = parsed["reason"].as_str().unwrap_or("no reason given").to_string();
+    let reason = parsed["reason"]
+        .as_str()
+        .unwrap_or("no reason given")
+        .to_string();
 
     match action {
         "ship" => Ok(Decision::Ship(reason)),
@@ -512,7 +622,12 @@ fn git_head(repo_root: &Path) -> Result<String, ()> {
 
 fn git_current_branch(repo_root: &Path) -> Result<String, LoopError> {
     let output = Command::new("git")
-        .args(["-C", &repo_root.to_string_lossy(), "branch", "--show-current"])
+        .args([
+            "-C",
+            &repo_root.to_string_lossy(),
+            "branch",
+            "--show-current",
+        ])
         .output()
         .map_err(|e| LoopError::BranchCreation(format!("failed to get current branch: {e}")))?;
 

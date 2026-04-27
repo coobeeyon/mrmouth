@@ -5,7 +5,12 @@ use crate::logger::Logger;
 use crate::stream_fmt::StreamFormatter;
 use crate::streaming::{self, StreamTarget};
 
-pub fn execute(config: &Config, repo_root: &Path, log_file: &str, logger: Option<&Logger>) -> Result<(), SummaryError> {
+pub fn execute(
+    config: &Config,
+    repo_root: &Path,
+    log_file: &str,
+    logger: Option<&Logger>,
+) -> Result<(), SummaryError> {
     let log_path = if Path::new(log_file).is_absolute() {
         std::path::PathBuf::from(log_file)
     } else {
@@ -38,9 +43,8 @@ pub fn execute(config: &Config, repo_root: &Path, log_file: &str, logger: Option
 
     let log_dir = repo_root.join(&config.log_dir);
     let summary_dir = log_dir.join("summaries");
-    std::fs::create_dir_all(&summary_dir).map_err(|e| {
-        SummaryError(format!("failed to create summaries directory: {e}"))
-    })?;
+    std::fs::create_dir_all(&summary_dir)
+        .map_err(|e| SummaryError(format!("failed to create summaries directory: {e}")))?;
     let summary_file = summary_dir.join(format!("{log_name}.md"));
 
     let prompt = format!(
@@ -56,7 +60,8 @@ pub fn execute(config: &Config, repo_root: &Path, log_file: &str, logger: Option
 
     crate::logger::log(logger, "SUMMARY");
 
-    let mut cmd = streaming::claude_stream_cmd(
+    let mut cmd = streaming::agent_stream_cmd(
+        config.agent,
         repo_root,
         &config.loop_config.summary_model,
         "Read",
@@ -64,7 +69,7 @@ pub fn execute(config: &Config, repo_root: &Path, log_file: &str, logger: Option
 
     let mut child = cmd
         .spawn()
-        .map_err(|e| SummaryError(format!("failed to run claude CLI: {e}")))?;
+        .map_err(|e| SummaryError(format!("failed to run {} CLI: {e}", config.agent.as_str())))?;
 
     streaming::send_prompt(&mut child, &prompt);
 
@@ -75,22 +80,29 @@ pub fn execute(config: &Config, repo_root: &Path, log_file: &str, logger: Option
 
     let mut formatter = StreamFormatter::new(target.supports_color());
 
-    let (result, exit_code) = streaming::run_streaming_claude(child, &mut formatter, logger, &target, &mut None)
-        .map_err(|e| SummaryError(format!("streaming error: {e}")))?;
+    let (result, exit_code) =
+        streaming::run_streaming_claude(child, &mut formatter, logger, &target, &mut None)
+            .map_err(|e| SummaryError(format!("streaming error: {e}")))?;
 
     if exit_code != 0 {
         return Err(SummaryError(format!(
-            "claude CLI exited with code {exit_code}"
+            "{} CLI exited with code {exit_code}",
+            config.agent.as_str()
         )));
     }
 
     if !result.trim().is_empty() {
-        std::fs::write(&summary_file, &result).map_err(|e| {
-            SummaryError(format!("failed to write summary file: {e}"))
-        })?;
-        crate::logger::log(logger, &format!("Summary saved: {}", summary_file.display()));
+        std::fs::write(&summary_file, &result)
+            .map_err(|e| SummaryError(format!("failed to write summary file: {e}")))?;
+        crate::logger::log(
+            logger,
+            &format!("Summary saved: {}", summary_file.display()),
+        );
     } else {
-        crate::logger::log(logger, "Summary agent produced no output; skipping file write.");
+        crate::logger::log(
+            logger,
+            "Summary agent produced no output; skipping file write.",
+        );
     }
     Ok(())
 }

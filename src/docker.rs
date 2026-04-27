@@ -40,8 +40,8 @@ RUN mkdir -p /root/.ssh && \
 COPY --from=tools-builder /usr/local/cargo/bin/lb /usr/local/bin/lb
 COPY --from=tools-builder /usr/local/cargo/bin/trk /usr/local/bin/trk
 
-# Layer 5: Claude Code (changes occasionally)
-RUN npm install -g @anthropic-ai/claude-code
+# Layer 5: Agent CLIs (changes occasionally)
+RUN npm install -g @anthropic-ai/claude-code @openai/codex
 
 # Layer 6: Non-root user matching host UID (for SSH agent socket access)
 ARG HOST_UID=1000
@@ -85,11 +85,7 @@ impl DockerBuilder {
 
     /// Build the Docker image. Uses the configured Dockerfile path, falling back
     /// to a built-in default if it doesn't exist.
-    pub fn build(
-        &self,
-        repo_root: &Path,
-        dockerfile_path: &str,
-    ) -> Result<(), DockerError> {
+    pub fn build(&self, repo_root: &Path, dockerfile_path: &str) -> Result<(), DockerError> {
         let dockerfile = repo_root.join(dockerfile_path);
 
         // If no Dockerfile exists, write the default to a temp file
@@ -126,7 +122,10 @@ impl DockerBuilder {
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-            return Err(DockerError::BuildFailed(output.status.code().unwrap_or(-1), stderr));
+            return Err(DockerError::BuildFailed(
+                output.status.code().unwrap_or(-1),
+                stderr,
+            ));
         }
 
         Ok(())
@@ -171,7 +170,14 @@ impl DockerBuilder {
         // Env vars
         cmd.args(["-e", &format!("REPO_URL={}", args.repo_url)]);
         cmd.args(["-e", &format!("BRANCH={}", args.branch)]);
-        for var in ["ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"] {
+        for var in [
+            "ANTHROPIC_API_KEY",
+            "CLAUDE_CODE_OAUTH_TOKEN",
+            "OPENAI_API_KEY",
+            "CODEX_API_KEY",
+            "GH_TOKEN",
+            "GITHUB_TOKEN",
+        ] {
             if let Ok(val) = std::env::var(var) {
                 cmd.args(["-e", &format!("{var}={val}")]);
             }
@@ -184,16 +190,22 @@ impl DockerBuilder {
         }
 
         // Mount runner script
-        cmd.args(["-v", &format!("{}:/run.sh:ro", args.runner_script.to_string_lossy())]);
+        cmd.args([
+            "-v",
+            &format!("{}:/run.sh:ro", args.runner_script.to_string_lossy()),
+        ]);
 
-        // Persistent volume for Claude memory
-        cmd.args(["-v", &format!("{}:/home/runner/.claude", args.volume)]);
+        // Persistent volume for agent memory/auth state
+        cmd.args(["-v", &format!("{}:{}", args.volume, args.agent_home)]);
 
         // Local mode: bind-mount workspace
         if args.local {
-            let cwd = std::env::current_dir()
-                .map_err(|e| DockerError::Io("getting cwd".into(), e))?;
-            cmd.args(["-v", &format!("{}:/home/runner/workspace", cwd.to_string_lossy())]);
+            let cwd =
+                std::env::current_dir().map_err(|e| DockerError::Io("getting cwd".into(), e))?;
+            cmd.args([
+                "-v",
+                &format!("{}:/home/runner/workspace", cwd.to_string_lossy()),
+            ]);
         }
 
         // File-remote mode: mount host repo as a git remote the container can clone from and push to
@@ -242,7 +254,11 @@ impl DockerBuilder {
 
     /// Copy a file from a stopped container to a local path (best-effort).
     /// Returns true if the copy succeeded.
-    pub fn copy_from_container(container_name: &str, container_path: &str, local_path: &Path) -> bool {
+    pub fn copy_from_container(
+        container_name: &str,
+        container_path: &str,
+        local_path: &Path,
+    ) -> bool {
         let status = Command::new("docker")
             .args([
                 "cp",
@@ -284,7 +300,11 @@ impl DockerBuilder {
             return None;
         }
         let id = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        if id.is_empty() { None } else { Some(id) }
+        if id.is_empty() {
+            None
+        } else {
+            Some(id)
+        }
     }
 
     /// Start a long-lived detached container that stays alive until explicitly
@@ -301,7 +321,14 @@ impl DockerBuilder {
 
         // Env vars that don't change per task — set once at session start.
         cmd.args(["-e", &format!("REPO_URL={}", args.repo_url)]);
-        for var in ["ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"] {
+        for var in [
+            "ANTHROPIC_API_KEY",
+            "CLAUDE_CODE_OAUTH_TOKEN",
+            "OPENAI_API_KEY",
+            "CODEX_API_KEY",
+            "GH_TOKEN",
+            "GITHUB_TOKEN",
+        ] {
             if let Ok(val) = std::env::var(var) {
                 cmd.args(["-e", &format!("{var}={val}")]);
             }
@@ -314,16 +341,22 @@ impl DockerBuilder {
         }
 
         // Scripts directory (bind-mount so host can rewrite task.sh between tasks).
-        cmd.args(["-v", &format!("{}:/mrmouth-scripts:ro", args.scripts_dir.to_string_lossy())]);
+        cmd.args([
+            "-v",
+            &format!("{}:/mrmouth-scripts:ro", args.scripts_dir.to_string_lossy()),
+        ]);
 
-        // Persistent volume for Claude memory
-        cmd.args(["-v", &format!("{}:/home/runner/.claude", args.volume)]);
+        // Persistent volume for agent memory/auth state
+        cmd.args(["-v", &format!("{}:{}", args.volume, args.agent_home)]);
 
         // Local mode: bind-mount workspace
         if args.local {
-            let cwd = std::env::current_dir()
-                .map_err(|e| DockerError::Io("getting cwd".into(), e))?;
-            cmd.args(["-v", &format!("{}:/home/runner/workspace", cwd.to_string_lossy())]);
+            let cwd =
+                std::env::current_dir().map_err(|e| DockerError::Io("getting cwd".into(), e))?;
+            cmd.args([
+                "-v",
+                &format!("{}:/home/runner/workspace", cwd.to_string_lossy()),
+            ]);
         }
 
         // File-remote mode
@@ -340,7 +373,10 @@ impl DockerBuilder {
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-            return Err(DockerError::SessionStartFailed(output.status.code().unwrap_or(-1), stderr));
+            return Err(DockerError::SessionStartFailed(
+                output.status.code().unwrap_or(-1),
+                stderr,
+            ));
         }
 
         Ok(())
@@ -392,7 +428,9 @@ impl DockerBuilder {
                 }
                 #[cfg(unix)]
                 {
-                    unsafe { libc::kill(pid as i32, libc::SIGTERM); }
+                    unsafe {
+                        libc::kill(pid as i32, libc::SIGTERM);
+                    }
                 }
                 // Grace period — SIGTERM may need a moment to propagate through
                 // docker exec to the in-container process and for it to clean up.
@@ -404,7 +442,9 @@ impl DockerBuilder {
                 }
                 #[cfg(unix)]
                 {
-                    unsafe { libc::kill(pid as i32, libc::SIGKILL); }
+                    unsafe {
+                        libc::kill(pid as i32, libc::SIGKILL);
+                    }
                 }
             });
         }
@@ -414,7 +454,6 @@ impl DockerBuilder {
             watchdog_cancelled: cancelled,
         })
     }
-
 }
 
 pub struct ContainerArgs {
@@ -423,6 +462,7 @@ pub struct ContainerArgs {
     pub branch: String,
     pub runner_script: std::path::PathBuf,
     pub volume: String,
+    pub agent_home: &'static str,
     pub local: bool,
     pub file_remote_path: Option<std::path::PathBuf>,
     pub timeout_secs: Option<u64>,
@@ -436,6 +476,7 @@ pub struct SessionArgs {
     pub repo_url: String,
     pub scripts_dir: std::path::PathBuf,
     pub volume: String,
+    pub agent_home: &'static str,
     pub local: bool,
     pub file_remote_path: Option<std::path::PathBuf>,
 }
@@ -453,16 +494,8 @@ impl ContainerHandle {
     where
         F: FnMut(&str),
     {
-        let stdout = self
-            .child
-            .stdout
-            .take()
-            .ok_or(DockerError::NoStdout)?;
-        let stderr = self
-            .child
-            .stderr
-            .take()
-            .ok_or(DockerError::NoStderr)?;
+        let stdout = self.child.stdout.take().ok_or(DockerError::NoStdout)?;
+        let stderr = self.child.stderr.take().ok_or(DockerError::NoStderr)?;
 
         let (tx, rx) = mpsc::channel::<String>();
         let tx_stdout = tx.clone();
