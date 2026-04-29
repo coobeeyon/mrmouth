@@ -201,6 +201,9 @@ pub fn execute(
         let stdout = std::io::stdout();
         handle
             .stream_output(|line| {
+                if should_suppress_stream_line(config.agent, line) {
+                    return;
+                }
                 let _ = writeln!(stdout.lock(), "{line}");
                 let _ = writeln!(jsonl_writer, "{line}");
                 logger.log_file_only(line);
@@ -210,6 +213,9 @@ pub fn execute(
         let mut formatter = StreamFormatter::new(is_tty);
         handle
             .stream_output(|line| {
+                if should_suppress_stream_line(config.agent, line) {
+                    return;
+                }
                 let _ = writeln!(jsonl_writer, "{line}");
                 if let Some(formatted) = stream_fmt::format_line(&mut formatter, line) {
                     logger.display(&formatted);
@@ -546,6 +552,9 @@ pub fn execute_in_session(
         let stdout = std::io::stdout();
         handle
             .stream_output(|line| {
+                if should_suppress_stream_line(config.agent, line) {
+                    return;
+                }
                 let _ = writeln!(stdout.lock(), "{line}");
                 let _ = writeln!(jsonl_writer, "{line}");
                 logger.log_file_only(line);
@@ -555,6 +564,9 @@ pub fn execute_in_session(
         let mut formatter = StreamFormatter::new(is_tty);
         handle
             .stream_output(|line| {
+                if should_suppress_stream_line(config.agent, line) {
+                    return;
+                }
                 let _ = writeln!(jsonl_writer, "{line}");
                 if let Some(formatted) = stream_fmt::format_line(&mut formatter, line) {
                     logger.display(&formatted);
@@ -1581,6 +1593,10 @@ fn parse_marker_tail(payload: &str, key: &str) -> Option<String> {
     Some(payload[value_start..].trim().to_string())
 }
 
+fn should_suppress_stream_line(agent: AgentKind, line: &str) -> bool {
+    matches!(agent, AgentKind::Codex) && line.trim() == "Reading additional input from stdin..."
+}
+
 /// Atomically replace a symlink by creating a temp link and renaming over the target.
 #[cfg(unix)]
 fn atomic_symlink(target: &str, link_path: &std::path::PathBuf) {
@@ -2331,6 +2347,26 @@ mod tests {
         let text = "h1 h2 h3 h4 h5 h6\n\
                     a  b  c  not-a-number e f\n";
         assert_eq!(parse_df_available_kb(text), None);
+    }
+
+    #[test]
+    fn suppresses_codex_stdin_status_line_only_for_codex() {
+        assert!(should_suppress_stream_line(
+            AgentKind::Codex,
+            "Reading additional input from stdin..."
+        ));
+        assert!(should_suppress_stream_line(
+            AgentKind::Codex,
+            "  Reading additional input from stdin...  "
+        ));
+        assert!(!should_suppress_stream_line(
+            AgentKind::Claude,
+            "Reading additional input from stdin..."
+        ));
+        assert!(!should_suppress_stream_line(
+            AgentKind::Codex,
+            "Reading project files..."
+        ));
     }
 
     #[test]
