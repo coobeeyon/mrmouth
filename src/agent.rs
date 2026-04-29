@@ -82,10 +82,10 @@ fi"#
                 let model_arg = codex_model_arg(model);
                 match escaped_schema {
                     Some(schema) => format!(
-                        "cat > /tmp/mrmouth-output-schema.json << 'MRMOUTH_SCHEMA_EOF'\n{schema}\nMRMOUTH_SCHEMA_EOF\ncodex exec --json --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check --output-schema /tmp/mrmouth-output-schema.json{model_arg} '{escaped_prompt}'"
+                        "cat > /tmp/mrmouth-output-schema.json << 'MRMOUTH_SCHEMA_EOF'\n{schema}\nMRMOUTH_SCHEMA_EOF\ncodex exec --json --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check --output-schema /tmp/mrmouth-output-schema.json{model_arg} '{escaped_prompt}' </dev/null"
                     ),
                     None => format!(
-                        "codex exec --json --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check{model_arg} '{escaped_prompt}'"
+                        "codex exec --json --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check{model_arg} '{escaped_prompt}' </dev/null"
                     ),
                 }
             }

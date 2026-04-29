@@ -1929,7 +1929,7 @@ mod tests {
         assert!(content.contains("lb setup codex"));
         assert!(content.contains("trk setup codex"));
         assert!(content.contains("command -v codex >/dev/null"));
-        assert!(content.contains("codex exec --json --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check --model gpt-5.2 'do it'"));
+        assert!(content.contains("codex exec --json --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check --model gpt-5.2 'do it' </dev/null"));
         assert!(!content.contains("claude -p --dangerously-skip-permissions"));
     }
 
@@ -1951,7 +1951,7 @@ mod tests {
             .unwrap()
             .read_to_string(&mut content)
             .unwrap();
-        assert!(content.contains("codex exec --json --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check 'do it'"));
+        assert!(content.contains("codex exec --json --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check 'do it' </dev/null"));
         assert!(!content.contains("--model opus"));
     }
 
@@ -2485,7 +2485,7 @@ mod tests {
         )
         .unwrap();
         let content = std::fs::read_to_string(dir.path().join("task.sh")).unwrap();
-        assert!(content.contains("codex exec --json --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check --model gpt-5.2 'do the thing'"));
+        assert!(content.contains("codex exec --json --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check --model gpt-5.2 'do the thing' </dev/null"));
         assert!(!content.contains("claude -p --dangerously-skip-permissions"));
     }
 
