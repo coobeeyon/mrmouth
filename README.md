@@ -83,6 +83,17 @@ Generate an AI summary of a run log.
 mrmouth summary [path/to/log.jsonl]
 ```
 
+### `mrmouth codex-login`
+
+Sign in to Codex inside the same persisted Docker volume used by `--codex`.
+Use this when you want Codex CLI to use your ChatGPT Codex subscription instead
+of passing `OPENAI_API_KEY` into the container.
+
+```bash
+mrmouth codex-login
+mrmouth do <item-id> --codex
+```
+
 ## Customization
 
 Everything works out of the box. To customize, create files in `.mrmouth/` in your repo and commit them.

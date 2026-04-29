@@ -82,6 +82,10 @@ impl Config {
     /// Returns the effective volume name: user-configured value, or a name derived
     /// from the repo root directory so each project gets isolated agent memory.
     pub fn effective_volume(&self, repo_root: &Path) -> String {
+        self.effective_volume_for_agent(repo_root, self.agent)
+    }
+
+    pub fn effective_volume_for_agent(&self, repo_root: &Path, agent: AgentKind) -> String {
         if let Some(ref v) = self.volume {
             return v.clone();
         }
@@ -98,7 +102,7 @@ impl Config {
                 }
             })
             .collect();
-        format!("{}-{slug}", self.agent.default_volume_prefix())
+        format!("{}-{slug}", agent.default_volume_prefix())
     }
 
     /// Load config from `.mrmouth/config.toml` relative to `repo_root`.

@@ -1,4 +1,5 @@
 mod agent;
+mod codex_login;
 mod config;
 mod debrief;
 mod do_cmd;
@@ -117,6 +118,9 @@ enum Commands {
         /// Path to log file (default: logs/latest.jsonl)
         log_file: Option<String>,
     },
+
+    /// Sign in to Codex inside mrmouth's persisted Docker auth volume
+    CodexLogin,
 }
 
 fn main() {
@@ -124,7 +128,10 @@ fn main() {
 
     let use_cwd_fallback = matches!(
         cli.command,
-        Commands::Run { local: true, .. } | Commands::Loop { .. } | Commands::Summary { .. }
+        Commands::Run { local: true, .. }
+            | Commands::Loop { .. }
+            | Commands::Summary { .. }
+            | Commands::CodexLogin
     );
     let repo_root = if use_cwd_fallback {
         match Config::find_repo_root_or_cwd() {
@@ -238,6 +245,9 @@ fn main() {
         Commands::Summary { log_file } => {
             let log_file = log_file.unwrap_or_else(|| format!("{}/latest.jsonl", config.log_dir));
             summary::execute(&config, &repo_root, &log_file, None).map_err(|e| e.debrief())
+        }
+        Commands::CodexLogin => {
+            codex_login::execute(&config, &repo_root).map_err(|e| e.debrief())
         }
     };
 
