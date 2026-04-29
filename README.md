@@ -36,9 +36,10 @@ That's it. No setup needed — mrmouth uses sensible defaults for everything.
 Run one agent session.
 
 ```bash
-mrmouth run [--raw] [--model <model>] [--timeout <minutes>] [--local]
+mrmouth run [--claude|--codex] [--raw] [--model <model>] [--timeout <minutes>] [--local]
 ```
 
+- `--claude` / `--codex` — override the configured agent for all AI roles
 - `--raw` — output raw JSONL instead of formatted stream
 - `--model` — override the agent model (default: `opus`)
 - `--timeout` — kill container after N minutes
@@ -49,7 +50,7 @@ mrmouth run [--raw] [--model <model>] [--timeout <minutes>] [--local]
 Run the agent repeatedly until work is done.
 
 ```bash
-mrmouth loop [--delay <seconds>] [--max-runs <n>] [--no-summary] [--model <model>]
+mrmouth loop [--claude|--codex] [--delay <seconds>] [--max-runs <n>] [--no-summary] [--model <model>]
 ```
 
 Each iteration starts with an AI **decider** that reads SPEC.md and litebrite state, decomposes epics into tasks if needed, and returns `continue`, `ship`, or `stop`. On `continue` the **runner** agent executes inside Docker; afterward a **reviewer** agent checks the diff and files litebrite tasks for any issues. On `ship` a readiness check verifies builds and tests pass before merging and starting a new branch. The loop stops when the decider says `stop` or max iterations are reached.
@@ -59,7 +60,7 @@ Each iteration starts with an AI **decider** that reads SPEC.md and litebrite st
 Work through a litebrite item — either an epic or a single task.
 
 ```bash
-mrmouth do <item-id> [--timeout <minutes>] [--max-failures <n>] [--model <model>]
+mrmouth do <item-id> [--claude|--codex] [--timeout <minutes>] [--max-failures <n>] [--model <model>]
 ```
 
 Creates a feature branch and dispatches based on item type. For epics, loops through child tasks one at a time and runs a reviewer on the full diff at the end. For individual tasks, runs a single agent session focused on that task and then runs a reviewer. Aborts after N consecutive failures.
@@ -69,7 +70,7 @@ Creates a feature branch and dispatches based on item type. For epics, loops thr
 Pick up unblocked items from litebrite and work through them.
 
 ```bash
-mrmouth ready [--timeout <minutes>] [--max-failures <n>] [--model <model>]
+mrmouth ready [--claude|--codex] [--timeout <minutes>] [--max-failures <n>] [--model <model>]
 ```
 
 Creates a timestamped feature branch, then loops: picks the highest-priority unblocked and unclaimed item from `lb ready`, runs a runner agent, runs a reviewer on the diff, and repeats until no ready items remain or max failures is reached.
@@ -92,7 +93,7 @@ All fields are optional — defaults shown:
 
 ```toml
 model = "opus"
-agent = "claude" # or "codex"
+agent = "claude" # or "codex"; can be overridden with --claude/--codex
 image = "mrmouth-runner"
 dockerfile = ".mrmouth/Dockerfile"
 # volume is optional; defaults to mrmouth-<agent>-home-<repo>

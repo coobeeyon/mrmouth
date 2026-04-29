@@ -27,6 +27,14 @@ use debrief::FailureDebrief;
     about = "Run Claude Code or Codex as an autonomous coding agent in Docker containers"
 )]
 struct Cli {
+    /// Run all AI roles with Claude Code, overriding config
+    #[arg(long, global = true, conflicts_with = "codex")]
+    claude: bool,
+
+    /// Run all AI roles with Codex, overriding config
+    #[arg(long, global = true)]
+    codex: bool,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -136,13 +144,18 @@ fn main() {
         }
     };
 
-    let config = match Config::load(&repo_root) {
+    let mut config = match Config::load(&repo_root) {
         Ok(c) => c,
         Err(e) => {
             eprintln!("error: {e}");
             std::process::exit(1);
         }
     };
+    if cli.codex {
+        config.agent = crate::agent::AgentKind::Codex;
+    } else if cli.claude {
+        config.agent = crate::agent::AgentKind::Claude;
+    }
 
     // Start TUI unless --raw is set or stderr is not a TTY
     let project_name = repo_root
