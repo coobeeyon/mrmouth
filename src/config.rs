@@ -79,8 +79,9 @@ impl Default for DoConfig {
 }
 
 impl Config {
-    /// Returns the effective volume name: user-configured value, or a name derived
-    /// from the repo root directory so each project gets isolated agent memory.
+    /// Returns the effective volume name: user-configured value, or the
+    /// provider default. Claude keeps the historical per-repo default; Codex
+    /// uses a shared machine-wide default so one login works across repos.
     pub fn effective_volume(&self, repo_root: &Path) -> String {
         self.effective_volume_for_agent(repo_root, self.agent)
     }
@@ -89,20 +90,13 @@ impl Config {
         if let Some(ref v) = self.volume {
             return v.clone();
         }
-        let slug: String = repo_root
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("default")
-            .chars()
-            .map(|c| {
-                if c.is_alphanumeric() || c == '-' {
-                    c
-                } else {
-                    '-'
-                }
-            })
-            .collect();
-        format!("{}-{slug}", agent.default_volume_prefix())
+        match agent {
+            AgentKind::Claude => {
+                let slug = repo_slug(repo_root);
+                format!("{}-{slug}", agent.default_volume_prefix())
+            }
+            AgentKind::Codex => agent.default_volume_prefix().to_string(),
+        }
     }
 
     /// Load config from `.mrmouth/config.toml` relative to `repo_root`.
@@ -149,6 +143,22 @@ impl Config {
             Err(e) => Err(e),
         }
     }
+}
+
+fn repo_slug(repo_root: &Path) -> String {
+    repo_root
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("default")
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect()
 }
 
 #[derive(Debug)]
@@ -281,16 +291,13 @@ max_failures = 5
     }
 
     #[test]
-    fn effective_volume_uses_agent_prefix() {
+    fn effective_volume_uses_shared_codex_default() {
         let config = Config {
             agent: AgentKind::Codex,
             ..Config::default()
         };
         let path = std::path::Path::new("/some/path/myproject");
-        assert_eq!(
-            config.effective_volume(path),
-            "mrmouth-codex-home-myproject"
-        );
+        assert_eq!(config.effective_volume(path), "mrmouth-codex-home");
     }
 
     #[test]

@@ -85,7 +85,7 @@ mrmouth summary [path/to/log.jsonl]
 
 ### `mrmouth codex-login`
 
-Sign in to Codex inside the same persisted Docker volume used by `--codex`.
+Sign in to Codex inside the shared persisted Docker volume used by `--codex`.
 Use this when you want Codex CLI to use your ChatGPT Codex subscription instead
 of passing `OPENAI_API_KEY` into the container.
 
@@ -107,7 +107,7 @@ model = "opus"
 agent = "claude" # or "codex"; can be overridden with --claude/--codex
 image = "mrmouth-runner"
 dockerfile = ".mrmouth/Dockerfile"
-# volume is optional; defaults to mrmouth-<agent>-home-<repo>
+# volume is optional; Claude defaults per repo, Codex defaults to shared mrmouth-codex-home
 log_dir = "logs"
 branch = "main"
 
