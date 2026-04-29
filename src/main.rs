@@ -21,6 +21,8 @@ use clap::{Parser, Subcommand};
 use config::Config;
 use debrief::FailureDebrief;
 
+const CLAUDE_DEFAULT_MODEL: &str = "opus";
+
 #[derive(Parser)]
 #[command(
     name = "mrmouth",
@@ -188,7 +190,7 @@ fn main() {
         } => {
             let opts = run::RunOptions {
                 raw,
-                model: model.unwrap_or_else(|| config.model.clone()),
+                model: resolve_model(&config, model),
                 timeout,
                 local,
                 prompt_override: None,
@@ -212,7 +214,7 @@ fn main() {
                 },
                 max_runs: max_runs.unwrap_or(config.loop_config.max_runs),
                 no_summary,
-                model: model.unwrap_or_else(|| config.model.clone()),
+                model: resolve_model(&config, model),
             };
             loop_cmd::execute(&config, &repo_root, opts, tui.as_ref()).map_err(|e| e.debrief())
         }
@@ -226,7 +228,7 @@ fn main() {
                 item_id,
                 timeout: timeout.unwrap_or(config.do_config.timeout),
                 max_failures: max_failures.unwrap_or(config.do_config.max_failures),
-                model: model.unwrap_or_else(|| config.model.clone()),
+                model: resolve_model(&config, model),
             };
             do_cmd::execute(&config, &repo_root, opts, tui.as_ref()).map_err(|e| e.debrief())
         }
@@ -238,7 +240,7 @@ fn main() {
             let opts = ready::ReadyOptions {
                 timeout: timeout.unwrap_or(config.do_config.timeout),
                 max_failures: max_failures.unwrap_or(config.do_config.max_failures),
-                model: model.unwrap_or_else(|| config.model.clone()),
+                model: resolve_model(&config, model),
             };
             ready::execute(&config, &repo_root, opts, tui.as_ref()).map_err(|e| e.debrief())
         }
@@ -259,4 +261,14 @@ fn main() {
         d.print();
         std::process::exit(1);
     }
+}
+
+fn resolve_model(config: &Config, override_model: Option<String>) -> String {
+    if let Some(model) = override_model {
+        return model;
+    }
+    if config.agent == crate::agent::AgentKind::Codex && config.model == CLAUDE_DEFAULT_MODEL {
+        return String::new();
+    }
+    config.model.clone()
 }

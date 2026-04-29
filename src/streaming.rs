@@ -229,11 +229,12 @@ fn codex_stream_cmd(
         "--json",
         "--dangerously-bypass-approvals-and-sandbox",
         "--skip-git-repo-check",
-        "--model",
-        model,
         "-C",
         &repo_root.to_string_lossy(),
     ]);
+    if !model.trim().is_empty() {
+        cmd.args(["--model", model]);
+    }
     if let Some(schema) = schema {
         if let Some(path) = write_schema_tempfile(schema) {
             cmd.args(["--output-schema", &path.to_string_lossy()]);
@@ -327,6 +328,21 @@ mod tests {
         assert!(args.contains(&"--dangerously-bypass-approvals-and-sandbox".to_string()));
         assert!(args.contains(&"--model".to_string()));
         assert!(args.contains(&"gpt-5.2".to_string()));
+    }
+
+    #[test]
+    fn codex_agent_command_omits_empty_model() {
+        let cmd = agent_stream_cmd(
+            AgentKind::Codex,
+            std::path::Path::new("/tmp/workspace"),
+            "",
+            "Read",
+        );
+        let args: Vec<String> = cmd
+            .get_args()
+            .map(|a| a.to_string_lossy().to_string())
+            .collect();
+        assert!(!args.contains(&"--model".to_string()));
     }
 
     #[test]

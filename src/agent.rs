@@ -78,14 +78,17 @@ fi"#
                     "CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING=1 claude -p --dangerously-skip-permissions --verbose --output-format stream-json --disallowedTools EnterPlanMode,ExitPlanMode --model {model} --effort xhigh '{escaped_prompt}'"
                 ),
             },
-            Self::Codex => match escaped_schema {
-                Some(schema) => format!(
-                    "cat > /tmp/mrmouth-output-schema.json << 'MRMOUTH_SCHEMA_EOF'\n{schema}\nMRMOUTH_SCHEMA_EOF\ncodex exec --json --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check --output-schema /tmp/mrmouth-output-schema.json --model {model} '{escaped_prompt}'"
-                ),
-                None => format!(
-                    "codex exec --json --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check --model {model} '{escaped_prompt}'"
-                ),
-            },
+            Self::Codex => {
+                let model_arg = codex_model_arg(model);
+                match escaped_schema {
+                    Some(schema) => format!(
+                        "cat > /tmp/mrmouth-output-schema.json << 'MRMOUTH_SCHEMA_EOF'\n{schema}\nMRMOUTH_SCHEMA_EOF\ncodex exec --json --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check --output-schema /tmp/mrmouth-output-schema.json{model_arg} '{escaped_prompt}'"
+                    ),
+                    None => format!(
+                        "codex exec --json --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check{model_arg} '{escaped_prompt}'"
+                    ),
+                }
+            }
         }
     }
 
@@ -94,5 +97,13 @@ fi"#
             Self::Claude => self.shell_command(model, escaped_prompt, None),
             Self::Codex => self.shell_command(model, escaped_prompt, None),
         }
+    }
+}
+
+fn codex_model_arg(model: &str) -> String {
+    if model.trim().is_empty() {
+        String::new()
+    } else {
+        format!(" --model {model}")
     }
 }

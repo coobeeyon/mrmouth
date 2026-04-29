@@ -1934,6 +1934,28 @@ mod tests {
     }
 
     #[test]
+    fn runner_script_omits_empty_codex_model() {
+        let dir = tempfile::tempdir().unwrap();
+        let tmp = write_runner_script(
+            crate::agent::AgentKind::Codex,
+            dir.path(),
+            "",
+            Some("do it"),
+            TEST_DOCKERFILE,
+            TEST_DOCKERFILE_PATH,
+            None,
+        )
+        .unwrap();
+        let mut content = String::new();
+        File::open(&tmp)
+            .unwrap()
+            .read_to_string(&mut content)
+            .unwrap();
+        assert!(content.contains("codex exec --json --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check 'do it'"));
+        assert!(!content.contains("--model opus"));
+    }
+
+    #[test]
     fn classify_recognises_missing_tool_marker() {
         let tail = "Initializing trapperkeeper...\n\
                     ::mrmouth::missing-tool tool=trk reason=trapperkeeper branch exists but binary not in image\n";
