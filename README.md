@@ -126,7 +126,7 @@ max_failures = 3
 
 ### `.mrmouth/Dockerfile`
 
-The Docker image the agent runs in. mrmouth has a built-in default (Node 22 + Claude Code + Codex + litebrite + SSH). To add project-specific dependencies, create this file with your customizations and commit it.
+The Docker image the agent runs in. mrmouth has a built-in default (Node 22 + Claude Code + Codex + litebrite `lb` + trapperkeeper `trk` + SSH). To add project-specific dependencies, create this file with your customizations and commit it.
 
 The agent itself can create or edit this file during a run — changes are committed and rebuilt on the next run.
 
