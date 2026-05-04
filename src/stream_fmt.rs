@@ -113,8 +113,26 @@ impl Formatter {
             "assistant" => self.format_assistant(&event),
             "user" => self.format_user(&event),
             "result" => self.format_result(&event),
+            "thread.started" => self.format_codex_thread_started(&event),
+            "turn.started" => Some(format!("{}[turn]{} started", self.cyan(), self.reset())),
+            "turn.completed" => self.format_codex_turn_completed(&event),
+            "item.started" => self.format_codex_item_started(&event),
+            "item.completed" => self.format_codex_item_completed(&event),
             _ => None,
         }
+    }
+
+    fn format_codex_thread_started(&self, event: &Value) -> Option<String> {
+        let thread_id = event
+            .get("thread_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown");
+        Some(format!(
+            "{}{}[codex]{}\n  thread={thread_id}",
+            self.bold(),
+            self.cyan(),
+            self.reset()
+        ))
     }
 
     fn format_system(&self, event: &Value) -> Option<String> {
@@ -333,6 +351,123 @@ impl Formatter {
             indent(summary)
         ))
     }
+
+    fn format_codex_turn_completed(&self, event: &Value) -> Option<String> {
+        let usage = event.get("usage")?;
+        let input = usage
+            .get("input_tokens")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+        let output = usage
+            .get("output_tokens")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+        let reasoning = usage
+            .get("reasoning_output_tokens")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+        Some(format!(
+            "{}{}[done]{}\n  input_tokens={input} output_tokens={output} reasoning_tokens={reasoning}",
+            self.bold(),
+            self.green(),
+            self.reset()
+        ))
+    }
+
+    fn format_codex_item_started(&self, event: &Value) -> Option<String> {
+        let item = event.get("item")?;
+        let item_type = item.get("type").and_then(|v| v.as_str()).unwrap_or("");
+        match item_type {
+            "command_execution" => {
+                let command = item.get("command").and_then(|v| v.as_str()).unwrap_or("");
+                Some(format!(
+                    "{}[Bash]{}\n{}",
+                    self.yellow(),
+                    self.reset(),
+                    indent(command)
+                ))
+            }
+            "file_change" => Some(format!(
+                "{}[Edit]{} {}",
+                self.yellow(),
+                self.reset(),
+                format_codex_file_changes(item)
+            )),
+            _ => None,
+        }
+    }
+
+    fn format_codex_item_completed(&self, event: &Value) -> Option<String> {
+        let item = event.get("item")?;
+        let item_type = item.get("type").and_then(|v| v.as_str()).unwrap_or("");
+        match item_type {
+            "agent_message" => {
+                let text = item.get("text").and_then(|v| v.as_str()).unwrap_or("");
+                if text.is_empty() {
+                    None
+                } else {
+                    Some(format!(
+                        "{}[text]{}\n{}",
+                        self.green(),
+                        self.reset(),
+                        indent(text)
+                    ))
+                }
+            }
+            "command_execution" => {
+                let status = item.get("status").and_then(|v| v.as_str()).unwrap_or("");
+                let exit_code = item.get("exit_code").and_then(|v| v.as_i64());
+                let output = item
+                    .get("aggregated_output")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let label = if status == "failed" || exit_code.is_some_and(|code| code != 0) {
+                    format!("{}[error]{}", self.red(), self.reset())
+                } else {
+                    format!("{}[result]{}", self.dim(), self.reset())
+                };
+                let exit = exit_code
+                    .map(|code| format!(" exit={code}"))
+                    .unwrap_or_default();
+                if output.is_empty() {
+                    Some(format!("{label}{exit}"))
+                } else {
+                    Some(format!(
+                        "{label}{exit}\n{}{}{}",
+                        self.dim(),
+                        indent(&collapse_code_blocks(output)),
+                        self.reset()
+                    ))
+                }
+            }
+            "file_change" => Some(format!(
+                "{}[Edit]{} {}",
+                self.yellow(),
+                self.reset(),
+                format_codex_file_changes(item)
+            )),
+            _ => None,
+        }
+    }
+}
+
+fn format_codex_file_changes(item: &Value) -> String {
+    let Some(changes) = item.get("changes").and_then(|v| v.as_array()) else {
+        return "files changed".to_string();
+    };
+
+    changes
+        .iter()
+        .filter_map(|change| {
+            let path = change.get("path").and_then(|v| v.as_str())?;
+            let kind = change
+                .get("kind")
+                .and_then(|v| v.as_str())
+                .unwrap_or("change");
+            Some(format!("{kind} {path}"))
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 /// Format Claude Code stream-json from stdin and write to stdout.
@@ -520,5 +655,57 @@ mod tests {
         let out = fmt(line).unwrap();
         assert!(out.contains("[Glob]"));
         assert!(out.contains("**/*.rs"));
+    }
+
+    #[test]
+    fn test_codex_agent_message() {
+        let line = r#"{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"I will inspect files."}}"#;
+        let out = fmt(line).unwrap();
+        assert!(out.contains("[text]"));
+        assert!(out.contains("I will inspect files."));
+    }
+
+    #[test]
+    fn test_codex_command_started() {
+        let line = r#"{"type":"item.started","item":{"id":"item_1","type":"command_execution","command":"/bin/bash -lc 'lb list'","aggregated_output":"","exit_code":null,"status":"in_progress"}}"#;
+        let out = fmt(line).unwrap();
+        assert!(out.contains("[Bash]"));
+        assert!(out.contains("lb list"));
+    }
+
+    #[test]
+    fn test_codex_command_completed() {
+        let line = r#"{"type":"item.completed","item":{"id":"item_1","type":"command_execution","command":"/bin/bash -lc 'lb list'","aggregated_output":"ID TYPE\nlb-123 task\n","exit_code":0,"status":"completed"}}"#;
+        let out = fmt(line).unwrap();
+        assert!(out.contains("[result]"));
+        assert!(out.contains("ID TYPE"));
+        assert!(out.contains("lb-123 task"));
+    }
+
+    #[test]
+    fn test_codex_command_failed() {
+        let line = r#"{"type":"item.completed","item":{"id":"item_1","type":"command_execution","command":"rg --files","aggregated_output":"rg: command not found\n","exit_code":127,"status":"failed"}}"#;
+        let out = fmt(line).unwrap();
+        assert!(out.contains("[error]"));
+        assert!(out.contains("exit=127"));
+        assert!(out.contains("rg: command not found"));
+    }
+
+    #[test]
+    fn test_codex_file_change() {
+        let line = r#"{"type":"item.completed","item":{"id":"item_2","type":"file_change","changes":[{"path":"/repo/src/main.rs","kind":"update"}],"status":"completed"}}"#;
+        let out = fmt(line).unwrap();
+        assert!(out.contains("[Edit]"));
+        assert!(out.contains("update /repo/src/main.rs"));
+    }
+
+    #[test]
+    fn test_codex_turn_completed() {
+        let line = r#"{"type":"turn.completed","usage":{"input_tokens":10,"output_tokens":20,"reasoning_output_tokens":5}}"#;
+        let out = fmt(line).unwrap();
+        assert!(out.contains("[done]"));
+        assert!(out.contains("input_tokens=10"));
+        assert!(out.contains("output_tokens=20"));
+        assert!(out.contains("reasoning_tokens=5"));
     }
 }
