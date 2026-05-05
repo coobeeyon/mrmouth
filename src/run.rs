@@ -1084,7 +1084,7 @@ _mm_mark script-start
 echo "::mrmouth::versions"
 git --version || true
 lb --version 2>/dev/null || echo "lb: not installed"
-trk --version 2>/dev/null || echo "trk: not installed"
+command -v trk >/dev/null && echo "trk: installed" || echo "trk: not installed"
 {agent_version_line}
 echo "::mrmouth::versions-end"
 _mm_mark versions-done
@@ -1231,7 +1231,7 @@ _mm_mark setup-start
 echo "::mrmouth::versions"
 git --version || true
 lb --version 2>/dev/null || echo "lb: not installed"
-trk --version 2>/dev/null || echo "trk: not installed"
+command -v trk >/dev/null && echo "trk: installed" || echo "trk: not installed"
 {agent_version_line}
 echo "::mrmouth::versions-end"
 _mm_mark versions-done
@@ -1828,7 +1828,8 @@ mod tests {
         let block = &content[begin..end];
         assert!(block.contains("git --version"));
         assert!(block.contains("lb --version"));
-        assert!(block.contains("trk --version"));
+        assert!(block.contains("command -v trk"));
+        assert!(block.contains("trk: installed"));
         assert!(block.contains("claude --version"));
         assert!(block.contains("lb: not installed"));
         assert!(block.contains("trk: not installed"));
