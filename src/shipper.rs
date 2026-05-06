@@ -85,6 +85,19 @@ fn check_ready(
         r#"#!/usr/bin/env bash
 set -euo pipefail
 
+_mm_tool_init() {{
+  local _out
+  if _out=$("$@" 2>&1); then
+    [ -n "$_out" ] && echo "$_out"
+    return 0
+  fi
+  if echo "$_out" | grep -q "already initialized"; then
+    return 0
+  fi
+  echo "$_out" >&2
+  return 1
+}}
+
 repo_url="${{REPO_URL:-}}"
 branch="${{BRANCH:-main}}"
 work_dir="$HOME/workspace"
@@ -104,13 +117,13 @@ git config --global --add safe.directory "$work_dir"
 if [ -d "$work_dir/.git" ]; then
   if git show-ref --quiet refs/heads/litebrite refs/remotes/origin/litebrite 2>/dev/null; then
     echo "Initializing litebrite..."
-    lb init
+    _mm_tool_init lb init
     lb setup {agent_name} 2>/dev/null || true
     lb sync 2>/dev/null || true
   fi
   if git show-ref --quiet refs/heads/trapperkeeper refs/remotes/origin/trapperkeeper 2>/dev/null; then
     echo "Initializing trapperkeeper..."
-    trk init
+    _mm_tool_init trk init
     trk setup {agent_name} 2>/dev/null || true
     trk sync 2>/dev/null || true
   fi
