@@ -1,16 +1,11 @@
 use serde::Deserialize;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum AgentKind {
+    #[default]
     Claude,
     Codex,
-}
-
-impl Default for AgentKind {
-    fn default() -> Self {
-        Self::Claude
-    }
 }
 
 impl AgentKind {
