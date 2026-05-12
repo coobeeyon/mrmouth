@@ -11,8 +11,8 @@ use crate::agent::AgentKind;
 use crate::config::Config;
 use crate::docker::{ContainerArgs, CopyFromContainerOutcome, DockerBuilder};
 use crate::events::{
-    ContainerAction, EventSinkHandle, FinishStatus, LifecycleSummary, MrmouthEvent, RunAction,
-    SyncAction, SyncTool,
+    ContainerAction, EventSinkHandle, FinishStatus, LifecycleSummary, MessageLevel, MessageTarget,
+    MrmouthEvent, RunAction, SyncAction, SyncTool,
 };
 use crate::litebrite;
 use crate::logger::Logger;
@@ -52,8 +52,46 @@ pub struct Session {
     pub file_remote_path: Option<PathBuf>,
 }
 
-fn pull_code_changes(repo_root: &Path, logger: &Logger) {
-    logger.log("Pulling code changes from remote...");
+struct RunReporter<'a> {
+    sink: Option<&'a EventSinkHandle>,
+    tui: Option<&'a TuiHandle>,
+}
+
+impl<'a> RunReporter<'a> {
+    fn new(sink: Option<&'a EventSinkHandle>, tui: Option<&'a TuiHandle>) -> Self {
+        Self { sink, tui }
+    }
+
+    fn emit(&self, event: MrmouthEvent) {
+        if let MrmouthEvent::StageChanged { stage } = &event {
+            if let Some(tui) = self.tui {
+                tui.set_stage(stage);
+            }
+        }
+        if let Some(sink) = self.sink {
+            sink.emit(event);
+        }
+    }
+
+    fn log(&self, logger: &Logger, msg: &str) {
+        self.emit(MrmouthEvent::Message {
+            level: MessageLevel::Info,
+            text: msg.to_string(),
+            target: MessageTarget::Agent,
+        });
+        logger.log(msg);
+    }
+}
+
+fn log_status(logger: &Logger, reporter: Option<&RunReporter<'_>>, msg: &str) {
+    match reporter {
+        Some(reporter) => reporter.log(logger, msg),
+        None => logger.log(msg),
+    }
+}
+
+fn pull_code_changes(repo_root: &Path, logger: &Logger, reporter: Option<&RunReporter<'_>>) {
+    log_status(logger, reporter, "Pulling code changes from remote...");
     let pull_output = Command::new("git")
         .args(["-C", &repo_root.to_string_lossy(), "pull", "--ff-only"])
         .output();
@@ -62,12 +100,16 @@ fn pull_code_changes(repo_root: &Path, logger: &Logger) {
         Ok(o) => {
             let stderr = String::from_utf8_lossy(&o.stderr);
             if stderr.contains("Already up to date") || stderr.is_empty() {
-                logger.log("No new commits to pull.");
+                log_status(logger, reporter, "No new commits to pull.");
             } else {
-                logger.log(&format!("Warning: git pull failed: {}", stderr.trim()));
+                log_status(
+                    logger,
+                    reporter,
+                    &format!("Warning: git pull failed: {}", stderr.trim()),
+                );
             }
         }
-        Err(e) => logger.log(&format!("Warning: git pull failed: {e}")),
+        Err(e) => log_status(logger, reporter, &format!("Warning: git pull failed: {e}")),
     }
 }
 
@@ -76,6 +118,7 @@ fn extract_updated_dockerfile(
     dockerfile_path: &str,
     container_name: &str,
     logger: &Logger,
+    reporter: Option<&RunReporter<'_>>,
 ) {
     let dockerfile_dest = repo_root.join(dockerfile_path);
     let container_path = format!("/home/runner/workspace/{dockerfile_path}");
@@ -85,13 +128,25 @@ fn extract_updated_dockerfile(
         &dockerfile_dest,
     ) {
         Ok(CopyFromContainerOutcome::Updated) => {
-            logger.log("Extracted updated Dockerfile from container.");
+            log_status(
+                logger,
+                reporter,
+                "Extracted updated Dockerfile from container.",
+            );
         }
         Ok(CopyFromContainerOutcome::Unchanged) => {
-            logger.log("Dockerfile from container matches host; leaving worktree unchanged.");
+            log_status(
+                logger,
+                reporter,
+                "Dockerfile from container matches host; leaving worktree unchanged.",
+            );
         }
         Ok(CopyFromContainerOutcome::Missing) => {}
-        Err(e) => logger.log(&format!("Warning: Dockerfile extraction failed: {e}")),
+        Err(e) => log_status(
+            logger,
+            reporter,
+            &format!("Warning: Dockerfile extraction failed: {e}"),
+        ),
     }
 }
 
@@ -103,23 +158,15 @@ pub fn execute(
     opts: RunOptions,
     tui: Option<&TuiHandle>,
 ) -> Result<Logger, RunError> {
-    if let Some(t) = tui {
-        t.set_stage("Agent");
-    }
-    emit_event(
-        &opts.event_sink,
-        MrmouthEvent::StageChanged {
-            stage: "Agent".to_string(),
-        },
-    );
-    emit_event(
-        &opts.event_sink,
-        MrmouthEvent::RunLifecycle {
-            action: RunAction::Starting,
-            run_id: None,
-            branch: None,
-        },
-    );
+    let reporter = RunReporter::new(opts.event_sink.as_ref(), tui);
+    reporter.emit(MrmouthEvent::StageChanged {
+        stage: "Agent".to_string(),
+    });
+    reporter.emit(MrmouthEvent::RunLifecycle {
+        action: RunAction::Starting,
+        run_id: None,
+        branch: None,
+    });
     // 0. Set up logging first so every stage is captured
     let log_dir = repo_root.join(&config.log_dir);
     fs::create_dir_all(&log_dir).map_err(|e| RunError::Io("creating log directory".into(), e))?;
@@ -139,35 +186,35 @@ pub fn execute(
         .or_else(|| config.branch.clone())
         .unwrap_or_else(|| git_current_branch(repo_root).unwrap_or_else(|_| "main".into()));
 
-    logger.log(&format!("AGENT RUN  branch={branch}  {timestamp}"));
-    emit_event(
-        &opts.event_sink,
-        MrmouthEvent::RunLabel {
-            name: "branch".to_string(),
-            value: branch.clone(),
-        },
-    );
+    reporter.log(&logger, &format!("AGENT RUN  branch={branch}  {timestamp}"));
+    reporter.emit(MrmouthEvent::RunLabel {
+        name: "branch".to_string(),
+        value: branch.clone(),
+    });
 
     // 1. Preflight checks
     let local = opts.local || has_local_only_tooling_branch(repo_root);
     if local && !opts.local {
-        logger.log("Tooling branch exists locally but not on remote — using local mode.");
+        reporter.log(
+            &logger,
+            "Tooling branch exists locally but not on remote — using local mode.",
+        );
     }
     let effective_dockerfile =
         crate::docker::effective_dockerfile_content(repo_root, &config.dockerfile);
     if preflight_skipped() {
-        logger.log("MRMOUTH_SKIP_PREFLIGHT=1 — skipping preflight checks.");
+        reporter.log(
+            &logger,
+            "MRMOUTH_SKIP_PREFLIGHT=1 — skipping preflight checks.",
+        );
     } else {
-        logger.log("Checking preflight conditions...");
+        reporter.log(&logger, "Checking preflight conditions...");
     }
-    emit_event(
-        &opts.event_sink,
-        MrmouthEvent::RunLifecycle {
-            action: RunAction::Preflight,
-            run_id: Some(log_filename.clone()),
-            branch: Some(branch.clone()),
-        },
-    );
+    reporter.emit(MrmouthEvent::RunLifecycle {
+        action: RunAction::Preflight,
+        run_id: Some(log_filename.clone()),
+        branch: Some(branch.clone()),
+    });
     preflight(repo_root, local, &effective_dockerfile, Some(&logger)).inspect_err(|_| {
         logger.flush();
     })?;
@@ -189,24 +236,18 @@ pub fn execute(
     };
 
     // 3. Sync litebrite (best-effort)
-    logger.log("Syncing litebrite...");
-    emit_event(
-        &opts.event_sink,
-        MrmouthEvent::Sync {
-            action: SyncAction::Starting,
-            tool: SyncTool::Litebrite,
-            detail: None,
-        },
-    );
+    reporter.log(&logger, "Syncing litebrite...");
+    reporter.emit(MrmouthEvent::Sync {
+        action: SyncAction::Starting,
+        tool: SyncTool::Litebrite,
+        detail: None,
+    });
     litebrite::init_and_sync(repo_root, Some(&logger));
-    emit_event(
-        &opts.event_sink,
-        MrmouthEvent::Sync {
-            action: SyncAction::Finished,
-            tool: SyncTool::Litebrite,
-            detail: None,
-        },
-    );
+    reporter.emit(MrmouthEvent::Sync {
+        action: SyncAction::Finished,
+        tool: SyncTool::Litebrite,
+        detail: None,
+    });
 
     // 4. Write runner entrypoint script
     let runner_script = write_runner_script(
@@ -220,42 +261,36 @@ pub fn execute(
     )?;
 
     // 5. Build Docker image
-    logger.log("Docker build starting...");
-    emit_event(
-        &opts.event_sink,
-        MrmouthEvent::RunLifecycle {
-            action: RunAction::BuildingImage,
-            run_id: Some(log_filename.clone()),
-            branch: Some(branch.clone()),
-        },
-    );
-    emit_event(
-        &opts.event_sink,
-        MrmouthEvent::ContainerLifecycle {
-            action: ContainerAction::BuildingImage,
-            name: config.image.clone(),
-            image_id: None,
-            exit_code: None,
-        },
-    );
+    reporter.log(&logger, "Docker build starting...");
+    reporter.emit(MrmouthEvent::RunLifecycle {
+        action: RunAction::BuildingImage,
+        run_id: Some(log_filename.clone()),
+        branch: Some(branch.clone()),
+    });
+    reporter.emit(MrmouthEvent::ContainerLifecycle {
+        action: ContainerAction::BuildingImage,
+        name: config.image.clone(),
+        image_id: None,
+        exit_code: None,
+    });
     let docker = DockerBuilder::new(&config.image);
     let build_start = std::time::Instant::now();
     docker
         .build(repo_root, &config.dockerfile)
         .map_err(RunError::Docker)?;
-    logger.log(&format!(
-        "::mrmouth::timing phase=docker-build elapsed_ms={}",
-        build_start.elapsed().as_millis()
-    ));
-    emit_event(
-        &opts.event_sink,
-        MrmouthEvent::ContainerLifecycle {
-            action: ContainerAction::ImageBuilt,
-            name: config.image.clone(),
-            image_id: docker.image_id(),
-            exit_code: None,
-        },
+    reporter.log(
+        &logger,
+        &format!(
+            "::mrmouth::timing phase=docker-build elapsed_ms={}",
+            build_start.elapsed().as_millis()
+        ),
     );
+    reporter.emit(MrmouthEvent::ContainerLifecycle {
+        action: ContainerAction::ImageBuilt,
+        name: config.image.clone(),
+        image_id: docker.image_id(),
+        exit_code: None,
+    });
 
     // 6. Ensure persistent volume
     let volume = config.effective_volume(repo_root);
@@ -271,17 +306,17 @@ pub fn execute(
     DockerBuilder::remove_container(&container_name);
 
     // 8. Start container
-    logger.log(&format!("AGENT SESSION  container={container_name}"));
-    logger.log(&format!("Branch: {branch}"));
-    emit_event(
-        &opts.event_sink,
-        MrmouthEvent::ContainerLifecycle {
-            action: ContainerAction::Starting,
-            name: container_name.clone(),
-            image_id: docker.image_id(),
-            exit_code: None,
-        },
+    reporter.log(
+        &logger,
+        &format!("AGENT SESSION  container={container_name}"),
     );
+    reporter.log(&logger, &format!("Branch: {branch}"));
+    reporter.emit(MrmouthEvent::ContainerLifecycle {
+        action: ContainerAction::Starting,
+        name: container_name.clone(),
+        image_id: docker.image_id(),
+        exit_code: None,
+    });
 
     let container_args = ContainerArgs {
         name: container_name.clone(),
@@ -297,15 +332,12 @@ pub fn execute(
 
     let container_start = std::time::Instant::now();
     let mut handle = docker.run(&container_args).map_err(RunError::Docker)?;
-    emit_event(
-        &opts.event_sink,
-        MrmouthEvent::ContainerLifecycle {
-            action: ContainerAction::Started,
-            name: container_name.clone(),
-            image_id: docker.image_id(),
-            exit_code: None,
-        },
-    );
+    reporter.emit(MrmouthEvent::ContainerLifecycle {
+        action: ContainerAction::Started,
+        name: container_name.clone(),
+        image_id: docker.image_id(),
+        exit_code: None,
+    });
 
     // 8b. Spawn a watcher that stops the container if the TUI user cancels (q / Ctrl+C)
     let watcher_done = Arc::new(AtomicBool::new(false));
@@ -377,22 +409,23 @@ pub fn execute(
     // 10. Wait for container exit
     let exit_code = handle.wait().map_err(RunError::Docker)?;
     watcher_done.store(true, Ordering::Relaxed);
-    logger.log(&format!(
-        "::mrmouth::timing phase=container-wall elapsed_ms={}",
-        container_start.elapsed().as_millis()
-    ));
-    logger.log(&format!(
-        "Container {container_name} finished (exit code {exit_code})."
-    ));
-    emit_event(
-        &opts.event_sink,
-        MrmouthEvent::ContainerLifecycle {
-            action: ContainerAction::Exited,
-            name: container_name.clone(),
-            image_id: docker.image_id(),
-            exit_code: Some(exit_code),
-        },
+    reporter.log(
+        &logger,
+        &format!(
+            "::mrmouth::timing phase=container-wall elapsed_ms={}",
+            container_start.elapsed().as_millis()
+        ),
     );
+    reporter.log(
+        &logger,
+        &format!("Container {container_name} finished (exit code {exit_code})."),
+    );
+    reporter.emit(MrmouthEvent::ContainerLifecycle {
+        action: ContainerAction::Exited,
+        name: container_name.clone(),
+        image_id: docker.image_id(),
+        exit_code: Some(exit_code),
+    });
 
     // 11. Update symlinks atomically (latest.jsonl and latest.log)
     let latest_jsonl = log_dir.join("latest.jsonl");
@@ -405,81 +438,69 @@ pub fn execute(
 
     // 12. Post-run sync before extracting files. This keeps self-produced,
     // already-pushed Dockerfile edits from dirtying the host before pull.
-    logger.log("Post-run sync...");
-    emit_event(
-        &opts.event_sink,
-        MrmouthEvent::RunLifecycle {
-            action: RunAction::PullingChanges,
-            run_id: Some(log_filename.clone()),
-            branch: Some(branch.clone()),
-        },
-    );
+    reporter.log(&logger, "Post-run sync...");
+    reporter.emit(MrmouthEvent::RunLifecycle {
+        action: RunAction::PullingChanges,
+        run_id: Some(log_filename.clone()),
+        branch: Some(branch.clone()),
+    });
     if !local && file_remote_path.is_none() {
-        pull_code_changes(repo_root, &logger);
+        pull_code_changes(repo_root, &logger, Some(&reporter));
     }
 
     // 13. Extract updated Dockerfile from container (agent may have modified it)
     if !local {
-        emit_event(
-            &opts.event_sink,
-            MrmouthEvent::RunLifecycle {
-                action: RunAction::ExtractingDockerfile,
-                run_id: Some(log_filename.clone()),
-                branch: Some(branch.clone()),
-            },
+        reporter.emit(MrmouthEvent::RunLifecycle {
+            action: RunAction::ExtractingDockerfile,
+            run_id: Some(log_filename.clone()),
+            branch: Some(branch.clone()),
+        });
+        extract_updated_dockerfile(
+            repo_root,
+            &config.dockerfile,
+            &container_name,
+            &logger,
+            Some(&reporter),
         );
-        extract_updated_dockerfile(repo_root, &config.dockerfile, &container_name, &logger);
     }
 
     // 14. Clean up container
-    emit_event(
-        &opts.event_sink,
-        MrmouthEvent::ContainerLifecycle {
-            action: ContainerAction::Removed,
-            name: container_name.clone(),
-            image_id: docker.image_id(),
-            exit_code: None,
-        },
-    );
+    reporter.emit(MrmouthEvent::ContainerLifecycle {
+        action: ContainerAction::Removed,
+        name: container_name.clone(),
+        image_id: docker.image_id(),
+        exit_code: None,
+    });
     DockerBuilder::remove_container(&container_name);
 
-    emit_event(
-        &opts.event_sink,
-        MrmouthEvent::Sync {
-            action: SyncAction::Starting,
-            tool: SyncTool::Litebrite,
-            detail: Some("post-run".to_string()),
-        },
-    );
+    reporter.emit(MrmouthEvent::Sync {
+        action: SyncAction::Starting,
+        tool: SyncTool::Litebrite,
+        detail: Some("post-run".to_string()),
+    });
     litebrite::init_and_sync(repo_root, Some(&logger));
-    emit_event(
-        &opts.event_sink,
-        MrmouthEvent::Sync {
-            action: SyncAction::Finished,
-            tool: SyncTool::Litebrite,
-            detail: Some("post-run".to_string()),
-        },
-    );
-    logger.log(&format!("Done. Log saved: {}", log_path.display()));
+    reporter.emit(MrmouthEvent::Sync {
+        action: SyncAction::Finished,
+        tool: SyncTool::Litebrite,
+        detail: Some("post-run".to_string()),
+    });
+    reporter.log(&logger, &format!("Done. Log saved: {}", log_path.display()));
 
     if exit_code != 0 {
         // Flush so classify_exit reads everything the runner script wrote.
         logger.flush();
         let reason = classify_exit(exit_code, &log_path);
-        emit_event(
-            &opts.event_sink,
-            MrmouthEvent::LifecycleSummary {
-                summary: LifecycleSummary::failed(
-                    "run",
-                    format!("container exited with code {exit_code}: {reason}"),
-                )
-                .branch(branch.clone())
-                .log_path(log_path.display().to_string())
-                .jsonl_path(jsonl_path.display().to_string())
-                .exit_code(exit_code)
-                .next_action("inspect_log"),
-            },
-        );
+        reporter.emit(MrmouthEvent::LifecycleSummary {
+            summary: LifecycleSummary::failed(
+                "run",
+                format!("container exited with code {exit_code}: {reason}"),
+            )
+            .branch(branch.clone())
+            .log_path(log_path.display().to_string())
+            .jsonl_path(jsonl_path.display().to_string())
+            .exit_code(exit_code)
+            .next_action("inspect_log"),
+        });
         return Err(RunError::ContainerFailed {
             code: exit_code,
             reason,
@@ -487,29 +508,23 @@ pub fn execute(
         });
     }
 
-    emit_event(
-        &opts.event_sink,
-        MrmouthEvent::RunLifecycle {
-            action: RunAction::Finished,
-            run_id: Some(log_filename),
-            branch: Some(branch.clone()),
-        },
-    );
-    emit_event(
-        &opts.event_sink,
-        MrmouthEvent::finished(FinishStatus::Success, None::<String>),
-    );
-    emit_event(
-        &opts.event_sink,
-        MrmouthEvent::LifecycleSummary {
-            summary: LifecycleSummary::success("run")
-                .branch(branch)
-                .log_path(log_path.display().to_string())
-                .jsonl_path(jsonl_path.display().to_string())
-                .exit_code(exit_code)
-                .next_action("none"),
-        },
-    );
+    reporter.emit(MrmouthEvent::RunLifecycle {
+        action: RunAction::Finished,
+        run_id: Some(log_filename),
+        branch: Some(branch.clone()),
+    });
+    reporter.emit(MrmouthEvent::finished(
+        FinishStatus::Success,
+        None::<String>,
+    ));
+    reporter.emit(MrmouthEvent::LifecycleSummary {
+        summary: LifecycleSummary::success("run")
+            .branch(branch)
+            .log_path(log_path.display().to_string())
+            .jsonl_path(jsonl_path.display().to_string())
+            .exit_code(exit_code)
+            .next_action("none"),
+    });
 
     Ok(logger)
 }
@@ -890,7 +905,7 @@ pub fn execute_in_session(
         },
     );
     if !session.local && session.file_remote_path.is_none() {
-        pull_code_changes(repo_root, &logger);
+        pull_code_changes(repo_root, &logger, None);
     }
 
     // Extract updated Dockerfile (agent may have edited it). Enables the caller
@@ -909,6 +924,7 @@ pub fn execute_in_session(
             &config.dockerfile,
             &session.container_name,
             &logger,
+            None,
         );
     }
 
@@ -1935,6 +1951,32 @@ mod tests {
 
     const TEST_DOCKERFILE: &str = docker::DEFAULT_DOCKERFILE;
     const TEST_DOCKERFILE_PATH: &str = ".mrmouth/Dockerfile";
+
+    #[test]
+    fn run_reporter_emits_status_messages_and_preserves_log_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let log_path = dir.path().join("run.log");
+        let logger = Logger::new(&log_path).unwrap();
+        let sink = crate::events::RecordingEventSink::default();
+        let sink_handle = EventSinkHandle::new(sink.clone());
+        let reporter = RunReporter::new(Some(&sink_handle), None);
+
+        reporter.log(&logger, "Checking preflight conditions...");
+        logger.flush();
+
+        assert_eq!(
+            sink.events(),
+            vec![MrmouthEvent::Message {
+                level: MessageLevel::Info,
+                text: "Checking preflight conditions...".to_string(),
+                target: MessageTarget::Agent,
+            }]
+        );
+        assert_eq!(
+            std::fs::read_to_string(log_path).unwrap(),
+            "Checking preflight conditions...\n"
+        );
+    }
 
     #[test]
     fn runner_script_contains_model() {
