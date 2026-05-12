@@ -82,6 +82,54 @@ pub enum MrmouthEvent {
     },
 }
 
+impl MrmouthEvent {
+    /// Stable snake_case event name used by serialized lifecycle output.
+    pub fn event_type(&self) -> &'static str {
+        match self {
+            Self::Message { .. } => "message",
+            Self::StageChanged { .. } => "stage_changed",
+            Self::RunLabel { .. } => "run_label",
+            Self::TaskLabel { .. } => "task_label",
+            Self::TaskSelected { .. } => "task_selected",
+            Self::BranchLifecycle { .. } => "branch_lifecycle",
+            Self::ContainerLifecycle { .. } => "container_lifecycle",
+            Self::RunLifecycle { .. } => "run_lifecycle",
+            Self::ReviewerLifecycle { .. } => "reviewer_lifecycle",
+            Self::ShipperLifecycle { .. } => "shipper_lifecycle",
+            Self::Sync { .. } => "sync",
+            Self::Finished { .. } => "finished",
+            Self::Failure { .. } => "failure",
+        }
+    }
+
+    pub fn finished(status: FinishStatus, summary: Option<impl Into<String>>) -> Self {
+        Self::Finished {
+            status,
+            summary: summary.map(Into::into),
+        }
+    }
+
+    pub fn failure(
+        message: impl Into<String>,
+        code: Option<i32>,
+        detail: Option<impl Into<String>>,
+    ) -> Self {
+        Self::Failure {
+            message: message.into(),
+            code,
+            detail: detail.map(Into::into),
+        }
+    }
+
+    pub fn to_json_value(&self) -> serde_json::Result<serde_json::Value> {
+        serde_json::to_value(self)
+    }
+
+    pub fn to_json_line(&self) -> serde_json::Result<String> {
+        serde_json::to_string(self)
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum MessageLevel {
@@ -276,16 +324,133 @@ impl EventSink for RecordingEventSink {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[test]
-    fn serializes_tagged_event_names() {
+    fn event_type_names_match_serialized_tags() {
+        let events = vec![
+            MrmouthEvent::Message {
+                level: MessageLevel::Info,
+                text: "hello".to_string(),
+                target: MessageTarget::Agent,
+            },
+            MrmouthEvent::StageChanged {
+                stage: "Agent".to_string(),
+            },
+            MrmouthEvent::RunLabel {
+                name: "branch".to_string(),
+                value: "feature".to_string(),
+            },
+            MrmouthEvent::TaskLabel {
+                item_id: "lb-1234".to_string(),
+                name: "status".to_string(),
+                value: "open".to_string(),
+            },
+            MrmouthEvent::TaskSelected {
+                item_id: "lb-1234".to_string(),
+                title: "Do work".to_string(),
+                parent_id: Some("lb-epic".to_string()),
+            },
+            MrmouthEvent::BranchLifecycle {
+                action: BranchAction::Created,
+                branch: "feature".to_string(),
+                parent_branch: Some("main".to_string()),
+            },
+            MrmouthEvent::ContainerLifecycle {
+                action: ContainerAction::Exited,
+                name: "mrmouth-runner".to_string(),
+                image_id: Some("sha256:abc".to_string()),
+                exit_code: Some(0),
+            },
+            MrmouthEvent::RunLifecycle {
+                action: RunAction::RunningAgent,
+                run_id: Some("run-1".to_string()),
+                branch: Some("feature".to_string()),
+            },
+            MrmouthEvent::ReviewerLifecycle {
+                action: ReviewerAction::Finished,
+                branch: "feature".to_string(),
+                commit_range: Some("HEAD~1..HEAD".to_string()),
+            },
+            MrmouthEvent::ShipperLifecycle {
+                action: ShipperAction::Ready,
+                current_branch: "feature".to_string(),
+                parent_branch: Some("main".to_string()),
+            },
+            MrmouthEvent::Sync {
+                action: SyncAction::Starting,
+                tool: SyncTool::Litebrite,
+                detail: None,
+            },
+            MrmouthEvent::finished(FinishStatus::Success, Some("done")),
+            MrmouthEvent::failure("boom", Some(2), Some("stderr")),
+        ];
+
+        let names: Vec<_> = events.iter().map(MrmouthEvent::event_type).collect();
+
+        assert_eq!(
+            names,
+            vec![
+                "message",
+                "stage_changed",
+                "run_label",
+                "task_label",
+                "task_selected",
+                "branch_lifecycle",
+                "container_lifecycle",
+                "run_lifecycle",
+                "reviewer_lifecycle",
+                "shipper_lifecycle",
+                "sync",
+                "finished",
+                "failure",
+            ]
+        );
+
+        for event in events {
+            assert_eq!(event.to_json_value().unwrap()["type"], event.event_type());
+        }
+    }
+
+    #[test]
+    fn writes_event_as_single_json_line() {
         let event = MrmouthEvent::StageChanged {
             stage: "Agent".to_string(),
         };
 
-        let json = serde_json::to_string(&event).unwrap();
+        let line = event.to_json_line().unwrap();
 
-        assert_eq!(json, r#"{"type":"stage_changed","stage":"Agent"}"#);
+        assert_eq!(line, r#"{"type":"stage_changed","stage":"Agent"}"#);
+        assert!(!line.contains('\n'));
+    }
+
+    #[test]
+    fn constructs_finished_payload() {
+        let event = MrmouthEvent::finished(FinishStatus::Success, Some("changes pushed"));
+
+        assert_eq!(
+            event.to_json_value().unwrap(),
+            json!({
+                "type": "finished",
+                "status": "success",
+                "summary": "changes pushed",
+            })
+        );
+    }
+
+    #[test]
+    fn constructs_failure_payload() {
+        let event = MrmouthEvent::failure("cargo check failed", Some(101), None::<String>);
+
+        assert_eq!(
+            event.to_json_value().unwrap(),
+            json!({
+                "type": "failure",
+                "message": "cargo check failed",
+                "code": 101,
+                "detail": null,
+            })
+        );
     }
 
     #[test]

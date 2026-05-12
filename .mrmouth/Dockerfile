@@ -11,7 +11,7 @@ FROM node:22
 
 # Layer 1: System deps (changes ~never)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    unzip openssh-client sudo curl git-lfs ripgrep cargo \
+    unzip openssh-client sudo curl git-lfs ripgrep \
   && git lfs install \
   && rm -rf /var/lib/apt/lists/*
 
@@ -29,8 +29,12 @@ RUN mkdir -p /root/.ssh && \
     ssh-keyscan github.com >> /root/.ssh/known_hosts
 
 # Layer 4: Copy tool binaries from builder
+COPY --from=tools-builder /usr/local/cargo /usr/local/cargo
+COPY --from=tools-builder /usr/local/rustup /usr/local/rustup
 COPY --from=tools-builder /usr/local/cargo/bin/lb /usr/local/bin/lb
 COPY --from=tools-builder /usr/local/cargo/bin/trk /usr/local/bin/trk
+ENV RUSTUP_HOME=/usr/local/rustup
+ENV PATH="/usr/local/cargo/bin:${PATH}"
 
 # Layer 5: Agent CLIs (changes occasionally)
 RUN npm install -g @anthropic-ai/claude-code @openai/codex
