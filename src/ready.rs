@@ -198,9 +198,6 @@ pub fn execute(
         };
 
         task_num += 1;
-        if let Some(t) = tui {
-            t.set_run(Some(format!("Task {task_num}")));
-        }
         emit_event(
             &opts.event_sink,
             MrmouthEvent::RunLabel {
@@ -311,9 +308,6 @@ pub fn execute(
 
         if commit_range.is_some() {
             emit(&tui_tx, "Running reviewer...");
-            if let Some(t) = tui {
-                t.set_stage("Reviewer");
-            }
             emit_event(
                 &opts.event_sink,
                 MrmouthEvent::StageChanged {

@@ -277,7 +277,12 @@ fn execute_task(
 
     if commit_range.is_some() {
         emit(tui_tx, "Running reviewer on task changes...");
-        if let Some(t) = tui { t.set_stage("Reviewer"); }
+        emit_event(
+            &opts.event_sink,
+            MrmouthEvent::StageChanged {
+                stage: "Reviewer".to_string(),
+            },
+        );
         let reviewer_opts = reviewer::ReviewerOptions {
             model: config.loop_config.reviewer_model.clone(),
             current_branch: feature_branch.to_string(),
@@ -321,7 +326,12 @@ fn execute_epic(
         }
     };
 
-    if let Some(t) = tui { t.set_stage("Session setup"); }
+    emit_event(
+        &opts.event_sink,
+        MrmouthEvent::StageChanged {
+            stage: "Session setup".to_string(),
+        },
+    );
     emit(tui_tx, "Starting session container...");
     let epic_log_path = repo_root.join(&config.log_dir).join("epic.log");
     let mut session = match run::start_session(config, repo_root, feature_branch, tui, epic_logger, &epic_log_path) {
@@ -345,7 +355,13 @@ fn execute_epic(
         }
 
         task_num += 1;
-        if let Some(t) = tui { t.set_run(Some(format!("Task {task_num}"))); }
+        emit_event(
+            &opts.event_sink,
+            MrmouthEvent::RunLabel {
+                name: "task".to_string(),
+                value: format!("Task {task_num}"),
+            },
+        );
         emit(tui_tx, &format!(
             "TASK {}  ({} remaining)  {}",
             task_num, remaining, chrono::Local::now().format("%H:%M:%S")
@@ -442,7 +458,12 @@ fn execute_epic(
 
     if commit_range.is_some() {
         emit(tui_tx, "Running reviewer on epic changes...");
-        if let Some(t) = tui { t.set_stage("Reviewer"); }
+        emit_event(
+            &opts.event_sink,
+            MrmouthEvent::StageChanged {
+                stage: "Reviewer".to_string(),
+            },
+        );
         let reviewer_opts = reviewer::ReviewerOptions {
             model: config.loop_config.reviewer_model.clone(),
             current_branch: feature_branch.to_string(),

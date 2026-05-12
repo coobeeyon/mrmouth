@@ -55,13 +55,18 @@ pub struct Session {
 struct RunReporter<'a> {
     sink: Option<&'a EventSinkHandle>,
     tui_sink: Option<crate::tui::TuiEventSink>,
+    display_via_events: bool,
 }
 
 impl<'a> RunReporter<'a> {
     fn new(sink: Option<&'a EventSinkHandle>, tui: Option<&'a TuiHandle>) -> Self {
         Self {
             sink,
-            tui_sink: tui.map(TuiHandle::event_sink),
+            tui_sink: sink
+                .is_none()
+                .then(|| tui.map(TuiHandle::event_sink))
+                .flatten(),
+            display_via_events: tui.is_some(),
         }
     }
 
@@ -80,7 +85,7 @@ impl<'a> RunReporter<'a> {
             text: msg.to_string(),
             target: MessageTarget::Agent,
         });
-        if self.tui_sink.is_some() {
+        if self.display_via_events {
             logger.log_file_only(msg);
         } else {
             logger.log(msg);
@@ -712,9 +717,6 @@ pub fn execute_in_session(
     session: &Session,
     tui: Option<&TuiHandle>,
 ) -> Result<Logger, RunError> {
-    if let Some(t) = tui {
-        t.set_stage("Agent");
-    }
     emit_event(
         &opts.event_sink,
         MrmouthEvent::StageChanged {

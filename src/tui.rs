@@ -179,16 +179,6 @@ impl TuiHandle {
         Arc::clone(&self.cancelled)
     }
 
-    /// Update the iteration label shown in the TUI header (e.g. "Run 3", "Task 2").
-    pub fn set_run(&self, label: Option<String>) {
-        let _ = self.tx.send(TuiMsg::SetRun(label));
-    }
-
-    /// Update the stage shown in the TUI header (e.g. "Agent", "Reviewer").
-    pub fn set_stage(&self, stage: &str) {
-        let _ = self.tx.send(TuiMsg::SetStage(stage.to_string()));
-    }
-
     /// Create a TuiSender that tags lines with the given pane label.
     pub fn sender(&self, label: &str) -> TuiSender {
         TuiSender {

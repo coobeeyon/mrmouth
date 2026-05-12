@@ -241,9 +241,6 @@ pub fn execute(
         .as_ref()
         .ok_or_else(|| LoopError::Bootstrap("loop logger missing — cannot start session".into()))?;
     let session_log_path = log_dir.join("session.log");
-    if let Some(t) = tui {
-        t.set_stage("Session setup");
-    }
     emit_event(
         &opts.event_sink,
         MrmouthEvent::StageChanged {
@@ -315,9 +312,6 @@ pub fn execute(
             }
 
             // --- Decider (runs first; uses loop_logger since no run logger exists yet) ---
-            if let Some(t) = tui {
-                t.set_stage("Deciding");
-            }
             emit_event(
                 &opts.event_sink,
                 MrmouthEvent::StageChanged {
@@ -343,9 +337,6 @@ pub fn execute(
                 Ok(Decision::Ship(reason)) => {
                     crate::logger::log(loop_logger.as_ref(), &format!("Decider: ship — {reason}"));
 
-                    if let Some(t) = tui {
-                        t.set_stage("Shipper");
-                    }
                     emit_event(
                         &opts.event_sink,
                         MrmouthEvent::StageChanged {
@@ -461,9 +452,6 @@ pub fn execute(
 
             let head_before = git_head(repo_root);
 
-            if let Some(t) = tui {
-                t.set_run(Some(format!("Run {run_number}")));
-            }
             emit_event(
                 &opts.event_sink,
                 MrmouthEvent::RunLabel {
@@ -546,9 +534,6 @@ pub fn execute(
             };
 
             if commit_range.is_some() {
-                if let Some(t) = tui {
-                    t.set_stage("Reviewer");
-                }
                 emit_event(
                     &opts.event_sink,
                     MrmouthEvent::StageChanged {

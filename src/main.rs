@@ -189,9 +189,6 @@ fn main() {
         .and_then(|n| n.to_str())
         .unwrap_or("mrmouth");
     let output_modes = output_modes(&cli.command);
-    let lifecycle_events = output_modes
-        .json_events
-        .then(|| crate::events::EventSinkHandle::new(crate::events::JsonlEventSink::stdout()));
     let lifecycle_command = match &cli.command {
         Commands::Run { .. } => "run",
         Commands::Do { .. } => "do",
@@ -209,6 +206,7 @@ fn main() {
     } else {
         None
     };
+    let lifecycle_events = lifecycle_event_sink(output_modes.json_events, tui.as_ref());
 
     let result: Result<(), FailureDebrief> = match cli.command {
         Commands::Run {
@@ -333,6 +331,28 @@ fn output_modes(command: &Commands) -> OutputModes {
     OutputModes {
         json_events,
         start_tui: !raw && !json_events,
+    }
+}
+
+fn lifecycle_event_sink(
+    json_events: bool,
+    tui: Option<&tui::TuiHandle>,
+) -> Option<crate::events::EventSinkHandle> {
+    let mut sinks = Vec::new();
+
+    if let Some(tui) = tui {
+        sinks.push(crate::events::EventSinkHandle::new(tui.event_sink()));
+    }
+    if json_events {
+        sinks.push(crate::events::EventSinkHandle::new(
+            crate::events::JsonlEventSink::stdout(),
+        ));
+    }
+
+    match sinks.len() {
+        0 => None,
+        1 => sinks.pop(),
+        _ => Some(crate::events::EventSinkHandle::fanout(sinks)),
     }
 }
 
