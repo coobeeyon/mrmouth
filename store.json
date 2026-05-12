@@ -1117,8 +1117,9 @@
       "item_type": "task",
       "status": "open",
       "priority": 2,
+      "claimed_by": "agent-runner",
       "created_at": "2026-05-12T15:49:10.906992178Z",
-      "updated_at": "2026-05-12T15:49:10.906992178Z"
+      "updated_at": "2026-05-12T17:15:38.383022760Z"
     },
     "lb-mx2d": {
       "id": "lb-mx2d",
