@@ -11,8 +11,8 @@ use crate::agent::AgentKind;
 use crate::config::Config;
 use crate::docker::{ContainerArgs, CopyFromContainerOutcome, DockerBuilder};
 use crate::events::{
-    ContainerAction, EventSinkHandle, FinishStatus, LifecycleSummary, MessageLevel, MessageTarget,
-    MrmouthEvent, RunAction, SyncAction, SyncTool,
+    ContainerAction, EventSink, EventSinkHandle, FinishStatus, LifecycleSummary, MessageLevel,
+    MessageTarget, MrmouthEvent, RunAction, SyncAction, SyncTool,
 };
 use crate::litebrite;
 use crate::logger::Logger;
@@ -54,19 +54,20 @@ pub struct Session {
 
 struct RunReporter<'a> {
     sink: Option<&'a EventSinkHandle>,
-    tui: Option<&'a TuiHandle>,
+    tui_sink: Option<crate::tui::TuiEventSink>,
 }
 
 impl<'a> RunReporter<'a> {
     fn new(sink: Option<&'a EventSinkHandle>, tui: Option<&'a TuiHandle>) -> Self {
-        Self { sink, tui }
+        Self {
+            sink,
+            tui_sink: tui.map(TuiHandle::event_sink),
+        }
     }
 
     fn emit(&self, event: MrmouthEvent) {
-        if let MrmouthEvent::StageChanged { stage } = &event {
-            if let Some(tui) = self.tui {
-                tui.set_stage(stage);
-            }
+        if let Some(tui_sink) = &self.tui_sink {
+            tui_sink.emit(&event);
         }
         if let Some(sink) = self.sink {
             sink.emit(event);
@@ -79,7 +80,11 @@ impl<'a> RunReporter<'a> {
             text: msg.to_string(),
             target: MessageTarget::Agent,
         });
-        logger.log(msg);
+        if self.tui_sink.is_some() {
+            logger.log_file_only(msg);
+        } else {
+            logger.log(msg);
+        }
     }
 }
 

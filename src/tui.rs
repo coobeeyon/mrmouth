@@ -18,6 +18,7 @@ use ratatui::text::Line;
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 use ratatui::Terminal;
 
+use crate::events::{EventSink, MessageTarget, MrmouthEvent};
 use crate::logger::DisplaySink;
 
 const MAX_LINES: usize = 500;
@@ -36,6 +37,12 @@ pub struct TuiHandle {
     tx: Sender<TuiMsg>,
     thread: Option<JoinHandle<()>>,
     cancelled: Arc<AtomicBool>,
+}
+
+/// Cloneable lifecycle-event renderer for the TUI.
+#[derive(Clone)]
+pub struct TuiEventSink {
+    tx: Sender<TuiMsg>,
 }
 
 /// Cloneable sender that tags each line with a pane label.
@@ -189,6 +196,13 @@ impl TuiHandle {
             tx: self.tx.clone(),
         }
     }
+
+    /// Create an event sink that renders mrmouth lifecycle events in the TUI.
+    pub fn event_sink(&self) -> TuiEventSink {
+        TuiEventSink {
+            tx: self.tx.clone(),
+        }
+    }
 }
 
 impl Drop for TuiHandle {
@@ -208,6 +222,48 @@ impl TuiSender {
             text: line.to_string(),
         });
     }
+}
+
+impl EventSink for TuiEventSink {
+    fn emit(&self, event: &MrmouthEvent) {
+        match event {
+            MrmouthEvent::Message { text, target, .. } => {
+                let _ = self.tx.send(TuiMsg::Line {
+                    pane: pane_for_target(*target).to_string(),
+                    text: text.clone(),
+                });
+            }
+            MrmouthEvent::StageChanged { stage } => {
+                let _ = self.tx.send(TuiMsg::SetStage(stage.clone()));
+            }
+            MrmouthEvent::RunLabel { name, value } if is_header_run_label(name) => {
+                let run = if value.is_empty() {
+                    None
+                } else {
+                    Some(value.clone())
+                };
+                let _ = self.tx.send(TuiMsg::SetRun(run));
+            }
+            MrmouthEvent::TaskSelected { item_id, .. } => {
+                let _ = self.tx.send(TuiMsg::SetRun(Some(item_id.clone())));
+            }
+            _ => {}
+        }
+    }
+}
+
+fn pane_for_target(target: MessageTarget) -> &'static str {
+    match target {
+        MessageTarget::Agent => "AGENT SESSION",
+        MessageTarget::Decider => "DECIDER",
+        MessageTarget::Reviewer => "REVIEWER",
+        MessageTarget::Shipper => "SHIPPER",
+        MessageTarget::System => "SYSTEM",
+    }
+}
+
+fn is_header_run_label(name: &str) -> bool {
+    matches!(name, "run" | "task" | "session")
 }
 
 impl DisplaySink for TuiSender {
@@ -379,6 +435,7 @@ fn draw(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::events::{MessageLevel, MessageTarget};
 
     #[test]
     fn push_line_splits_on_newline() {
@@ -454,5 +511,61 @@ mod tests {
         assert_eq!(state.active_name(), "A");
         state.next_pane();
         assert_eq!(state.active_name(), "B");
+    }
+
+    #[test]
+    fn event_sink_routes_message_targets_to_panes() {
+        let (tx, rx) = mpsc::channel();
+        let sink = TuiEventSink { tx };
+
+        sink.emit(&MrmouthEvent::Message {
+            level: MessageLevel::Info,
+            text: "review output".to_string(),
+            target: MessageTarget::Reviewer,
+        });
+
+        match rx.try_recv().unwrap() {
+            TuiMsg::Line { pane, text } => {
+                assert_eq!(pane, "REVIEWER");
+                assert_eq!(text, "review output");
+            }
+            _ => panic!("expected line message"),
+        }
+    }
+
+    #[test]
+    fn event_sink_updates_header_from_stage_and_run_events() {
+        let (tx, rx) = mpsc::channel();
+        let sink = TuiEventSink { tx };
+
+        sink.emit(&MrmouthEvent::StageChanged {
+            stage: "Reviewer".to_string(),
+        });
+        sink.emit(&MrmouthEvent::RunLabel {
+            name: "run".to_string(),
+            value: "Run 2".to_string(),
+        });
+
+        match rx.try_recv().unwrap() {
+            TuiMsg::SetStage(stage) => assert_eq!(stage, "Reviewer"),
+            _ => panic!("expected stage message"),
+        }
+        match rx.try_recv().unwrap() {
+            TuiMsg::SetRun(run) => assert_eq!(run, Some("Run 2".to_string())),
+            _ => panic!("expected run message"),
+        }
+    }
+
+    #[test]
+    fn event_sink_ignores_non_header_run_labels() {
+        let (tx, rx) = mpsc::channel();
+        let sink = TuiEventSink { tx };
+
+        sink.emit(&MrmouthEvent::RunLabel {
+            name: "branch".to_string(),
+            value: "feature".to_string(),
+        });
+
+        assert!(rx.try_recv().is_err());
     }
 }
