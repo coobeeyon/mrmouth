@@ -1605,11 +1605,10 @@
       "title": "Migrate do ready loop reviewer and shipper reporting to events",
       "description": "Goal: Finish moving orchestration status reporting behind the event sink across the higher-level commands. Context: src/do_cmd.rs and src/ready.rs use local emit helpers and TuiHandle methods; src/loop_cmd.rs coordinates decider, runner, reviewer, summary, and shipper stages; src/reviewer.rs and src/shipper.rs create stage-specific logs and stream agent output. Requirements: route task selection, branch creation, stage/run labels, reviewer and shipper lifecycle, sync, and failure messages through events where practical; preserve cancellation checks; keep existing logs useful. Acceptance: cargo test passes and non-TUI human output remains understandable. Out of scope: defining new JSON schema fields not needed by the event model.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 1,
-      "claimed_by": "agent-runner",
       "created_at": "2026-05-12T15:48:25.078001183Z",
-      "updated_at": "2026-05-12T17:41:06.771549984Z"
+      "updated_at": "2026-05-12T17:53:20.412562730Z"
     },
     "lb-ys68": {
       "id": "lb-ys68",
