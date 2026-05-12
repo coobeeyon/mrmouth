@@ -243,7 +243,14 @@ pub fn execute(
         run_id: Some(log_filename.clone()),
         branch: Some(branch.clone()),
     });
-    preflight(repo_root, local, &effective_dockerfile, Some(&logger)).inspect_err(|_| {
+    preflight(
+        repo_root,
+        config.agent,
+        local,
+        &effective_dockerfile,
+        Some(&logger),
+    )
+    .inspect_err(|_| {
         logger.flush();
     })?;
 
@@ -587,8 +594,14 @@ pub fn start_session(
     } else {
         logger.log("Checking preflight conditions...");
     }
-    preflight(repo_root, local, &effective_dockerfile, Some(logger))
-        .inspect_err(|_| logger.flush())?;
+    preflight(
+        repo_root,
+        config.agent,
+        local,
+        &effective_dockerfile,
+        Some(logger),
+    )
+    .inspect_err(|_| logger.flush())?;
 
     // 2. Repo URL
     let (repo_url, file_remote_path) = if local {
@@ -1036,6 +1049,7 @@ fn preflight_skipped() -> bool {
 
 fn preflight(
     repo_root: &Path,
+    agent: AgentKind,
     local: bool,
     dockerfile_content: &str,
     logger: Option<&Logger>,
@@ -1061,13 +1075,7 @@ fn preflight(
     // Best-effort diagnostic — never blocks preflight.
     check_disk_space(logger);
 
-    let has_api_key = std::env::var("ANTHROPIC_API_KEY").is_ok();
-    let has_oauth = std::env::var("CLAUDE_CODE_OAUTH_TOKEN").is_ok();
-    if !has_api_key && !has_oauth {
-        return Err(RunError::Preflight(
-            "No credentials found. Set ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN.".into(),
-        ));
-    }
+    check_agent_credentials(agent)?;
 
     check_tooling_coherence(repo_root, dockerfile_content)?;
 
@@ -1102,6 +1110,29 @@ fn preflight(
                 check_ssh_agent()?;
             }
             check_origin_reachable(repo_root)?;
+        }
+    }
+
+    Ok(())
+}
+
+fn check_agent_credentials(agent: AgentKind) -> Result<(), RunError> {
+    match agent {
+        AgentKind::Claude => {
+            let has_api_key = std::env::var("ANTHROPIC_API_KEY").is_ok();
+            let has_oauth = std::env::var("CLAUDE_CODE_OAUTH_TOKEN").is_ok();
+            if !has_api_key && !has_oauth {
+                return Err(RunError::Preflight(
+                    "No Claude credentials found. Set ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN."
+                        .into(),
+                ));
+            }
+        }
+        AgentKind::Codex => {
+            // Codex may authenticate through OPENAI_API_KEY/CODEX_API_KEY or
+            // through device auth stored in the persisted Docker home volume.
+            // The host preflight cannot inspect that volume without risking a
+            // false negative, so Codex auth is left to the Codex CLI.
         }
     }
 
@@ -2736,7 +2767,7 @@ mod tests {
         let prev_skip = std::env::var_os("MRMOUTH_SKIP_PREFLIGHT");
         std::env::set_var("MRMOUTH_SKIP_PREFLIGHT", "1");
         // Dockerfile lacks trk, but env skip must bypass that (and all other checks).
-        let result = preflight(dir.path(), true, "FROM scratch\n", None);
+        let result = preflight(dir.path(), AgentKind::Claude, true, "FROM scratch\n", None);
         match prev_skip {
             Some(v) => std::env::set_var("MRMOUTH_SKIP_PREFLIGHT", v),
             None => std::env::remove_var("MRMOUTH_SKIP_PREFLIGHT"),
@@ -2745,6 +2776,51 @@ mod tests {
             result.is_ok(),
             "skip env should bypass all preflight failures"
         );
+    }
+
+    #[test]
+    fn claude_credentials_require_claude_env() {
+        let _guard = env_lock();
+        let prev_api_key = std::env::var_os("ANTHROPIC_API_KEY");
+        let prev_oauth = std::env::var_os("CLAUDE_CODE_OAUTH_TOKEN");
+        std::env::remove_var("ANTHROPIC_API_KEY");
+        std::env::remove_var("CLAUDE_CODE_OAUTH_TOKEN");
+
+        let result = check_agent_credentials(AgentKind::Claude);
+
+        match prev_api_key {
+            Some(v) => std::env::set_var("ANTHROPIC_API_KEY", v),
+            None => std::env::remove_var("ANTHROPIC_API_KEY"),
+        }
+        match prev_oauth {
+            Some(v) => std::env::set_var("CLAUDE_CODE_OAUTH_TOKEN", v),
+            None => std::env::remove_var("CLAUDE_CODE_OAUTH_TOKEN"),
+        }
+
+        let err = result.unwrap_err();
+        assert!(format!("{err}").contains("No Claude credentials found"));
+    }
+
+    #[test]
+    fn codex_credentials_do_not_require_claude_env() {
+        let _guard = env_lock();
+        let prev_api_key = std::env::var_os("ANTHROPIC_API_KEY");
+        let prev_oauth = std::env::var_os("CLAUDE_CODE_OAUTH_TOKEN");
+        std::env::remove_var("ANTHROPIC_API_KEY");
+        std::env::remove_var("CLAUDE_CODE_OAUTH_TOKEN");
+
+        let result = check_agent_credentials(AgentKind::Codex);
+
+        match prev_api_key {
+            Some(v) => std::env::set_var("ANTHROPIC_API_KEY", v),
+            None => std::env::remove_var("ANTHROPIC_API_KEY"),
+        }
+        match prev_oauth {
+            Some(v) => std::env::set_var("CLAUDE_CODE_OAUTH_TOKEN", v),
+            None => std::env::remove_var("CLAUDE_CODE_OAUTH_TOKEN"),
+        }
+
+        assert!(result.is_ok());
     }
 
     #[test]
