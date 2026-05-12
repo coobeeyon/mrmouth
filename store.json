@@ -870,6 +870,16 @@
       "created_at": "2026-03-10T16:28:19.225487388Z",
       "updated_at": "2026-03-10T16:30:04.282411850Z"
     },
+    "lb-jiq0": {
+      "id": "lb-jiq0",
+      "title": "Build core event surface",
+      "description": "Outcome: introduce a small, stable internal event API for mrmouth lifecycle reporting. Context: this feature should create the vocabulary and sink abstractions other commands can use before any renderer migration. Completion: event types and sinks compile, basic tests cover serialization or fanout behavior, and no user-visible CLI behavior needs to change yet.",
+      "item_type": "feature",
+      "status": "open",
+      "priority": 1,
+      "created_at": "2026-05-12T15:47:11.038227603Z",
+      "updated_at": "2026-05-12T15:47:11.038227603Z"
+    },
     "lb-jj12": {
       "id": "lb-jj12",
       "title": "process::exit in main.rs bypasses TuiHandle drop, leaving terminal in bad state",
@@ -1845,6 +1855,11 @@
     {
       "from_id": "lb-zptt",
       "to_id": "lb-obsn",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-jiq0",
+      "to_id": "lb-40uv",
       "dep_type": "parent"
     }
   ]
