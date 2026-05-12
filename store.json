@@ -1110,6 +1110,16 @@
       "created_at": "2026-03-26T03:45:21.356840097Z",
       "updated_at": "2026-04-22T15:21:48.594123021Z"
     },
+    "lb-mnql": {
+      "id": "lb-mnql",
+      "title": "Document event rendering architecture and JSON mode",
+      "description": "Goal: Update project docs to explain the separation between orchestration events, TUI rendering, human terminal output, log files, raw inner-agent JSON, and lifecycle JSON mode. Context: README currently documents --raw as raw JSONL for agent stream output and describes the TUI as part of command behavior. Requirements: document the new flag, what stdout/stderr contain, that --raw is still inner-agent stream output, and how supervising agents should consume final lifecycle summary events. Acceptance: README or SPEC changes are clear enough for future Codex sessions and users. Out of scope: long protocol reference beyond the stable fields implemented.",
+      "item_type": "task",
+      "status": "open",
+      "priority": 2,
+      "created_at": "2026-05-12T15:49:10.906992178Z",
+      "updated_at": "2026-05-12T15:49:10.906992178Z"
+    },
     "lb-mxo4": {
       "id": "lb-mxo4",
       "title": "Loop continues post-run AI stages after TUI cancellation",
@@ -2024,6 +2034,11 @@
     },
     {
       "from_id": "lb-usb5",
+      "to_id": "lb-dbja",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-mnql",
       "to_id": "lb-dbja",
       "dep_type": "parent"
     }
