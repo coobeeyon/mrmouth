@@ -935,11 +935,10 @@
       "title": "Build core event surface",
       "description": "Outcome: introduce a small, stable internal event API for mrmouth lifecycle reporting. Context: this feature should create the vocabulary and sink abstractions other commands can use before any renderer migration. Completion: event types and sinks compile, basic tests cover serialization or fanout behavior, and no user-visible CLI behavior needs to change yet.",
       "item_type": "feature",
-      "status": "open",
+      "status": "closed",
       "priority": 1,
-      "claimed_by": "agent-runner",
       "created_at": "2026-05-12T15:47:11.038227603Z",
-      "updated_at": "2026-05-12T17:54:30.590642121Z"
+      "updated_at": "2026-05-12T17:55:08.879745227Z"
     },
     "lb-jj12": {
       "id": "lb-jj12",
