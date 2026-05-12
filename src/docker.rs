@@ -1,9 +1,17 @@
-use std::io::{BufRead, BufReader};
+use std::fs;
+use std::io::{self, BufRead, BufReader};
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::Arc;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CopyFromContainerOutcome {
+    Updated,
+    Unchanged,
+    Missing,
+}
 
 /// Default Dockerfile content used when no `.mrmouth/Dockerfile` exists.
 pub const DEFAULT_DOCKERFILE: &str = r#"# Stage 1: Build litebrite (lb) and trapperkeeper (trk) — static musl binaries
@@ -269,6 +277,39 @@ impl DockerBuilder {
             .stderr(Stdio::null())
             .status();
         matches!(status, Ok(s) if s.success())
+    }
+
+    /// Copy a file from a stopped container only when its bytes differ from the
+    /// existing local file. The local file is left untouched when content is
+    /// identical, avoiding accidental worktree dirtiness before/after a pull.
+    pub fn copy_from_container_if_changed(
+        container_name: &str,
+        container_path: &str,
+        local_path: &Path,
+    ) -> io::Result<CopyFromContainerOutcome> {
+        if let Some(parent) = local_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+
+        let temp_dir = match local_path.parent() {
+            Some(parent) => tempfile::Builder::new()
+                .prefix(".mrmouth-copy-")
+                .tempdir_in(parent)?,
+            None => tempfile::tempdir()?,
+        };
+        let temp_path = temp_dir.path().join("container-file");
+
+        if !Self::copy_from_container(container_name, container_path, &temp_path) {
+            return Ok(CopyFromContainerOutcome::Missing);
+        }
+
+        let container_bytes = fs::read(&temp_path)?;
+        if fs::read(local_path).is_ok_and(|local_bytes| local_bytes == container_bytes) {
+            return Ok(CopyFromContainerOutcome::Unchanged);
+        }
+
+        fs::rename(temp_path, local_path)?;
+        Ok(CopyFromContainerOutcome::Updated)
     }
 
     /// Stop a running container by name (best-effort).

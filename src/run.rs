@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use crate::agent::AgentKind;
 use crate::config::Config;
-use crate::docker::{ContainerArgs, DockerBuilder};
+use crate::docker::{ContainerArgs, CopyFromContainerOutcome, DockerBuilder};
 use crate::litebrite;
 use crate::logger::Logger;
 use crate::prompt;
@@ -45,6 +45,49 @@ pub struct Session {
     pub scripts_dir: tempfile::TempDir,
     pub local: bool,
     pub file_remote_path: Option<PathBuf>,
+}
+
+fn pull_code_changes(repo_root: &Path, logger: &Logger) {
+    logger.log("Pulling code changes from remote...");
+    let pull_output = Command::new("git")
+        .args(["-C", &repo_root.to_string_lossy(), "pull", "--ff-only"])
+        .output();
+    match pull_output {
+        Ok(o) if o.status.success() => {}
+        Ok(o) => {
+            let stderr = String::from_utf8_lossy(&o.stderr);
+            if stderr.contains("Already up to date") || stderr.is_empty() {
+                logger.log("No new commits to pull.");
+            } else {
+                logger.log(&format!("Warning: git pull failed: {}", stderr.trim()));
+            }
+        }
+        Err(e) => logger.log(&format!("Warning: git pull failed: {e}")),
+    }
+}
+
+fn extract_updated_dockerfile(
+    repo_root: &Path,
+    dockerfile_path: &str,
+    container_name: &str,
+    logger: &Logger,
+) {
+    let dockerfile_dest = repo_root.join(dockerfile_path);
+    let container_path = format!("/home/runner/workspace/{dockerfile_path}");
+    match DockerBuilder::copy_from_container_if_changed(
+        container_name,
+        &container_path,
+        &dockerfile_dest,
+    ) {
+        Ok(CopyFromContainerOutcome::Updated) => {
+            logger.log("Extracted updated Dockerfile from container.");
+        }
+        Ok(CopyFromContainerOutcome::Unchanged) => {
+            logger.log("Dockerfile from container matches host; leaving worktree unchanged.");
+        }
+        Ok(CopyFromContainerOutcome::Missing) => {}
+        Err(e) => logger.log(&format!("Warning: Dockerfile extraction failed: {e}")),
+    }
 }
 
 /// Execute one agent run. Returns the Logger so callers can continue writing to the same
@@ -247,39 +290,20 @@ pub fn execute(
         atomic_symlink(&log_filename, &latest_log);
     }
 
-    // 12. Extract updated Dockerfile from container (agent may have modified it)
-    if !local {
-        let dockerfile_dest = repo_root.join(&config.dockerfile);
-        let container_path = format!("/home/runner/workspace/{}", config.dockerfile);
-        if DockerBuilder::copy_from_container(&container_name, &container_path, &dockerfile_dest) {
-            logger.log("Extracted updated Dockerfile from container.");
-        }
-    }
-
-    // 13. Clean up container
-    DockerBuilder::remove_container(&container_name);
-
-    // 14. Post-run sync
+    // 12. Post-run sync before extracting files. This keeps self-produced,
+    // already-pushed Dockerfile edits from dirtying the host before pull.
     logger.log("Post-run sync...");
-
     if !local && file_remote_path.is_none() {
-        logger.log("Pulling code changes from remote...");
-        let pull_output = Command::new("git")
-            .args(["-C", &repo_root.to_string_lossy(), "pull", "--ff-only"])
-            .output();
-        match pull_output {
-            Ok(o) if o.status.success() => {}
-            Ok(o) => {
-                let stderr = String::from_utf8_lossy(&o.stderr);
-                if stderr.contains("Already up to date") || stderr.is_empty() {
-                    logger.log("No new commits to pull.");
-                } else {
-                    logger.log(&format!("Warning: git pull failed: {}", stderr.trim()));
-                }
-            }
-            Err(e) => logger.log(&format!("Warning: git pull failed: {e}")),
-        }
+        pull_code_changes(repo_root, &logger);
     }
+
+    // 13. Extract updated Dockerfile from container (agent may have modified it)
+    if !local {
+        extract_updated_dockerfile(repo_root, &config.dockerfile, &container_name, &logger);
+    }
+
+    // 14. Clean up container
+    DockerBuilder::remove_container(&container_name);
 
     litebrite::init_and_sync(repo_root, Some(&logger));
     logger.log(&format!("Done. Log saved: {}", log_path.display()));
@@ -597,39 +621,23 @@ pub fn execute_in_session(
         atomic_symlink(&log_filename, &latest_log);
     }
 
+    // Post-task host-side sync before extracting files. This keeps
+    // self-produced, already-pushed Dockerfile edits from dirtying the host
+    // before pull.
+    logger.log("Post-run sync...");
+    if !session.local && session.file_remote_path.is_none() {
+        pull_code_changes(repo_root, &logger);
+    }
+
     // Extract updated Dockerfile (agent may have edited it). Enables the caller
     // to detect Dockerfile changes and rebuild the session if needed.
     if !session.local {
-        let dockerfile_dest = repo_root.join(&config.dockerfile);
-        let container_path = format!("/home/runner/workspace/{}", config.dockerfile);
-        if DockerBuilder::copy_from_container(
+        extract_updated_dockerfile(
+            repo_root,
+            &config.dockerfile,
             &session.container_name,
-            &container_path,
-            &dockerfile_dest,
-        ) {
-            logger.log("Extracted updated Dockerfile from container.");
-        }
-    }
-
-    // Post-task host-side sync
-    logger.log("Post-run sync...");
-    if !session.local && session.file_remote_path.is_none() {
-        logger.log("Pulling code changes from remote...");
-        let pull_output = Command::new("git")
-            .args(["-C", &repo_root.to_string_lossy(), "pull", "--ff-only"])
-            .output();
-        match pull_output {
-            Ok(o) if o.status.success() => {}
-            Ok(o) => {
-                let stderr = String::from_utf8_lossy(&o.stderr);
-                if stderr.contains("Already up to date") || stderr.is_empty() {
-                    logger.log("No new commits to pull.");
-                } else {
-                    logger.log(&format!("Warning: git pull failed: {}", stderr.trim()));
-                }
-            }
-            Err(e) => logger.log(&format!("Warning: git pull failed: {e}")),
-        }
+            &logger,
+        );
     }
 
     litebrite::init_and_sync(repo_root, Some(&logger));

@@ -4,7 +4,7 @@ use std::path::Path;
 use std::process::Command;
 
 use crate::config::Config;
-use crate::docker::{ContainerArgs, DockerBuilder};
+use crate::docker::{ContainerArgs, CopyFromContainerOutcome, DockerBuilder};
 use crate::logger::Logger;
 use crate::stream_fmt::{self, StreamFormatter};
 
@@ -266,11 +266,24 @@ fi
     // Extract updated Dockerfile from container (reviewer may have modified it)
     let dockerfile_dest = repo_root.join(&config.dockerfile);
     let container_path = format!("/home/runner/workspace/{}", config.dockerfile);
-    if DockerBuilder::copy_from_container(&container_name, &container_path, &dockerfile_dest) {
-        crate::logger::log(
+    match DockerBuilder::copy_from_container_if_changed(
+        &container_name,
+        &container_path,
+        &dockerfile_dest,
+    ) {
+        Ok(CopyFromContainerOutcome::Updated) => crate::logger::log(
             logger,
             "Extracted updated Dockerfile from reviewer container.",
-        );
+        ),
+        Ok(CopyFromContainerOutcome::Unchanged) => crate::logger::log(
+            logger,
+            "Reviewer Dockerfile matches host; leaving worktree unchanged.",
+        ),
+        Ok(CopyFromContainerOutcome::Missing) => {}
+        Err(e) => crate::logger::log(
+            logger,
+            &format!("Warning: reviewer Dockerfile extraction failed: {e}"),
+        ),
     }
 
     DockerBuilder::remove_container(&container_name);
