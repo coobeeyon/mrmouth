@@ -635,11 +635,10 @@
       "title": "Migrate run command lifecycle reporting to events",
       "description": "Goal: Route mrmouth run lifecycle status through the event sink while preserving current behavior. Context: src/run.rs has the densest lifecycle flow: preflight, litebrite sync, runner script, Docker build, volume setup, container start/stop, streaming, symlinks, Dockerfile extraction, pull, post-run sync, and failure classification. Requirements: replace direct TUI stage updates and display-only status with event emissions where practical; keep raw inner-agent JSON behavior unchanged; keep log files and latest symlinks working. Acceptance: cargo test passes and mrmouth run --raw still means raw inner-agent JSON, not lifecycle JSON. Out of scope: do/ready/loop migration.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 1,
-      "claimed_by": "agent-runner",
       "created_at": "2026-05-12T15:48:15.426306116Z",
-      "updated_at": "2026-05-12T17:29:24.685231264Z"
+      "updated_at": "2026-05-12T17:34:57.380020231Z"
     },
     "lb-btw1": {
       "id": "lb-btw1",
