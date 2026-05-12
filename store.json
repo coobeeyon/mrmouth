@@ -1357,8 +1357,9 @@
       "item_type": "task",
       "status": "open",
       "priority": 1,
+      "claimed_by": "agent-runner",
       "created_at": "2026-05-12T15:47:47.200108779Z",
-      "updated_at": "2026-05-12T15:47:47.200108779Z"
+      "updated_at": "2026-05-12T16:44:19.984909605Z"
     },
     "lb-tvkb": {
       "id": "lb-tvkb",
