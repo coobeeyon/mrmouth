@@ -465,11 +465,10 @@
       "title": "Inception-test mrmouth output modes",
       "description": "Goal: Verify the event-rendering refactor with real mrmouth invocations in the output modes that static tests do not cover.\nContext: The lb-40uv branch introduced lifecycle events, TUI event rendering, --json-events, and raw inner-agent output separation. Review found a likely behavior bug where normal TUI mode creates an event sink and run.rs uses opts.event_sink.is_some() to skip formatted stream display.\nResults: Built the current CLI with cargo build, then used a disposable nested smoke repo with a tiny Docker image that provides fake claude/lb/trk commands. Ran MRMOUTH_SKIP_PREFLIGHT=1 target/debug/mrmouth run --local --timeout 1 --json-events with stdout/stderr split: PASS for lifecycle JSON on stdout, including final lifecycle_summary, and human status on stderr. Ran --raw with split streams: PASS for inner-agent stream reaching stdout, but stdout also includes runner bootstrap/timing lines, so raw is not pure JSONL. Ran plain mode under script(1) pseudo-TTY: FAIL for formatted TUI stream regression; TUI alt screen opened, but logs/run-20260512-144219.log contained raw assistant/result JSON instead of formatted [text]/[done] output. Follow-up created: lb-ly6e Restore formatted TUI agent stream with event sink.\nAcceptance: Completed. Commands and observations captured above; no project code changes were required by this inception test.\nOut of scope: Fixing the stream suppression regression unless the task is explicitly expanded; this ticket was for inception/live verification and precise follow-up scoping.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 1,
-      "claimed_by": "Michael Daum",
       "created_at": "2026-05-12T18:31:31.699147174Z",
-      "updated_at": "2026-05-12T18:43:54.194216104Z"
+      "updated_at": "2026-05-12T18:44:03.642936567Z"
     },
     "lb-7s17": {
       "id": "lb-7s17",
