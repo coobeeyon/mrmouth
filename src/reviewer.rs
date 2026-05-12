@@ -198,8 +198,8 @@ fi
     let review_log_path = log_dir.join(format!("review-{timestamp}.log"));
     let review_jsonl_path = log_dir.join(format!("review-{timestamp}.jsonl"));
 
-    let review_logger = match logger.and_then(|l| l.tui_sender()) {
-        Some(tui) => Logger::with_tui(&review_log_path, tui.clone()),
+    let review_logger = match logger.and_then(|l| l.display_sink()) {
+        Some(display) => Logger::with_display_handle(&review_log_path, display),
         None => Logger::new(&review_log_path),
     }
     .ok();
@@ -230,7 +230,8 @@ fi
         .run(&container_args)
         .map_err(|e| ReviewerError(format!("failed to start reviewer container: {e}")))?;
 
-    let is_tty = logger.is_some_and(|l| l.has_tui()) || std::io::stdout().is_terminal();
+    let is_tty = logger.is_some_and(|l| l.display_supports_color())
+        || std::io::stdout().is_terminal();
     let mut formatter = StreamFormatter::new(is_tty);
 
     handle

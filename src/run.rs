@@ -127,7 +127,7 @@ pub fn execute(
     let log_filename = format!("run-{timestamp}.log");
     let log_path = log_dir.join(&log_filename);
     let logger = match tui {
-        Some(t) => Logger::with_tui(&log_path, t.sender("AGENT SESSION"))
+        Some(t) => Logger::with_display_sink(&log_path, t.sender("AGENT SESSION"))
             .map_err(|e| RunError::Io("creating log file".into(), e))?,
         None => Logger::new(&log_path).map_err(|e| RunError::Io("creating log file".into(), e))?,
     };
@@ -332,7 +332,7 @@ pub fn execute(
     let jsonl_file =
         File::create(&jsonl_path).map_err(|e| RunError::Io("creating jsonl file".into(), e))?;
     let mut jsonl_writer = BufWriter::new(jsonl_file);
-    let is_tty = logger.has_tui() || std::io::stdout().is_terminal();
+    let is_tty = logger.display_supports_color() || std::io::stdout().is_terminal();
 
     if opts.raw {
         let stdout = std::io::stdout();
@@ -717,7 +717,7 @@ pub fn execute_in_session(
     let log_filename = format!("run-{timestamp}.log");
     let log_path = log_dir.join(&log_filename);
     let logger = match tui {
-        Some(t) => Logger::with_tui(&log_path, t.sender("AGENT SESSION"))
+        Some(t) => Logger::with_display_sink(&log_path, t.sender("AGENT SESSION"))
             .map_err(|e| RunError::Io("creating log file".into(), e))?,
         None => Logger::new(&log_path).map_err(|e| RunError::Io("creating log file".into(), e))?,
     };
@@ -761,7 +761,7 @@ pub fn execute_in_session(
     let jsonl_file =
         File::create(&jsonl_path).map_err(|e| RunError::Io("creating jsonl file".into(), e))?;
     let mut jsonl_writer = BufWriter::new(jsonl_file);
-    let is_tty = logger.has_tui() || std::io::stdout().is_terminal();
+    let is_tty = logger.display_supports_color() || std::io::stdout().is_terminal();
 
     let container_start = std::time::Instant::now();
     emit_event(

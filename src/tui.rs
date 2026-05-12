@@ -18,6 +18,8 @@ use ratatui::text::Line;
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 use ratatui::Terminal;
 
+use crate::logger::DisplaySink;
+
 const MAX_LINES: usize = 500;
 const POLL_TIMEOUT: Duration = Duration::from_millis(50);
 
@@ -206,7 +208,16 @@ impl TuiSender {
             text: line.to_string(),
         });
     }
+}
 
+impl DisplaySink for TuiSender {
+    fn display_line(&self, line: &str) {
+        self.send_line(line);
+    }
+
+    fn supports_color(&self) -> bool {
+        true
+    }
 }
 
 /// Main render loop running on the background thread.

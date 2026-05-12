@@ -73,8 +73,8 @@ pub fn execute(
 
     streaming::send_prompt(&mut child, &prompt);
 
-    let target = match logger.and_then(|l| l.tui_sender()) {
-        Some(tui) => StreamTarget::Tui(tui.clone()),
+    let target = match logger.and_then(|l| l.display_sink()) {
+        Some(display) => StreamTarget::Display(display),
         None => StreamTarget::Stdout,
     };
 

@@ -89,7 +89,7 @@ pub fn execute(config: &Config, repo_root: &Path, opts: DoOptions, tui: Option<&
     let log_dir = repo_root.join(&config.log_dir);
     let _ = std::fs::create_dir_all(&log_dir);
     let epic_logger = match tui {
-        Some(t) => crate::logger::Logger::with_tui(&log_dir.join("epic.log"), t.sender("AGENT SESSION")),
+        Some(t) => crate::logger::Logger::with_display_sink(&log_dir.join("epic.log"), t.sender("AGENT SESSION")),
         None => crate::logger::Logger::new(&log_dir.join("epic.log")),
     }.ok();
 

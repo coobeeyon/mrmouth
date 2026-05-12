@@ -3,14 +3,13 @@ use std::io::{BufRead, BufReader, BufWriter, IsTerminal, Write};
 use std::process::{Child, Stdio};
 
 use crate::agent::AgentKind;
-use crate::logger::Logger;
+use crate::logger::{DisplaySinkHandle, Logger};
 use crate::stream_fmt::{self, StreamFormatter};
-use crate::tui::TuiSender;
 
 /// Output destination for streaming claude output.
 pub enum StreamTarget {
-    /// Route formatted output to a TUI pane.
-    Tui(TuiSender),
+    /// Route formatted output to a caller-provided display sink.
+    Display(DisplaySinkHandle),
     /// Print formatted output to stderr (non-TUI mode).
     Stderr,
     /// Print formatted output to stdout (e.g. standalone summary command).
@@ -19,10 +18,10 @@ pub enum StreamTarget {
 
 impl StreamTarget {
     /// Whether ANSI color codes should be emitted for this target.
-    /// TUI always supports colors; terminal targets check is_terminal().
+    /// Custom sinks report their own capability; terminal targets check is_terminal().
     pub fn supports_color(&self) -> bool {
         match self {
-            StreamTarget::Tui(_) => true,
+            StreamTarget::Display(sink) => sink.supports_color(),
             StreamTarget::Stderr => std::io::stderr().is_terminal(),
             StreamTarget::Stdout => std::io::stdout().is_terminal(),
         }
@@ -300,7 +299,7 @@ pub fn send_prompt(child: &mut Child, prompt: &str) {
 
 fn display(text: &str, target: &StreamTarget) {
     match target {
-        StreamTarget::Tui(sender) => sender.send_line(text),
+        StreamTarget::Display(sink) => sink.display_line(text),
         StreamTarget::Stderr => eprintln!("{text}"),
         StreamTarget::Stdout => println!("{text}"),
     }

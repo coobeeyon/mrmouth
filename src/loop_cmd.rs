@@ -45,7 +45,7 @@ pub fn execute(
     let log_dir = repo_root.join(&config.log_dir);
     let _ = std::fs::create_dir_all(&log_dir);
     let loop_logger = match tui {
-        Some(t) => Logger::with_tui(&log_dir.join("loop.log"), t.sender("AGENT SESSION")),
+        Some(t) => Logger::with_display_sink(&log_dir.join("loop.log"), t.sender("AGENT SESSION")),
         None => Logger::new(&log_dir.join("loop.log")),
     }
     .ok();
@@ -500,8 +500,8 @@ fn should_continue(
     let decider_log_path = log_dir.join(format!("decider-{timestamp}.log"));
     let decider_jsonl_path = log_dir.join(format!("decider-{timestamp}.jsonl"));
 
-    let decider_logger = match logger.and_then(|l| l.tui_sender()) {
-        Some(tui) => Logger::with_tui(&decider_log_path, tui.clone()),
+    let decider_logger = match logger.and_then(|l| l.display_sink()) {
+        Some(display) => Logger::with_display_handle(&decider_log_path, display),
         None => Logger::new(&decider_log_path),
     }
     .ok();
@@ -558,8 +558,8 @@ fn should_continue(
 
     streaming::send_prompt(&mut child, &prompt);
 
-    let target = match logger.and_then(|l| l.tui_sender()) {
-        Some(tui) => StreamTarget::Tui(tui.clone()),
+    let target = match logger.and_then(|l| l.display_sink()) {
+        Some(display) => StreamTarget::Display(display),
         None => StreamTarget::Stderr,
     };
 
