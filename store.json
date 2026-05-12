@@ -1565,11 +1565,10 @@
       "title": "Emit final lifecycle summary events",
       "description": "Goal: Make lifecycle JSON runs end with a stable final summary event that tools can trust. Context: supervising agents need to know whether mrmouth completed, failed, or stopped; which item or command ran; branch name; commits or commit range when available; log paths; reviewer/shipper outcome when available; and next-action guidance. Requirements: define completed and failed summary payloads; include log paths and exit code or failure reason on errors; avoid requiring consumers to infer success from process text. Acceptance: tests cover success and failure summary serialization, and failed runs still exit nonzero. Out of scope: perfect commit detection for every command if not already available.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 1,
-      "claimed_by": "agent-runner",
       "created_at": "2026-05-12T15:48:46.971374297Z",
-      "updated_at": "2026-05-12T17:01:31.027339581Z"
+      "updated_at": "2026-05-12T17:07:16.311734101Z"
     },
     "lb-xxgz": {
       "id": "lb-xxgz",
