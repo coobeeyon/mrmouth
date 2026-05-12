@@ -3,3 +3,4 @@ logs/
 *.log
 *.jsonl
 !tests/*.jsonl
+/.trapper_keeper
