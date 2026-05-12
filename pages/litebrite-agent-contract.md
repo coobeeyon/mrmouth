@@ -92,6 +92,11 @@ are merged as a union minus removals.
 
 ## Implications For Mr Mouth Skills
 
+A useful Codex skill here is more general than mrmouth operation: it should
+author good litebrite work graphs. Mr Mouth is one important downstream consumer,
+but the core capability is converting a user goal into a nested brite hierarchy
+with executable leaves and explicit sibling ordering.
+
 A mrmouth operator skill should not need deep litebrite knowledge beyond
 `lb prime` and the protocol above. The outer agent should use litebrite for task
 selection and ownership, then delegate bounded work to mrmouth. The safest
@@ -106,3 +111,21 @@ default is:
 
 Do not treat `lb ready` as a lock. Do not close an item before committing the
 code intended to satisfy it.
+
+## Brite Authoring Guidance
+
+When preparing work for autonomous agents, prefer a hierarchy first:
+
+- parent brites describe user-facing outcomes or coherent areas of work
+- child brites decompose the parent into reviewable slices
+- leaf brites are sized for one focused worker session
+- sibling `blocks` dependencies represent real sequencing constraints
+
+Leaf descriptions should serve as ramp-in notes. They should name the goal,
+relevant files/modules, existing patterns to follow, concrete requirements,
+acceptance checks, and out-of-scope nearby work. The worker should not need a
+conversation or broad rediscovery pass before starting.
+
+Parent descriptions should explain the outcome and why it matters, but should
+not duplicate every child requirement. A parent is done when its children are
+closed and the integrated behavior works.
