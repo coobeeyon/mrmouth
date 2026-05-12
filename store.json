@@ -1773,6 +1773,11 @@
       "dep_type": "parent"
     },
     {
+      "from_id": "lb-7nr4",
+      "to_id": "lb-40uv",
+      "dep_type": "parent"
+    },
+    {
       "from_id": "lb-87en",
       "to_id": "lb-obsn",
       "dep_type": "parent"
@@ -1940,6 +1945,11 @@
     {
       "from_id": "lb-l78i",
       "to_id": "lb-hwg3",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-ly6e",
+      "to_id": "lb-40uv",
       "dep_type": "parent"
     },
     {
@@ -2120,16 +2130,6 @@
     {
       "from_id": "lb-zptt",
       "to_id": "lb-obsn",
-      "dep_type": "parent"
-    },
-    {
-      "from_id": "lb-7nr4",
-      "to_id": "lb-40uv",
-      "dep_type": "parent"
-    },
-    {
-      "from_id": "lb-ly6e",
-      "to_id": "lb-40uv",
       "dep_type": "parent"
     }
   ]
