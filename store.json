@@ -707,8 +707,9 @@
       "item_type": "feature",
       "status": "open",
       "priority": 1,
+      "claimed_by": "agent-runner",
       "created_at": "2026-05-12T15:47:24.966878011Z",
-      "updated_at": "2026-05-12T15:47:24.966878011Z"
+      "updated_at": "2026-05-12T18:03:36.118886698Z"
     },
     "lb-dl1f": {
       "id": "lb-dl1f",
