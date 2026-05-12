@@ -36,11 +36,12 @@ That's it. No setup needed — mrmouth uses sensible defaults for everything.
 Run one agent session.
 
 ```bash
-mrmouth run [--claude|--codex] [--raw] [--model <model>] [--timeout <minutes>] [--local]
+mrmouth run [--claude|--codex] [--raw|--json-events] [--model <model>] [--timeout <minutes>] [--local]
 ```
 
 - `--claude` / `--codex` — override the configured agent for all AI roles
-- `--raw` — output raw JSONL instead of formatted stream
+- `--raw` — output the inner Claude/Codex stream JSONL instead of the formatted terminal stream
+- `--json-events` — output mrmouth lifecycle events as JSONL for supervisors; conflicts with `--raw`
 - `--model` — override the agent model (default: `opus`)
 - `--timeout` — kill container after N minutes
 - `--local` — bind-mount current directory instead of cloning
@@ -60,10 +61,12 @@ Each iteration starts with an AI **decider** that reads SPEC.md and litebrite st
 Work through a litebrite item — either an epic or a single task.
 
 ```bash
-mrmouth do <item-id> [--claude|--codex] [--timeout <minutes>] [--max-failures <n>] [--model <model>]
+mrmouth do <item-id> [--claude|--codex] [--timeout <minutes>] [--max-failures <n>] [--model <model>] [--json-events]
 ```
 
 Creates a feature branch and dispatches based on item type. For epics, loops through child tasks one at a time and runs a reviewer on the full diff at the end. For individual tasks, runs a single agent session focused on that task and then runs a reviewer. Aborts after N consecutive failures.
+
+- `--json-events` — output mrmouth lifecycle events as JSONL and disable the TUI
 
 ### `mrmouth ready`
 
@@ -137,6 +140,10 @@ The prompt given to the agent. The built-in default implements the relay pattern
 ## How It Works
 
 **Relay pattern:** Each run is a fresh agent session. The agent reads task state and the spec, picks a task, does it, commits, pushes, and exits. The next run picks up where the last one left off. Each agent gets a full context window.
+
+**Output streams:** Mr Mouth keeps its own orchestration events separate from the inner agent stream. Normal `run` and `do` sessions use the TUI when stderr is a terminal; the inner agent JSONL is still written to `logs/*.jsonl`, and formatted human output is written to `logs/*.log`. `mrmouth run --raw` means stdout is the raw inner Claude/Codex JSONL stream, so it is useful for debugging the agent CLI protocol rather than supervising Mr Mouth itself. `mrmouth run --json-events` and `mrmouth do --json-events` instead reserve stdout for Mr Mouth lifecycle JSONL, disable the TUI, and report lifecycle sink errors on stderr.
+
+**Lifecycle JSON:** Lifecycle JSON events describe Mr Mouth actions such as stage changes, task selection, branch/container/run lifecycle, syncs, failures, and completion. They are not passthrough Claude/Codex events. Supervising tools should read stdout line by line and use the final `lifecycle_summary` event as the stable terminal record. Its `summary` object includes fields such as `status`, `command`, `item_id`, `branch`, `log_path`, `jsonl_path`, `exit_code`, `failure`, and `next_action` when those values are available. Treat earlier event shapes as progress reporting and avoid scraping TUI text, human log text, or raw inner-agent JSON for orchestration state.
 
 **Container lifecycle:**
 1. Host builds Docker image (from `.mrmouth/Dockerfile` or built-in default)
