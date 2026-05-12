@@ -11,7 +11,8 @@ use crate::agent::AgentKind;
 use crate::config::Config;
 use crate::docker::{ContainerArgs, CopyFromContainerOutcome, DockerBuilder};
 use crate::events::{
-    ContainerAction, EventSinkHandle, FinishStatus, MrmouthEvent, RunAction, SyncAction, SyncTool,
+    ContainerAction, EventSinkHandle, FinishStatus, LifecycleSummary, MrmouthEvent, RunAction,
+    SyncAction, SyncTool,
 };
 use crate::litebrite;
 use crate::logger::Logger;
@@ -465,6 +466,20 @@ pub fn execute(
         // Flush so classify_exit reads everything the runner script wrote.
         logger.flush();
         let reason = classify_exit(exit_code, &log_path);
+        emit_event(
+            &opts.event_sink,
+            MrmouthEvent::LifecycleSummary {
+                summary: LifecycleSummary::failed(
+                    "run",
+                    format!("container exited with code {exit_code}: {reason}"),
+                )
+                .branch(branch.clone())
+                .log_path(log_path.display().to_string())
+                .jsonl_path(jsonl_path.display().to_string())
+                .exit_code(exit_code)
+                .next_action("inspect_log"),
+            },
+        );
         return Err(RunError::ContainerFailed {
             code: exit_code,
             reason,
@@ -477,12 +492,23 @@ pub fn execute(
         MrmouthEvent::RunLifecycle {
             action: RunAction::Finished,
             run_id: Some(log_filename),
-            branch: Some(branch),
+            branch: Some(branch.clone()),
         },
     );
     emit_event(
         &opts.event_sink,
         MrmouthEvent::finished(FinishStatus::Success, None::<String>),
+    );
+    emit_event(
+        &opts.event_sink,
+        MrmouthEvent::LifecycleSummary {
+            summary: LifecycleSummary::success("run")
+                .branch(branch)
+                .log_path(log_path.display().to_string())
+                .jsonl_path(jsonl_path.display().to_string())
+                .exit_code(exit_code)
+                .next_action("none"),
+        },
     );
 
     Ok(logger)
@@ -908,6 +934,20 @@ pub fn execute_in_session(
     if exit_code != 0 {
         logger.flush();
         let reason = classify_exit(exit_code, &log_path);
+        emit_event(
+            &opts.event_sink,
+            MrmouthEvent::LifecycleSummary {
+                summary: LifecycleSummary::failed(
+                    "run",
+                    format!("container exited with code {exit_code}: {reason}"),
+                )
+                .branch(branch.clone())
+                .log_path(log_path.display().to_string())
+                .jsonl_path(jsonl_path.display().to_string())
+                .exit_code(exit_code)
+                .next_action("inspect_log"),
+            },
+        );
         return Err(RunError::ContainerFailed {
             code: exit_code,
             reason,

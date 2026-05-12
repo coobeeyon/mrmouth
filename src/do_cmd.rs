@@ -3,7 +3,8 @@ use std::process::{Command, Stdio};
 
 use crate::config::Config;
 use crate::events::{
-    BranchAction, EventSinkHandle, FinishStatus, MrmouthEvent, SyncAction, SyncTool,
+    BranchAction, EventSinkHandle, FinishStatus, LifecycleSummary, MrmouthEvent, SyncAction,
+    SyncTool,
 };
 use crate::litebrite;
 use crate::prompt;
@@ -202,6 +203,15 @@ pub fn execute(config: &Config, repo_root: &Path, opts: DoOptions, tui: Option<&
     emit_event(
         &opts.event_sink,
         MrmouthEvent::finished(FinishStatus::Success, None::<String>),
+    );
+    emit_event(
+        &opts.event_sink,
+        MrmouthEvent::LifecycleSummary {
+            summary: LifecycleSummary::success("do")
+                .item_id(opts.item_id.clone())
+                .branch(feature_branch)
+                .next_action("merge_when_ready"),
+        },
     );
 
     Ok(())

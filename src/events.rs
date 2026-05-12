@@ -81,6 +81,8 @@ pub enum MrmouthEvent {
         code: Option<i32>,
         detail: Option<String>,
     },
+    /// Stable terminal event for machine consumers of lifecycle JSONL.
+    LifecycleSummary { summary: LifecycleSummary },
 }
 
 impl MrmouthEvent {
@@ -100,6 +102,7 @@ impl MrmouthEvent {
             Self::Sync { .. } => "sync",
             Self::Finished { .. } => "finished",
             Self::Failure { .. } => "failure",
+            Self::LifecycleSummary { .. } => "lifecycle_summary",
         }
     }
 
@@ -128,6 +131,113 @@ impl MrmouthEvent {
 
     pub fn to_json_line(&self) -> serde_json::Result<String> {
         serde_json::to_string(self)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LifecycleSummary {
+    pub status: FinishStatus,
+    pub command: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub item_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub branch: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub commit_range: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub log_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub jsonl_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exit_code: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub failure: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reviewer: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub shipper: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_action: Option<String>,
+}
+
+impl LifecycleSummary {
+    pub fn success(command: impl Into<String>) -> Self {
+        Self {
+            status: FinishStatus::Success,
+            command: command.into(),
+            item_id: None,
+            branch: None,
+            commit_range: None,
+            log_path: None,
+            jsonl_path: None,
+            exit_code: None,
+            failure: None,
+            reviewer: None,
+            shipper: None,
+            next_action: None,
+        }
+    }
+
+    pub fn failed(command: impl Into<String>, failure: impl Into<String>) -> Self {
+        Self {
+            status: FinishStatus::Failed,
+            command: command.into(),
+            item_id: None,
+            branch: None,
+            commit_range: None,
+            log_path: None,
+            jsonl_path: None,
+            exit_code: None,
+            failure: Some(failure.into()),
+            reviewer: None,
+            shipper: None,
+            next_action: None,
+        }
+    }
+
+    pub fn item_id(mut self, item_id: impl Into<String>) -> Self {
+        self.item_id = Some(item_id.into());
+        self
+    }
+
+    pub fn branch(mut self, branch: impl Into<String>) -> Self {
+        self.branch = Some(branch.into());
+        self
+    }
+
+    pub fn commit_range(mut self, commit_range: impl Into<String>) -> Self {
+        self.commit_range = Some(commit_range.into());
+        self
+    }
+
+    pub fn log_path(mut self, log_path: impl Into<String>) -> Self {
+        self.log_path = Some(log_path.into());
+        self
+    }
+
+    pub fn jsonl_path(mut self, jsonl_path: impl Into<String>) -> Self {
+        self.jsonl_path = Some(jsonl_path.into());
+        self
+    }
+
+    pub fn exit_code(mut self, exit_code: i32) -> Self {
+        self.exit_code = Some(exit_code);
+        self
+    }
+
+    pub fn reviewer(mut self, reviewer: impl Into<String>) -> Self {
+        self.reviewer = Some(reviewer.into());
+        self
+    }
+
+    pub fn shipper(mut self, shipper: impl Into<String>) -> Self {
+        self.shipper = Some(shipper.into());
+        self
+    }
+
+    pub fn next_action(mut self, next_action: impl Into<String>) -> Self {
+        self.next_action = Some(next_action.into());
+        self
     }
 }
 
@@ -428,6 +538,9 @@ mod tests {
             },
             MrmouthEvent::finished(FinishStatus::Success, Some("done")),
             MrmouthEvent::failure("boom", Some(2), Some("stderr")),
+            MrmouthEvent::LifecycleSummary {
+                summary: LifecycleSummary::success("run").next_action("none"),
+            },
         ];
 
         let names: Vec<_> = events.iter().map(MrmouthEvent::event_type).collect();
@@ -448,6 +561,7 @@ mod tests {
                 "sync",
                 "finished",
                 "failure",
+                "lifecycle_summary",
             ]
         );
 
@@ -493,6 +607,35 @@ mod tests {
                 "message": "cargo check failed",
                 "code": 101,
                 "detail": null,
+            })
+        );
+    }
+
+    #[test]
+    fn constructs_lifecycle_summary_payload() {
+        let event = MrmouthEvent::LifecycleSummary {
+            summary: LifecycleSummary::failed("run", "container exited")
+                .branch("lb-work")
+                .log_path("/repo/logs/run.log")
+                .jsonl_path("/repo/logs/run.jsonl")
+                .exit_code(42)
+                .next_action("inspect_log"),
+        };
+
+        assert_eq!(
+            event.to_json_value().unwrap(),
+            json!({
+                "type": "lifecycle_summary",
+                "summary": {
+                    "status": "failed",
+                    "command": "run",
+                    "branch": "lb-work",
+                    "log_path": "/repo/logs/run.log",
+                    "jsonl_path": "/repo/logs/run.jsonl",
+                    "exit_code": 42,
+                    "failure": "container exited",
+                    "next_action": "inspect_log",
+                }
             })
         );
     }

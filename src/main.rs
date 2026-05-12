@@ -197,6 +197,18 @@ fn main() {
     let lifecycle_events = use_json_events.then(|| {
         crate::events::EventSinkHandle::new(crate::events::JsonlEventSink::stdout())
     });
+    let lifecycle_command = match &cli.command {
+        Commands::Run { .. } => "run",
+        Commands::Do { .. } => "do",
+        Commands::Loop { .. } => "loop",
+        Commands::Ready { .. } => "ready",
+        Commands::Summary { .. } => "summary",
+        Commands::CodexLogin => "codex-login",
+    };
+    let lifecycle_item_id = match &cli.command {
+        Commands::Do { item_id, .. } => Some(item_id.clone()),
+        _ => None,
+    };
     let tui = if use_raw || use_json_events {
         None
     } else {
@@ -285,15 +297,31 @@ fn main() {
 
     if let Err(d) = result {
         if let Some(sink) = lifecycle_events {
-            sink.emit(crate::events::MrmouthEvent::failure(
-                d.message.clone(),
-                d.exit_code,
-                None::<String>,
-            ));
+            let mut summary =
+                crate::events::LifecycleSummary::failed(lifecycle_command, d.message.clone())
+                    .next_action("inspect_error");
+            if let Some(item_id) = lifecycle_item_id {
+                summary = summary.item_id(item_id);
+            }
+            if let Some(exit_code) = d.exit_code {
+                summary = summary.exit_code(exit_code);
+            }
+            if let Some(log_path) = &d.log_path {
+                summary = summary.log_path(log_path.display().to_string());
+                if let Some(jsonl_path) = inferred_jsonl_path(log_path) {
+                    summary = summary.jsonl_path(jsonl_path.display().to_string());
+                }
+            }
+            sink.emit(crate::events::MrmouthEvent::LifecycleSummary { summary });
         }
         d.print();
         std::process::exit(1);
     }
+}
+
+fn inferred_jsonl_path(log_path: &std::path::Path) -> Option<std::path::PathBuf> {
+    (log_path.extension().and_then(|ext| ext.to_str()) == Some("log"))
+        .then(|| log_path.with_extension("jsonl"))
 }
 
 fn resolve_model(config: &Config, override_model: Option<String>) -> String {
