@@ -2041,6 +2041,11 @@
       "from_id": "lb-mnql",
       "to_id": "lb-dbja",
       "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-kbgv",
+      "to_id": "lb-ttyh",
+      "dep_type": "blocks"
     }
   ]
 }
