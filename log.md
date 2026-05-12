@@ -17,3 +17,12 @@ Recorded the lifecycle rule for container-edited Dockerfiles: remote-backed runs
 
 ## [2026-05-12] implemented | Core mrmouth event surface
 Recorded the new `src/events.rs` API for lifecycle event emission: serde-tagged `MrmouthEvent` variants, cloneable `EventSinkHandle`, no-op/fanout sinks, and a recording sink for focused tests. This is the foundation for later TUI, human, and JSONL renderers.
+
+## [2026-05-12] reviewed | Event sink output-mode coupling
+Reviewed the completed `lb-40uv` branch. `cargo test` passed, but normal TUI mode now creates an event sink, so stream-rendering branches that use `opts.event_sink.is_some()` incorrectly suppress formatted agent output in the TUI. Future fixes should carry an explicit lifecycle JSON/output-mode flag instead of inferring it from event-sink presence.
+
+## [2026-05-12] fixed | TUI stream routing with lifecycle event sinks
+Recorded the fix for the `lb-40uv` output-mode regression: `RunOptions` now carries explicit `json_events` state, and run stream routing uses that state instead of treating any event sink as machine JSON mode. Plain TUI mode keeps formatted agent output while lifecycle events still drive TUI status.
+
+## [2026-05-12] fixed | Agent-aware credential preflight
+Recorded the credential preflight rule: Claude mode requires `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN`, while Codex mode must not be gated by Claude credentials because Codex may authenticate via env vars or persisted Docker-volume device auth.

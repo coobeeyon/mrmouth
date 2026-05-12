@@ -36,3 +36,16 @@ do-nothing target, `FanoutEventSink` forwards one event to multiple sinks, and
 have not been migrated yet; later tasks should route existing `Logger`,
 `TuiHandle`, reviewer, shipper, and command lifecycle output through this
 surface.
+
+## Review Notes
+
+The `lb-40uv` branch routes the TUI through the same `EventSinkHandle` used for
+lifecycle JSON, so `RunOptions.event_sink.is_some()` no longer means "machine
+JSON mode". Stream rendering decisions must distinguish JSON lifecycle output
+from a normal TUI event sink. Otherwise normal TUI runs skip formatted agent
+stream display and only write the inner stream to log files.
+
+The follow-up fix adds an explicit `RunOptions::json_events` flag and propagates
+the CLI mode through `do`, `ready`, and `loop`. Stream routing now formats the
+inner agent stream whenever `raw == false` and `json_events == false`, even when
+a TUI lifecycle sink is present.

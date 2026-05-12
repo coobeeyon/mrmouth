@@ -1,10 +1,12 @@
 # Index
 <!-- Concept lookup. Flat, one entry per line, sorted alphabetically. No section headers. -->
 
+agent credential preflight — [Agent Credential Preflight](pages/agent-credential-preflight.md)
 agent task protocol — [Litebrite Agent Contract](pages/litebrite-agent-contract.md)
 brite authoring — [Litebrite Agent Contract](pages/litebrite-agent-contract.md)
 brite hierarchy — [Litebrite Agent Contract](pages/litebrite-agent-contract.md)
 claim semantics — [Litebrite Agent Contract](pages/litebrite-agent-contract.md)
+Codex auth volume — [Agent Credential Preflight](pages/agent-credential-preflight.md)
 container Dockerfile extraction — [Dockerfile Extraction Lifecycle](pages/dockerfile-extraction-lifecycle.md)
 Dockerfile self-modification — [Dockerfile Extraction Lifecycle](pages/dockerfile-extraction-lifecycle.md)
 event rendering architecture — [Event Rendering Architecture](pages/event-rendering-architecture.md)
@@ -16,6 +18,7 @@ lb ready — [Litebrite Agent Contract](pages/litebrite-agent-contract.md)
 litebrite — [Litebrite Agent Contract](pages/litebrite-agent-contract.md)
 mrmouth task delegation — [Litebrite Agent Contract](pages/litebrite-agent-contract.md)
 MrmouthEvent — [Event Rendering Architecture](pages/event-rendering-architecture.md)
+output mode coupling — [Event Rendering Architecture](pages/event-rendering-architecture.md)
 post-run pull ordering — [Dockerfile Extraction Lifecycle](pages/dockerfile-extraction-lifecycle.md)
 parent child decomposition — [Litebrite Agent Contract](pages/litebrite-agent-contract.md)
 sibling dependencies — [Litebrite Agent Contract](pages/litebrite-agent-contract.md)
