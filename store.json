@@ -25,11 +25,10 @@
       "title": "Drive TUI from mrmouth events",
       "description": "Goal: Make src/tui.rs consume mrmouth events as a renderer rather than exposing orchestration-specific methods as the primary integration surface. Context: TuiHandle currently exposes sender, set_stage, set_run, cancellation flag, and pane-specific TuiSender values. Requirements: add a TUI event sink or adapter that maps Message events to panes and stage/run events to the header; preserve q and Ctrl+C cancellation behavior; keep the render loop focused on presentation. Acceptance: existing TUI behavior still works in an interactive terminal and cargo test passes. Out of scope: adding JSON output.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 1,
-      "claimed_by": "agent-runner",
       "created_at": "2026-05-12T15:48:06.132722886Z",
-      "updated_at": "2026-05-12T17:36:07.157943220Z"
+      "updated_at": "2026-05-12T17:39:55.684086233Z"
     },
     "lb-1brq": {
       "id": "lb-1brq",
