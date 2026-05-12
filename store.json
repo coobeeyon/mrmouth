@@ -1075,11 +1075,10 @@
       "title": "Restore formatted TUI agent stream with event sink",
       "description": "Goal: Fix normal TUI mrmouth runs so agent stream output is formatted and visible while lifecycle events still drive TUI status.\nContext: Live smoke test lb-7nr4 used a disposable fake-agent repo and current target/debug/mrmouth. Plain mode under a pseudo-TTY entered the TUI alt screen, but logs/run-20260512-144219.log contained raw Claude stream JSON for the agent output instead of formatted [init]/[text]/[done] output. The likely cause is src/run.rs treating opts.event_sink.is_some() as JSON lifecycle mode at the stream branches around one-shot run and session run; normal TUI mode now also has an event sink from main.rs lifecycle_event_sink(false, tui.as_ref()).\nRequirements: Separate machine lifecycle JSON mode from the presence of an event sink. Normal TUI mode should keep formatting inner agent stream output to the TUI/log while still emitting lifecycle events for status/header. --json-events should continue to write lifecycle JSONL to stdout and avoid formatted stream display. Update run.rs/main.rs or option structs as needed without re-coupling core logic directly to TuiHandle.\nAcceptance: A focused regression test covers event_sink-present/non-json mode and proves formatted stream output is still used. Live smoke equivalent of plain mrmouth run under a pseudo-TTY shows formatted agent output in the run log, while --json-events still emits lifecycle_summary on stdout. cargo fmt --check, cargo clippy --all-targets -- -D warnings, and cargo test pass.\nOut of scope: Redesigning the full event vocabulary or changing raw mode semantics.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 1,
-      "claimed_by": "Michael Daum",
       "created_at": "2026-05-12T18:43:35.497581578Z",
-      "updated_at": "2026-05-12T19:06:19.185821153Z"
+      "updated_at": "2026-05-12T19:12:25.232200050Z"
     },
     "lb-m12l": {
       "id": "lb-m12l",
