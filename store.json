@@ -1355,11 +1355,10 @@
       "title": "Add event sink tests and serialization helpers",
       "description": "Goal: Make the new event surface testable and ready for JSON output without committing to the final CLI flag yet. Context: the structured output mode will need deterministic event names and payloads. Requirements: derive or implement serde serialization for lifecycle events where appropriate; add tests for event name stability, fanout behavior, and summary/failure payload construction. Acceptance: cargo test passes and future JSON renderer work can write events without inventing another schema. Out of scope: changing runtime behavior in run/do/ready/loop.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 1,
-      "claimed_by": "agent-runner",
       "created_at": "2026-05-12T15:47:47.200108779Z",
-      "updated_at": "2026-05-12T16:44:19.984909605Z"
+      "updated_at": "2026-05-12T16:49:43.400674478Z"
     },
     "lb-tvkb": {
       "id": "lb-tvkb",
