@@ -2081,6 +2081,11 @@
       "from_id": "lb-174a",
       "to_id": "lb-xs49",
       "dep_type": "blocks"
+    },
+    {
+      "from_id": "lb-xs49",
+      "to_id": "lb-usb5",
+      "dep_type": "blocks"
     }
   ]
 }
