@@ -2071,6 +2071,11 @@
       "from_id": "lb-kbgv",
       "to_id": "lb-174a",
       "dep_type": "blocks"
+    },
+    {
+      "from_id": "lb-y8mm",
+      "to_id": "lb-174a",
+      "dep_type": "blocks"
     }
   ]
 }
