@@ -940,6 +940,16 @@
       "created_at": "2026-03-12T22:35:37.318369415Z",
       "updated_at": "2026-03-25T18:48:47.162041484Z"
     },
+    "lb-kbgv": {
+      "id": "lb-kbgv",
+      "title": "Define mrmouth event model and sink abstraction",
+      "description": "Goal: Add the internal event vocabulary and sink interface that separates orchestration from presentation. Context: current status messages are direct logger.log, eprintln, and TuiHandle calls across src/main.rs, src/run.rs, src/do_cmd.rs, src/ready.rs, src/loop_cmd.rs, src/reviewer.rs, and src/shipper.rs. Requirements: add a focused module such as src/events.rs with event structs or enums for message lines, stage changes, run/task labels, task selection, branch/container/run lifecycle, reviewer/shipper lifecycle, sync, finish, and failure; include an EventSink trait or cloneable sink type; include a no-op sink and fanout sink if useful. Acceptance: cargo test passes and event types are documented enough for later renderer tasks. Out of scope: migrating every caller or adding CLI JSON flags.",
+      "item_type": "task",
+      "status": "open",
+      "priority": 1,
+      "created_at": "2026-05-12T15:47:37.811625052Z",
+      "updated_at": "2026-05-12T15:47:37.811625052Z"
+    },
     "lb-kl4s": {
       "id": "lb-kl4s",
       "title": "Add individual task support to do command",
@@ -1890,6 +1900,11 @@
     {
       "from_id": "lb-dbja",
       "to_id": "lb-40uv",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-kbgv",
+      "to_id": "lb-jiq0",
       "dep_type": "parent"
     }
   ]
