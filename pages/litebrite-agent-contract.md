@@ -68,6 +68,17 @@ Dependencies have two forms:
 - `parent`: child item points to parent item
 - `blocks`: blocker item points to blocked item
 
+Parent/child is the fundamental decomposition relationship. A parent does not
+depend on its children in the `blocks` sense; instead, the parent is complete
+when all of its children are complete, and `lb close` enforces that by rejecting
+parents with open children. Use nested parents to represent a work breakdown:
+epic -> feature -> task, or any hierarchy that fits the project.
+
+Use `blocks` only for ordering constraints between items, especially sibling
+items. If sibling B cannot start until sibling A lands, model that explicitly
+with `lb dep add <A> --blocks <B>`. Do not encode sibling sequencing by making
+one sibling the parent of another.
+
 Blocked is derived from open blockers; it is not a separate status. Claimed is a
 separate field and claimed items are excluded from `lb ready`.
 
@@ -86,7 +97,9 @@ A mrmouth operator skill should not need deep litebrite knowledge beyond
 selection and ownership, then delegate bounded work to mrmouth. The safest
 default is:
 
-- use `lb ready`/`lb show` to pick one item
+- prepare nested parent/child brites as the primary work structure
+- use `blocks` dependencies only for explicit ordering between siblings
+- use `lb ready`/`lb show` to pick one executable leaf or bounded item
 - use `mrmouth do <id>` for bounded delegation
 - reserve mrmouth queue-draining commands for explicit user requests
 - after a mrmouth run, verify commits, task closure, and `lb sync`
