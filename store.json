@@ -1607,8 +1607,9 @@
       "item_type": "task",
       "status": "open",
       "priority": 1,
+      "claimed_by": "agent-runner",
       "created_at": "2026-05-12T15:48:25.078001183Z",
-      "updated_at": "2026-05-12T15:48:25.078001183Z"
+      "updated_at": "2026-05-12T17:41:06.771549984Z"
     },
     "lb-ys68": {
       "id": "lb-ys68",
