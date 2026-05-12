@@ -1425,11 +1425,10 @@
       "title": "Add tests for lifecycle JSON mode",
       "description": "Goal: Add regression coverage for structured lifecycle output mode without depending on Docker or external agent CLIs where possible. Context: tests should focus on event rendering, CLI flag interactions, and final summary construction rather than running real containers. Requirements: cover JSONL renderer writes valid one-object-per-line output, TUI is not started when JSON lifecycle mode is active, raw inner-agent output remains separate from lifecycle JSON, and final summary events are present in success/failure paths that can be unit-tested. Acceptance: cargo test passes. Out of scope: full end-to-end Docker integration tests.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 1,
-      "claimed_by": "agent-runner",
       "created_at": "2026-05-12T15:49:00.128131952Z",
-      "updated_at": "2026-05-12T17:09:06.955031935Z"
+      "updated_at": "2026-05-12T17:14:29.814884372Z"
     },
     "lb-v1qa": {
       "id": "lb-v1qa",
