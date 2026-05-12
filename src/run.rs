@@ -32,6 +32,7 @@ impl Drop for DoneGuard {
 
 pub struct RunOptions {
     pub raw: bool,
+    pub json_events: bool,
     pub model: String,
     pub timeout: Option<u32>,
     pub local: bool,
@@ -50,6 +51,23 @@ pub struct Session {
     pub scripts_dir: tempfile::TempDir,
     pub local: bool,
     pub file_remote_path: Option<PathBuf>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum StreamDisplayMode {
+    Raw,
+    LifecycleJson,
+    Formatted,
+}
+
+fn stream_display_mode(opts: &RunOptions) -> StreamDisplayMode {
+    if opts.raw {
+        StreamDisplayMode::Raw
+    } else if opts.json_events {
+        StreamDisplayMode::LifecycleJson
+    } else {
+        StreamDisplayMode::Formatted
+    }
 }
 
 struct RunReporter<'a> {
@@ -376,42 +394,46 @@ pub fn execute(
     let mut jsonl_writer = BufWriter::new(jsonl_file);
     let is_tty = logger.display_supports_color() || std::io::stdout().is_terminal();
 
-    if opts.raw {
-        let stdout = std::io::stdout();
-        handle
-            .stream_output(|line| {
-                if should_suppress_stream_line(config.agent, line) {
-                    return;
-                }
-                let _ = writeln!(stdout.lock(), "{line}");
-                let _ = writeln!(jsonl_writer, "{line}");
-                logger.log_file_only(line);
-            })
-            .map_err(RunError::Docker)?;
-    } else if opts.event_sink.is_some() {
-        handle
-            .stream_output(|line| {
-                if should_suppress_stream_line(config.agent, line) {
-                    return;
-                }
-                let _ = writeln!(jsonl_writer, "{line}");
-                logger.log_file_only(line);
-            })
-            .map_err(RunError::Docker)?;
-    } else {
-        let mut formatter = StreamFormatter::new(is_tty);
-        handle
-            .stream_output(|line| {
-                if should_suppress_stream_line(config.agent, line) {
-                    return;
-                }
-                let _ = writeln!(jsonl_writer, "{line}");
-                if let Some(formatted) = stream_fmt::format_line(&mut formatter, line) {
-                    logger.display(&formatted);
-                    logger.log_file_only(&formatted);
-                }
-            })
-            .map_err(RunError::Docker)?;
+    match stream_display_mode(&opts) {
+        StreamDisplayMode::Raw => {
+            let stdout = std::io::stdout();
+            handle
+                .stream_output(|line| {
+                    if should_suppress_stream_line(config.agent, line) {
+                        return;
+                    }
+                    let _ = writeln!(stdout.lock(), "{line}");
+                    let _ = writeln!(jsonl_writer, "{line}");
+                    logger.log_file_only(line);
+                })
+                .map_err(RunError::Docker)?;
+        }
+        StreamDisplayMode::LifecycleJson => {
+            handle
+                .stream_output(|line| {
+                    if should_suppress_stream_line(config.agent, line) {
+                        return;
+                    }
+                    let _ = writeln!(jsonl_writer, "{line}");
+                    logger.log_file_only(line);
+                })
+                .map_err(RunError::Docker)?;
+        }
+        StreamDisplayMode::Formatted => {
+            let mut formatter = StreamFormatter::new(is_tty);
+            handle
+                .stream_output(|line| {
+                    if should_suppress_stream_line(config.agent, line) {
+                        return;
+                    }
+                    let _ = writeln!(jsonl_writer, "{line}");
+                    if let Some(formatted) = stream_fmt::format_line(&mut formatter, line) {
+                        logger.display(&formatted);
+                        logger.log_file_only(&formatted);
+                    }
+                })
+                .map_err(RunError::Docker)?;
+        }
     }
 
     let _ = jsonl_writer.flush();
@@ -831,42 +853,46 @@ pub fn execute_in_session(
         None
     };
 
-    if opts.raw {
-        let stdout = std::io::stdout();
-        handle
-            .stream_output(|line| {
-                if should_suppress_stream_line(config.agent, line) {
-                    return;
-                }
-                let _ = writeln!(stdout.lock(), "{line}");
-                let _ = writeln!(jsonl_writer, "{line}");
-                logger.log_file_only(line);
-            })
-            .map_err(RunError::Docker)?;
-    } else if opts.event_sink.is_some() {
-        handle
-            .stream_output(|line| {
-                if should_suppress_stream_line(config.agent, line) {
-                    return;
-                }
-                let _ = writeln!(jsonl_writer, "{line}");
-                logger.log_file_only(line);
-            })
-            .map_err(RunError::Docker)?;
-    } else {
-        let mut formatter = StreamFormatter::new(is_tty);
-        handle
-            .stream_output(|line| {
-                if should_suppress_stream_line(config.agent, line) {
-                    return;
-                }
-                let _ = writeln!(jsonl_writer, "{line}");
-                if let Some(formatted) = stream_fmt::format_line(&mut formatter, line) {
-                    logger.display(&formatted);
-                    logger.log_file_only(&formatted);
-                }
-            })
-            .map_err(RunError::Docker)?;
+    match stream_display_mode(&opts) {
+        StreamDisplayMode::Raw => {
+            let stdout = std::io::stdout();
+            handle
+                .stream_output(|line| {
+                    if should_suppress_stream_line(config.agent, line) {
+                        return;
+                    }
+                    let _ = writeln!(stdout.lock(), "{line}");
+                    let _ = writeln!(jsonl_writer, "{line}");
+                    logger.log_file_only(line);
+                })
+                .map_err(RunError::Docker)?;
+        }
+        StreamDisplayMode::LifecycleJson => {
+            handle
+                .stream_output(|line| {
+                    if should_suppress_stream_line(config.agent, line) {
+                        return;
+                    }
+                    let _ = writeln!(jsonl_writer, "{line}");
+                    logger.log_file_only(line);
+                })
+                .map_err(RunError::Docker)?;
+        }
+        StreamDisplayMode::Formatted => {
+            let mut formatter = StreamFormatter::new(is_tty);
+            handle
+                .stream_output(|line| {
+                    if should_suppress_stream_line(config.agent, line) {
+                        return;
+                    }
+                    let _ = writeln!(jsonl_writer, "{line}");
+                    if let Some(formatted) = stream_fmt::format_line(&mut formatter, line) {
+                        logger.display(&formatted);
+                        logger.log_file_only(&formatted);
+                    }
+                })
+                .map_err(RunError::Docker)?;
+        }
     }
     let _ = jsonl_writer.flush();
 
@@ -1983,6 +2009,39 @@ mod tests {
             std::fs::read_to_string(log_path).unwrap(),
             "Checking preflight conditions...\n"
         );
+    }
+
+    #[test]
+    fn event_sink_without_json_events_keeps_formatted_stream_mode() {
+        let sink = crate::events::RecordingEventSink::default();
+        let opts = RunOptions {
+            raw: false,
+            json_events: false,
+            model: "sonnet".to_string(),
+            timeout: None,
+            local: false,
+            prompt_override: None,
+            branch: None,
+            event_sink: Some(EventSinkHandle::new(sink)),
+        };
+
+        assert_eq!(stream_display_mode(&opts), StreamDisplayMode::Formatted);
+    }
+
+    #[test]
+    fn json_events_mode_suppresses_formatted_stream_display() {
+        let opts = RunOptions {
+            raw: false,
+            json_events: true,
+            model: "sonnet".to_string(),
+            timeout: None,
+            local: false,
+            prompt_override: None,
+            branch: None,
+            event_sink: None,
+        };
+
+        assert_eq!(stream_display_mode(&opts), StreamDisplayMode::LifecycleJson);
     }
 
     #[test]

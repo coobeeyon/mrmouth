@@ -211,13 +211,14 @@ fn main() {
     let result: Result<(), FailureDebrief> = match cli.command {
         Commands::Run {
             raw,
-            json_events: _,
+            json_events,
             model,
             timeout,
             local,
         } => {
             let opts = run::RunOptions {
                 raw,
+                json_events,
                 model: resolve_model(&config, model),
                 timeout,
                 local,
@@ -234,7 +235,7 @@ fn main() {
             max_runs,
             no_summary,
             model,
-            json_events: _,
+            json_events,
         } => {
             let opts = loop_cmd::LoopOptions {
                 delay: if delay > 0 {
@@ -245,6 +246,7 @@ fn main() {
                 max_runs: max_runs.unwrap_or(config.loop_config.max_runs),
                 no_summary,
                 model: resolve_model(&config, model),
+                json_events,
                 event_sink: lifecycle_events.clone(),
             };
             loop_cmd::execute(&config, &repo_root, opts, tui.as_ref()).map_err(|e| e.debrief())
@@ -254,13 +256,14 @@ fn main() {
             timeout,
             max_failures,
             model,
-            json_events: _,
+            json_events,
         } => {
             let opts = do_cmd::DoOptions {
                 item_id,
                 timeout: timeout.unwrap_or(config.do_config.timeout),
                 max_failures: max_failures.unwrap_or(config.do_config.max_failures),
                 model: resolve_model(&config, model),
+                json_events,
                 event_sink: lifecycle_events.clone(),
             };
             do_cmd::execute(&config, &repo_root, opts, tui.as_ref()).map_err(|e| e.debrief())
@@ -269,12 +272,13 @@ fn main() {
             timeout,
             max_failures,
             model,
-            json_events: _,
+            json_events,
         } => {
             let opts = ready::ReadyOptions {
                 timeout: timeout.unwrap_or(config.do_config.timeout),
                 max_failures: max_failures.unwrap_or(config.do_config.max_failures),
                 model: resolve_model(&config, model),
+                json_events,
                 event_sink: lifecycle_events.clone(),
             };
             ready::execute(&config, &repo_root, opts, tui.as_ref()).map_err(|e| e.debrief())

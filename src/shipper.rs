@@ -44,16 +44,7 @@ pub fn execute(
     let _ = std::fs::create_dir_all(&log_dir);
 
     // 1. Check readiness
-    check_ready(
-        config,
-        repo_root,
-        &opts.current_branch,
-        &opts.parent_branch,
-        &opts.model,
-        logger,
-        &log_dir,
-        &opts.event_sink,
-    )?;
+    check_ready(config, repo_root, opts, logger, &log_dir)?;
 
     // 2. Merge current branch into parent
     emit_event(
@@ -86,13 +77,13 @@ pub fn execute(
 fn check_ready(
     config: &Config,
     repo_root: &Path,
-    current_branch: &str,
-    parent_branch: &str,
-    model: &str,
+    opts: &ShipperOptions,
     logger: Option<&Logger>,
     log_dir: &Path,
-    event_sink: &Option<EventSinkHandle>,
 ) -> Result<(), ShipperError> {
+    let current_branch = &opts.current_branch;
+    let parent_branch = &opts.parent_branch;
+    let event_sink = &opts.event_sink;
     let schema = r#"{"type":"object","properties":{"status":{"type":"string","enum":["READY","BLOCKED"]},"reason":{"type":"string"}},"required":["status","reason"]}"#;
 
     let preamble = crate::prompt::SYSTEM_PREAMBLE;
@@ -100,13 +91,14 @@ fn check_ready(
         "## System\n\n{preamble}\n\n\
         You are the **Shipper** (readiness check). Your only job is to verify the branch is ready to merge.\n\n\
         ## Instructions\n\n\
-        Check if branch '{current_branch}' is ready to ship. \
+        Check if branch '{}' is ready to ship. \
         Check: (1) run 'lb list -s open' to confirm no open blocking tasks exist, \
         (2) discover the project's build and test commands by examining the project \
         structure (Makefile, package.json, Cargo.toml, etc.) and run them to verify \
         everything compiles and all tests pass. \
         Return READY only if both checks pass. Return BLOCKED if any tasks are open \
-        or any build/test fails, with a clear reason."
+        or any build/test fails, with a clear reason.",
+        opts.current_branch
     );
 
     let escaped_prompt = prompt.replace('\'', "'\\''");
@@ -115,7 +107,7 @@ fn check_ready(
     let agent_name = agent.as_str();
     let agent_bin = agent.binary();
     let agent_restore_block = agent.restore_block();
-    let agent_command = agent.shell_command(model, &escaped_prompt, Some(&escaped_schema));
+    let agent_command = agent.shell_command(&opts.model, &escaped_prompt, Some(&escaped_schema));
 
     let script = format!(
         r#"#!/usr/bin/env bash

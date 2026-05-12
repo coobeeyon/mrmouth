@@ -28,13 +28,31 @@ fn run_lb(repo_root: &Path, args: &[&str], logger: Option<&Logger>) {
                 return;
             }
             if !stderr.is_empty() {
-                crate::logger::log(logger, &format!("[litebrite] `lb {}` failed (exit {}): {}", args.join(" "), output.status, stderr));
+                crate::logger::log(
+                    logger,
+                    &format!(
+                        "[litebrite] `lb {}` failed (exit {}): {}",
+                        args.join(" "),
+                        output.status,
+                        stderr
+                    ),
+                );
             } else {
-                crate::logger::log(logger, &format!("[litebrite] `lb {}` failed (exit {})", args.join(" "), output.status));
+                crate::logger::log(
+                    logger,
+                    &format!(
+                        "[litebrite] `lb {}` failed (exit {})",
+                        args.join(" "),
+                        output.status
+                    ),
+                );
             }
         }
         Err(e) => {
-            crate::logger::log(logger, &format!("[litebrite] failed to run `lb {}`: {}", args.join(" "), e));
+            crate::logger::log(
+                logger,
+                &format!("[litebrite] failed to run `lb {}`: {}", args.join(" "), e),
+            );
         }
         _ => {}
     }
@@ -51,7 +69,13 @@ fn is_benign_lb_error(args: &[&str], stderr: &str) -> bool {
 /// Check whether the repo has a git remote named "origin".
 fn has_git_remote(repo_root: &Path) -> bool {
     Command::new("git")
-        .args(["-C", &repo_root.to_string_lossy(), "remote", "get-url", "origin"])
+        .args([
+            "-C",
+            &repo_root.to_string_lossy(),
+            "remote",
+            "get-url",
+            "origin",
+        ])
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .status()
@@ -115,8 +139,14 @@ mod tests {
 
     #[test]
     fn benign_lb_init_already_initialized() {
-        assert!(is_benign_lb_error(&["init"], "litebrite already initialized"));
-        assert!(is_benign_lb_error(&["init"], "Error: already initialized in this repo"));
+        assert!(is_benign_lb_error(
+            &["init"],
+            "litebrite already initialized"
+        ));
+        assert!(is_benign_lb_error(
+            &["init"],
+            "Error: already initialized in this repo"
+        ));
     }
 
     #[test]
@@ -128,7 +158,10 @@ mod tests {
     #[test]
     fn benign_only_applies_to_init() {
         assert!(!is_benign_lb_error(&["sync"], "already initialized"));
-        assert!(!is_benign_lb_error(&["setup", "claude"], "already initialized"));
+        assert!(!is_benign_lb_error(
+            &["setup", "claude"],
+            "already initialized"
+        ));
     }
 
     #[test]

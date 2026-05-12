@@ -55,7 +55,10 @@ pub fn load_prompt(repo_root: &std::path::Path, logger: Option<&crate::logger::L
         match std::fs::read_to_string(&custom_path) {
             Ok(content) => return content,
             Err(e) => {
-                crate::logger::log(logger, &format!("warning: failed to read {}: {e}", custom_path.display()));
+                crate::logger::log(
+                    logger,
+                    &format!("warning: failed to read {}: {e}", custom_path.display()),
+                );
             }
         }
     }

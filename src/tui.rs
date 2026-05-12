@@ -346,17 +346,14 @@ fn cleanup_terminal(terminal: &mut Terminal<CrosstermBackend<io::Stderr>>) -> io
     Ok(())
 }
 
-fn draw(
-    terminal: &mut Terminal<CrosstermBackend<io::Stderr>>,
-    state: &TuiState,
-) -> io::Result<()> {
+fn draw(terminal: &mut Terminal<CrosstermBackend<io::Stderr>>, state: &TuiState) -> io::Result<()> {
     terminal.draw(|frame| {
         let has_multiple = state.panes.len() > 1;
         let footer_height = if has_multiple { 1 } else { 0 };
 
         let chunks = Layout::vertical([
-            Constraint::Length(1),            // header
-            Constraint::Min(1),               // body
+            Constraint::Length(1),             // header
+            Constraint::Min(1),                // body
             Constraint::Length(footer_height), // footer (only if >1 pane)
         ])
         .split(frame.area());
@@ -387,9 +384,7 @@ fn draw(
         let end = total.saturating_sub(scroll_offset);
         let start = end.saturating_sub(body_height);
 
-        let visible: Vec<Line<'_>> = text_lines.get(start..end)
-            .unwrap_or_default()
-            .to_vec();
+        let visible: Vec<Line<'_>> = text_lines.get(start..end).unwrap_or_default().to_vec();
 
         let body = Paragraph::new(visible)
             .block(Block::default().borders(Borders::NONE))
@@ -410,10 +405,7 @@ fn draw(
                     }
                 })
                 .collect();
-            let footer_text = format!(
-                " {}  Tab=next  q=quit",
-                pane_labels.join("  ")
-            );
+            let footer_text = format!(" {}  Tab=next  q=quit", pane_labels.join("  "));
             let footer = Paragraph::new(Line::from(footer_text))
                 .style(Style::default().fg(Color::Black).bg(Color::DarkGray));
             frame.render_widget(footer, chunks[2]);

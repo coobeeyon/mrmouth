@@ -79,25 +79,53 @@ impl Formatter {
     }
 
     fn dim(&self) -> &str {
-        if self.is_tty { DIM } else { "" }
+        if self.is_tty {
+            DIM
+        } else {
+            ""
+        }
     }
     fn bold(&self) -> &str {
-        if self.is_tty { BOLD } else { "" }
+        if self.is_tty {
+            BOLD
+        } else {
+            ""
+        }
     }
     fn cyan(&self) -> &str {
-        if self.is_tty { CYAN } else { "" }
+        if self.is_tty {
+            CYAN
+        } else {
+            ""
+        }
     }
     fn yellow(&self) -> &str {
-        if self.is_tty { YELLOW } else { "" }
+        if self.is_tty {
+            YELLOW
+        } else {
+            ""
+        }
     }
     fn green(&self) -> &str {
-        if self.is_tty { GREEN } else { "" }
+        if self.is_tty {
+            GREEN
+        } else {
+            ""
+        }
     }
     fn red(&self) -> &str {
-        if self.is_tty { RED } else { "" }
+        if self.is_tty {
+            RED
+        } else {
+            ""
+        }
     }
     fn reset(&self) -> &str {
-        if self.is_tty { RESET } else { "" }
+        if self.is_tty {
+            RESET
+        } else {
+            ""
+        }
     }
 
     fn format_event(&mut self, line: &str) -> Option<String> {
@@ -138,7 +166,10 @@ impl Formatter {
     fn format_system(&self, event: &Value) -> Option<String> {
         let subtype = event.get("subtype")?.as_str()?;
         if subtype == "init" {
-            let model = event.get("model").and_then(|v| v.as_str()).unwrap_or("unknown");
+            let model = event
+                .get("model")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown");
             Some(format!(
                 "{}{}[init]{}\n  model={model}",
                 self.bold(),
@@ -174,35 +205,24 @@ impl Formatter {
                     let formatted = match name {
                         "Bash" => {
                             let cmd = input.get("command").and_then(|v| v.as_str()).unwrap_or("");
-                            format!(
-                                "{}[{name}]{}\n{}",
-                                self.yellow(),
-                                self.reset(),
-                                indent(cmd)
-                            )
+                            format!("{}[{name}]{}\n{}", self.yellow(), self.reset(), indent(cmd))
                         }
                         "Read" | "Edit" | "Write" => {
-                            let path =
-                                input.get("file_path").and_then(|v| v.as_str()).unwrap_or("");
+                            let path = input
+                                .get("file_path")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("");
                             format!("{}[{name}]{} {path}", self.yellow(), self.reset())
                         }
                         "Grep" => {
                             let pattern =
                                 input.get("pattern").and_then(|v| v.as_str()).unwrap_or("");
-                            format!(
-                                "{}[{name}]{}\n  /{pattern}/",
-                                self.yellow(),
-                                self.reset()
-                            )
+                            format!("{}[{name}]{}\n  /{pattern}/", self.yellow(), self.reset())
                         }
                         "Glob" => {
                             let pattern =
                                 input.get("pattern").and_then(|v| v.as_str()).unwrap_or("");
-                            format!(
-                                "{}[{name}]{}\n  {pattern}",
-                                self.yellow(),
-                                self.reset()
-                            )
+                            format!("{}[{name}]{}\n  {pattern}", self.yellow(), self.reset())
                         }
                         "Agent" => {
                             let desc = input
@@ -220,12 +240,7 @@ impl Formatter {
                             )
                         }
                         _ => {
-                            format!(
-                                "{}[{name}]{}\n  {}",
-                                self.yellow(),
-                                self.reset(),
-                                input
-                            )
+                            format!("{}[{name}]{}\n  {}", self.yellow(), self.reset(), input)
                         }
                     };
                     parts.push(formatted);
@@ -294,7 +309,10 @@ impl Formatter {
             };
 
             let collapsed = collapse_code_blocks(&result_text);
-            let is_error = block.get("is_error").and_then(|v| v.as_bool()).unwrap_or(false);
+            let is_error = block
+                .get("is_error")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
 
             if is_error {
                 return Some(format!(
@@ -323,12 +341,8 @@ impl Formatter {
             .get("result")
             .and_then(|v| v.as_str())
             .unwrap_or("(no summary)");
-        let cost = event
-            .get("total_cost_usd")
-            .and_then(|v| v.as_f64());
-        let turns = event
-            .get("num_turns")
-            .and_then(|v| v.as_u64());
+        let cost = event.get("total_cost_usd").and_then(|v| v.as_f64());
+        let turns = event.get("num_turns").and_then(|v| v.as_u64());
 
         let cost_str = cost
             .map(|c| format!("${c:.4}"))
@@ -534,7 +548,8 @@ mod tests {
 
     #[test]
     fn test_assistant_text() {
-        let line = r#"{"type":"assistant","message":{"content":[{"type":"text","text":"hello world"}]}}"#;
+        let line =
+            r#"{"type":"assistant","message":{"content":[{"type":"text","text":"hello world"}]}}"#;
         let out = fmt(line).unwrap();
         assert!(out.contains("[text]"));
         assert!(out.contains("hello world"));

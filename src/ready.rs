@@ -25,6 +25,7 @@ pub struct ReadyOptions {
     pub timeout: u32,
     pub max_failures: u32,
     pub model: String,
+    pub json_events: bool,
     pub event_sink: Option<EventSinkHandle>,
 }
 
@@ -233,6 +234,7 @@ pub fn execute(
 
         let run_opts = RunOptions {
             raw: false,
+            json_events: opts.json_events,
             model: opts.model.clone(),
             timeout: Some(opts.timeout),
             local: false,

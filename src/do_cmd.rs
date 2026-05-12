@@ -72,10 +72,16 @@ pub struct DoOptions {
     pub timeout: u32,
     pub max_failures: u32,
     pub model: String,
+    pub json_events: bool,
     pub event_sink: Option<EventSinkHandle>,
 }
 
-pub fn execute(config: &Config, repo_root: &Path, opts: DoOptions, tui: Option<&TuiHandle>) -> Result<(), DoError> {
+pub fn execute(
+    config: &Config,
+    repo_root: &Path,
+    opts: DoOptions,
+    tui: Option<&TuiHandle>,
+) -> Result<(), DoError> {
     let tui_tx = tui.map(|t| t.sender("AGENT SESSION"));
     emit_event(
         &opts.event_sink,
@@ -89,9 +95,13 @@ pub fn execute(config: &Config, repo_root: &Path, opts: DoOptions, tui: Option<&
     let log_dir = repo_root.join(&config.log_dir);
     let _ = std::fs::create_dir_all(&log_dir);
     let epic_logger = match tui {
-        Some(t) => crate::logger::Logger::with_display_sink(&log_dir.join("epic.log"), t.sender("AGENT SESSION")),
+        Some(t) => crate::logger::Logger::with_display_sink(
+            &log_dir.join("epic.log"),
+            t.sender("AGENT SESSION"),
+        ),
         None => crate::logger::Logger::new(&log_dir.join("epic.log")),
-    }.ok();
+    }
+    .ok();
 
     // 1. Verify the item exists and determine its type
     let item_info = lb_show(repo_root, &opts.item_id)?;
@@ -147,7 +157,14 @@ pub fn execute(config: &Config, repo_root: &Path, opts: DoOptions, tui: Option<&
             },
         );
         let push_output = Command::new("git")
-            .args(["-C", &repo_root.to_string_lossy(), "push", "-u", "origin", &branch_name])
+            .args([
+                "-C",
+                &repo_root.to_string_lossy(),
+                "push",
+                "-u",
+                "origin",
+                &branch_name,
+            ])
             .output();
         match push_output {
             Ok(o) if o.status.success() => {
@@ -170,13 +187,29 @@ pub fn execute(config: &Config, repo_root: &Path, opts: DoOptions, tui: Option<&
     };
 
     // 3. Dispatch based on item type
-    let is_task = item_info.item_type == "task"
-        || count_remaining_tasks(repo_root, &opts.item_id) == 0;
+    let is_task =
+        item_info.item_type == "task" || count_remaining_tasks(repo_root, &opts.item_id) == 0;
 
     if is_task {
-        execute_task(config, repo_root, &opts, &feature_branch, tui, &tui_tx, epic_logger.as_ref())?;
+        execute_task(
+            config,
+            repo_root,
+            &opts,
+            &feature_branch,
+            tui,
+            &tui_tx,
+            epic_logger.as_ref(),
+        )?;
     } else {
-        execute_epic(config, repo_root, &opts, &feature_branch, tui, &tui_tx, epic_logger.as_ref())?;
+        execute_epic(
+            config,
+            repo_root,
+            &opts,
+            &feature_branch,
+            tui,
+            &tui_tx,
+            epic_logger.as_ref(),
+        )?;
     }
 
     // Final sync
@@ -199,7 +232,10 @@ pub fn execute(config: &Config, repo_root: &Path, opts: DoOptions, tui: Option<&
             detail: Some("final push".to_string()),
         },
     );
-    emit(&tui_tx, &format!("Done. Merge branch '{feature_branch}' when ready."));
+    emit(
+        &tui_tx,
+        &format!("Done. Merge branch '{feature_branch}' when ready."),
+    );
     emit_event(
         &opts.event_sink,
         MrmouthEvent::finished(FinishStatus::Success, None::<String>),
@@ -247,6 +283,7 @@ fn execute_task(
 
     let run_opts = RunOptions {
         raw: false,
+        json_events: opts.json_events,
         model: opts.model.clone(),
         timeout: Some(opts.timeout),
         local: false,
@@ -334,7 +371,14 @@ fn execute_epic(
     );
     emit(tui_tx, "Starting session container...");
     let epic_log_path = repo_root.join(&config.log_dir).join("epic.log");
-    let mut session = match run::start_session(config, repo_root, feature_branch, tui, epic_logger, &epic_log_path) {
+    let mut session = match run::start_session(
+        config,
+        repo_root,
+        feature_branch,
+        tui,
+        epic_logger,
+        &epic_log_path,
+    ) {
         Ok(s) => s,
         Err(e) => {
             emit(tui_tx, &format!("Session start failed: {e}"));
@@ -342,106 +386,122 @@ fn execute_epic(
         }
     };
 
-    let loop_result = (|| -> Result<(), DoError> { loop {
-        if tui.is_some_and(|t| t.is_cancelled()) {
-            emit(tui_tx, "Epic cancelled by user.");
-            break;
-        }
+    let loop_result = (|| -> Result<(), DoError> {
+        loop {
+            if tui.is_some_and(|t| t.is_cancelled()) {
+                emit(tui_tx, "Epic cancelled by user.");
+                break;
+            }
 
-        let remaining = count_remaining_tasks(repo_root, &opts.item_id);
-        if remaining == 0 {
-            emit(tui_tx, &format!("All tasks in {} complete.", opts.item_id));
-            break;
-        }
+            let remaining = count_remaining_tasks(repo_root, &opts.item_id);
+            if remaining == 0 {
+                emit(tui_tx, &format!("All tasks in {} complete.", opts.item_id));
+                break;
+            }
 
-        task_num += 1;
-        emit_event(
-            &opts.event_sink,
-            MrmouthEvent::RunLabel {
-                name: "task".to_string(),
-                value: format!("Task {task_num}"),
-            },
-        );
-        emit(tui_tx, &format!(
-            "TASK {}  ({} remaining)  {}",
-            task_num, remaining, chrono::Local::now().format("%H:%M:%S")
-        ));
+            task_num += 1;
+            emit_event(
+                &opts.event_sink,
+                MrmouthEvent::RunLabel {
+                    name: "task".to_string(),
+                    value: format!("Task {task_num}"),
+                },
+            );
+            emit(
+                tui_tx,
+                &format!(
+                    "TASK {}  ({} remaining)  {}",
+                    task_num,
+                    remaining,
+                    chrono::Local::now().format("%H:%M:%S")
+                ),
+            );
 
-        let base_prompt = prompt::load_prompt(repo_root, logger);
-        let prompt = format!(
-            "## Scope\n\n\
+            let base_prompt = prompt::load_prompt(repo_root, logger);
+            let prompt = format!(
+                "## Scope\n\n\
             You are working on epic {}. \
             Run 'lb list --parent {}' to see tasks. Pick ONE open child task and complete it. \
             Do NOT work on tasks outside this epic. \
             Commit your changes, close the item, and push when done.\n\n\
             {base_prompt}",
-            opts.item_id, opts.item_id
-        );
+                opts.item_id, opts.item_id
+            );
 
-        let run_opts = RunOptions {
-            raw: false,
-            model: opts.model.clone(),
-            timeout: Some(opts.timeout),
-            local: false,
-            prompt_override: Some(prompt),
-            branch: None,
-            event_sink: opts.event_sink.clone(),
-        };
+            let run_opts = RunOptions {
+                raw: false,
+                json_events: opts.json_events,
+                model: opts.model.clone(),
+                timeout: Some(opts.timeout),
+                local: false,
+                prompt_override: Some(prompt),
+                branch: None,
+                event_sink: opts.event_sink.clone(),
+            };
 
-        let run_result = run::execute_in_session(config, repo_root, run_opts, &session, tui);
+            let run_result = run::execute_in_session(config, repo_root, run_opts, &session, tui);
 
-        match run_result {
-            Ok(ref run_logger) => {
-                consecutive_failures = 0;
-                recent_failures.clear();
-                emit(tui_tx, &format!("Task {task_num} succeeded, syncing..."));
-                sync_and_push(repo_root, feature_branch, Some(run_logger));
-            }
-            Err(e) => {
-                consecutive_failures += 1;
-                emit(tui_tx, &format!("--- Task {task_num} failed: {e}"));
-                recent_failures.push(attempt_from(&e, consecutive_failures));
+            match run_result {
+                Ok(ref run_logger) => {
+                    consecutive_failures = 0;
+                    recent_failures.clear();
+                    emit(tui_tx, &format!("Task {task_num} succeeded, syncing..."));
+                    sync_and_push(repo_root, feature_branch, Some(run_logger));
+                }
+                Err(e) => {
+                    consecutive_failures += 1;
+                    emit(tui_tx, &format!("--- Task {task_num} failed: {e}"));
+                    recent_failures.push(attempt_from(&e, consecutive_failures));
 
-                if consecutive_failures >= opts.max_failures {
-                    emit(tui_tx, &format!(
-                        "ERROR: {} consecutive failures — aborting",
-                        opts.max_failures
-                    ));
-                    emit(tui_tx, "Per-attempt summary:");
-                    for a in &recent_failures {
-                        emit(tui_tx, &format!("  {}", a.render(repo_root)));
+                    if consecutive_failures >= opts.max_failures {
+                        emit(
+                            tui_tx,
+                            &format!(
+                                "ERROR: {} consecutive failures — aborting",
+                                opts.max_failures
+                            ),
+                        );
+                        emit(tui_tx, "Per-attempt summary:");
+                        for a in &recent_failures {
+                            emit(tui_tx, &format!("  {}", a.render(repo_root)));
+                        }
+                        return Err(DoError::TooManyFailures {
+                            count: opts.max_failures,
+                            attempts: recent_failures,
+                        });
                     }
-                    return Err(DoError::TooManyFailures {
-                        count: opts.max_failures,
-                        attempts: recent_failures,
-                    });
                 }
             }
-        }
 
-        if let Ok(output) = Command::new("lb")
-            .args(["list", "--parent", &opts.item_id])
-            .current_dir(repo_root)
-            .output()
-        {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            for line in stdout.lines() {
-                emit(tui_tx, line);
+            if let Ok(output) = Command::new("lb")
+                .args(["list", "--parent", &opts.item_id])
+                .current_dir(repo_root)
+                .output()
+            {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                for line in stdout.lines() {
+                    emit(tui_tx, line);
+                }
+            }
+
+            // Dockerfile-hash check: if the agent edited the Dockerfile during
+            // this task, the session's image is now stale. Rebuild (cheap if
+            // unchanged thanks to layer cache) and restart the session if the
+            // image ID moved.
+            if let Err(e) = maybe_restart_session_on_dockerfile_change(
+                config,
+                repo_root,
+                feature_branch,
+                &mut session,
+                tui,
+                tui_tx,
+                epic_logger,
+            ) {
+                emit(tui_tx, &format!("Session restart failed: {e}"));
+                return Err(DoError::TaskFailed(Box::new(e)));
             }
         }
-
-        // Dockerfile-hash check: if the agent edited the Dockerfile during
-        // this task, the session's image is now stale. Rebuild (cheap if
-        // unchanged thanks to layer cache) and restart the session if the
-        // image ID moved.
-        if let Err(e) = maybe_restart_session_on_dockerfile_change(
-            config, repo_root, feature_branch, &mut session, tui, tui_tx, epic_logger,
-        ) {
-            emit(tui_tx, &format!("Session restart failed: {e}"));
-            return Err(DoError::TaskFailed(Box::new(e)));
-        }
-    }
-    Ok(())
+        Ok(())
     })();
 
     // Clean up the session whether the loop succeeded or failed.
@@ -555,9 +615,19 @@ fn maybe_restart_session_on_dockerfile_change(
         return Ok(());
     }
 
-    emit(tui_tx, "Dockerfile changed — restarting session with new image...");
+    emit(
+        tui_tx,
+        "Dockerfile changed — restarting session with new image...",
+    );
     let epic_log_path = repo_root.join(&config.log_dir).join("epic.log");
-    let fresh = crate::run::start_session(config, repo_root, feature_branch, tui, epic_logger, &epic_log_path)?;
+    let fresh = crate::run::start_session(
+        config,
+        repo_root,
+        feature_branch,
+        tui,
+        epic_logger,
+        &epic_log_path,
+    )?;
     let stale = std::mem::replace(session, fresh);
     crate::run::stop_session(stale, Some(epic_logger));
     Ok(())
@@ -577,9 +647,7 @@ fn count_remaining_tasks(repo_root: &Path, epic_id: &str) -> u32 {
                 .lines()
                 .filter(|l| {
                     let trimmed = l.trim();
-                    !trimmed.is_empty()
-                        && !trimmed.starts_with("ID")
-                        && !trimmed.starts_with("---")
+                    !trimmed.is_empty() && !trimmed.starts_with("ID") && !trimmed.starts_with("---")
                 })
                 .count() as u32
         }
@@ -589,7 +657,12 @@ fn count_remaining_tasks(repo_root: &Path, epic_id: &str) -> u32 {
 
 pub(crate) fn git_current_branch(repo_root: &Path) -> Result<String, DoError> {
     let output = Command::new("git")
-        .args(["-C", &repo_root.to_string_lossy(), "branch", "--show-current"])
+        .args([
+            "-C",
+            &repo_root.to_string_lossy(),
+            "branch",
+            "--show-current",
+        ])
         .output()
         .map_err(|e| DoError::Command(format!("failed to get current branch: {e}")))?;
 
@@ -605,15 +678,17 @@ pub(crate) fn git_checkout_new_branch(repo_root: &Path, branch: &str) -> Result<
         .map_err(|e| DoError::Command(format!("failed to create branch: {e}")))?;
 
     if !output.success() {
-        return Err(DoError::Command(format!(
-            "git checkout -b {branch} failed"
-        )));
+        return Err(DoError::Command(format!("git checkout -b {branch} failed")));
     }
 
     Ok(())
 }
 
-pub(crate) fn sync_and_push(repo_root: &Path, branch: &str, logger: Option<&crate::logger::Logger>) {
+pub(crate) fn sync_and_push(
+    repo_root: &Path,
+    branch: &str,
+    logger: Option<&crate::logger::Logger>,
+) {
     litebrite::sync(repo_root, logger);
 
     // Push to remote
@@ -734,7 +809,10 @@ mod tests {
 
     #[test]
     fn slug_basic() {
-        assert_eq!(make_slug("Add user authentication"), "add-user-authentication");
+        assert_eq!(
+            make_slug("Add user authentication"),
+            "add-user-authentication"
+        );
     }
 
     #[test]
@@ -785,7 +863,9 @@ mod tests {
         let a = AttemptSummary {
             attempt: 1,
             reason: "exit 127 — missing command 'trk'".into(),
-            log_path: Some(PathBuf::from("/home/user/project/logs/run-20260422-151500.log")),
+            log_path: Some(PathBuf::from(
+                "/home/user/project/logs/run-20260422-151500.log",
+            )),
             exit_code: Some(127),
         };
         assert_eq!(
@@ -856,8 +936,16 @@ mod tests {
             log_path: PathBuf::from("/logs/run-x.log"),
         }));
         let d = err.debrief();
-        assert!(d.message.starts_with("task agent failed:"), "got: {}", d.message);
-        assert!(d.message.contains("missing tool 'trk'"), "got: {}", d.message);
+        assert!(
+            d.message.starts_with("task agent failed:"),
+            "got: {}",
+            d.message
+        );
+        assert!(
+            d.message.contains("missing tool 'trk'"),
+            "got: {}",
+            d.message
+        );
         assert_eq!(d.exit_code, Some(127));
         assert_eq!(d.log_path.as_deref(), Some(Path::new("/logs/run-x.log")));
     }
@@ -888,7 +976,11 @@ mod tests {
         let d = err.debrief();
         assert!(d.message.contains("aborted after 3"), "got: {}", d.message);
         assert!(d.message.contains("last attempt"), "got: {}", d.message);
-        assert!(d.message.contains("missing tool 'lb'"), "got: {}", d.message);
+        assert!(
+            d.message.contains("missing tool 'lb'"),
+            "got: {}",
+            d.message
+        );
         assert_eq!(d.exit_code, Some(64));
         assert_eq!(d.log_path.as_deref(), Some(Path::new("/logs/run-3.log")));
         assert_eq!(d.attempt_lines.len(), 3);
@@ -908,7 +1000,11 @@ mod tests {
         }];
         let err = DoError::TooManyFailures { count: 1, attempts };
         let d = err.debrief();
-        assert!(d.message.contains("Docker is not available"), "got: {}", d.message);
+        assert!(
+            d.message.contains("Docker is not available"),
+            "got: {}",
+            d.message
+        );
         assert!(d.log_path.is_none());
         assert!(d.exit_code.is_none());
     }

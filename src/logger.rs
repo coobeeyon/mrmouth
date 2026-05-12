@@ -136,11 +136,6 @@ impl Logger {
         })
     }
 
-    /// Returns true when display is routed through a caller-provided sink.
-    pub fn has_custom_display(&self) -> bool {
-        self.custom_display
-    }
-
     /// Clone the caller-provided display sink, if present.
     pub fn display_sink(&self) -> Option<DisplaySinkHandle> {
         self.custom_display.then(|| self.display.clone())

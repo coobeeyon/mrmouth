@@ -23,6 +23,7 @@ pub struct LoopOptions {
     pub max_runs: u32,
     pub no_summary: bool,
     pub model: String,
+    pub json_events: bool,
     pub event_sink: Option<EventSinkHandle>,
 }
 
@@ -442,6 +443,7 @@ pub fn execute(
             // --- Runner ---
             let run_opts = RunOptions {
                 raw: false,
+                json_events: opts.json_events,
                 model: opts.model.clone(),
                 timeout: None,
                 local: false,

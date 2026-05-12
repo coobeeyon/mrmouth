@@ -19,7 +19,12 @@ pub struct FailureDebrief {
 
 impl FailureDebrief {
     pub fn new(message: String) -> Self {
-        Self { message, exit_code: None, log_path: None, attempt_lines: Vec::new() }
+        Self {
+            message,
+            exit_code: None,
+            log_path: None,
+            attempt_lines: Vec::new(),
+        }
     }
 
     /// Print the debrief to stderr. Call after the TUI has been dropped, so
@@ -57,8 +62,12 @@ impl FailureDebrief {
 /// Read up to `n` lines from the end of `path`. Returns empty on any I/O error
 /// so callers can fall back to the rest of the debrief without crashing.
 pub fn read_log_tail_lines(path: &Path, n: usize) -> Vec<String> {
-    if n == 0 { return Vec::new(); }
-    let Ok(file) = File::open(path) else { return Vec::new(); };
+    if n == 0 {
+        return Vec::new();
+    }
+    let Ok(file) = File::open(path) else {
+        return Vec::new();
+    };
     let reader = BufReader::new(file);
     let mut buf: VecDeque<String> = VecDeque::with_capacity(n);
     for line in reader.lines().map_while(Result::ok) {
@@ -96,7 +105,10 @@ mod tests {
         let content: String = (0..100).map(|i| format!("line {i}\n")).collect();
         std::fs::write(&path, content).unwrap();
         let lines = read_log_tail_lines(&path, 5);
-        assert_eq!(lines, vec!["line 95", "line 96", "line 97", "line 98", "line 99"]);
+        assert_eq!(
+            lines,
+            vec!["line 95", "line 96", "line 97", "line 98", "line 99"]
+        );
     }
 
     #[test]
