@@ -1125,11 +1125,10 @@
       "title": "Avoid dirtying host Dockerfile before post-run pull",
       "description": "Host-side post-run cleanup extracts .mrmouth/Dockerfile from the container before git pull --ff-only. If the agent already committed and pushed the same Dockerfile content, the host worktree becomes dirty and the pull can fail. Make extraction idempotent or defer it so self-produced Dockerfile changes do not block pulling.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 1,
-      "claimed_by": "Michael Daum",
       "created_at": "2026-05-12T16:23:20.844912018Z",
-      "updated_at": "2026-05-12T16:23:24.882061941Z"
+      "updated_at": "2026-05-12T16:29:18.608985401Z"
     },
     "lb-mxo4": {
       "id": "lb-mxo4",
