@@ -5,6 +5,7 @@ use std::process::Command;
 
 use crate::config::Config;
 use crate::docker::{ContainerArgs, CopyFromContainerOutcome, DockerBuilder};
+use crate::events::{EventSinkHandle, MrmouthEvent, ReviewerAction};
 use crate::logger::Logger;
 use crate::stream_fmt::{self, StreamFormatter};
 
@@ -14,6 +15,7 @@ pub struct ReviewerOptions {
     /// If set, the reviewer scopes its review to only the changes in this
     /// commit range (before..after) instead of the entire branch.
     pub commit_range: Option<(String, String)>,
+    pub event_sink: Option<EventSinkHandle>,
 }
 
 /// Run a reviewer agent inside the project Docker container so it has access
@@ -26,6 +28,14 @@ pub fn execute(
     opts: &ReviewerOptions,
     logger: Option<&Logger>,
 ) -> Result<(), ReviewerError> {
+    emit_event(
+        &opts.event_sink,
+        MrmouthEvent::ReviewerLifecycle {
+            action: ReviewerAction::Starting,
+            branch: opts.current_branch.clone(),
+            commit_range: commit_range_label(&opts.commit_range),
+        },
+    );
     crate::logger::log(
         logger,
         &format!("CODE REVIEW  branch={}", opts.current_branch),
@@ -210,6 +220,14 @@ fi
     DockerBuilder::remove_container(&container_name);
 
     let docker = DockerBuilder::new(&config.image);
+    emit_event(
+        &opts.event_sink,
+        MrmouthEvent::ReviewerLifecycle {
+            action: ReviewerAction::Running,
+            branch: opts.current_branch.clone(),
+            commit_range: commit_range_label(&opts.commit_range),
+        },
+    );
     docker
         .build(repo_root, &config.dockerfile)
         .map_err(|e| ReviewerError(format!("failed to build reviewer image: {e}")))?;
@@ -230,8 +248,8 @@ fi
         .run(&container_args)
         .map_err(|e| ReviewerError(format!("failed to start reviewer container: {e}")))?;
 
-    let is_tty = logger.is_some_and(|l| l.display_supports_color())
-        || std::io::stdout().is_terminal();
+    let is_tty =
+        logger.is_some_and(|l| l.display_supports_color()) || std::io::stdout().is_terminal();
     let mut formatter = StreamFormatter::new(is_tty);
 
     handle
@@ -294,13 +312,41 @@ fi
             logger,
             &format!("Reviewer container exited with code {exit_code}"),
         );
+        emit_event(
+            &opts.event_sink,
+            MrmouthEvent::failure(
+                "reviewer container exited",
+                Some(exit_code),
+                Some(format!("branch={}", opts.current_branch)),
+            ),
+        );
         return Err(ReviewerError(format!(
             "reviewer container exited with code {exit_code}"
         )));
     }
 
     crate::logger::log(logger, "Reviewer pass complete.");
+    emit_event(
+        &opts.event_sink,
+        MrmouthEvent::ReviewerLifecycle {
+            action: ReviewerAction::Finished,
+            branch: opts.current_branch.clone(),
+            commit_range: commit_range_label(&opts.commit_range),
+        },
+    );
     Ok(())
+}
+
+fn emit_event(sink: &Option<EventSinkHandle>, event: MrmouthEvent) {
+    if let Some(sink) = sink {
+        sink.emit(event);
+    }
+}
+
+fn commit_range_label(commit_range: &Option<(String, String)>) -> Option<String> {
+    commit_range
+        .as_ref()
+        .map(|(before, after)| format!("{before}..{after}"))
 }
 
 fn git_remote_url(repo_root: &Path) -> Option<String> {

@@ -5,6 +5,7 @@ use std::process::{Command, Stdio};
 
 use crate::config::Config;
 use crate::docker::{ContainerArgs, DockerBuilder};
+use crate::events::{BranchAction, EventSinkHandle, MrmouthEvent, ShipperAction};
 use crate::logger::Logger;
 use crate::stream_fmt::{self, StreamFormatter};
 use crate::streaming::{self, StreamTarget};
@@ -13,6 +14,7 @@ pub struct ShipperOptions {
     pub model: String,
     pub current_branch: String,
     pub parent_branch: String,
+    pub event_sink: Option<EventSinkHandle>,
 }
 
 /// Run the shipper agent: check readiness and merge branch into parent.
@@ -22,6 +24,14 @@ pub fn execute(
     opts: &ShipperOptions,
     logger: Option<&Logger>,
 ) -> Result<(), ShipperError> {
+    emit_event(
+        &opts.event_sink,
+        MrmouthEvent::ShipperLifecycle {
+            action: ShipperAction::CheckingReadiness,
+            current_branch: opts.current_branch.clone(),
+            parent_branch: Some(opts.parent_branch.clone()),
+        },
+    );
     crate::logger::log(
         logger,
         &format!(
@@ -38,13 +48,37 @@ pub fn execute(
         config,
         repo_root,
         &opts.current_branch,
+        &opts.parent_branch,
         &opts.model,
         logger,
         &log_dir,
+        &opts.event_sink,
     )?;
 
     // 2. Merge current branch into parent
-    merge_branch(repo_root, &opts.current_branch, &opts.parent_branch, logger)?;
+    emit_event(
+        &opts.event_sink,
+        MrmouthEvent::ShipperLifecycle {
+            action: ShipperAction::Merging,
+            current_branch: opts.current_branch.clone(),
+            parent_branch: Some(opts.parent_branch.clone()),
+        },
+    );
+    merge_branch(
+        repo_root,
+        &opts.current_branch,
+        &opts.parent_branch,
+        logger,
+        &opts.event_sink,
+    )?;
+    emit_event(
+        &opts.event_sink,
+        MrmouthEvent::ShipperLifecycle {
+            action: ShipperAction::Finished,
+            current_branch: opts.current_branch.clone(),
+            parent_branch: Some(opts.parent_branch.clone()),
+        },
+    );
 
     Ok(())
 }
@@ -53,9 +87,11 @@ fn check_ready(
     config: &Config,
     repo_root: &Path,
     current_branch: &str,
+    parent_branch: &str,
     model: &str,
     logger: Option<&Logger>,
     log_dir: &Path,
+    event_sink: &Option<EventSinkHandle>,
 ) -> Result<(), ShipperError> {
     let schema = r#"{"type":"object","properties":{"status":{"type":"string","enum":["READY","BLOCKED"]},"reason":{"type":"string"}},"required":["status","reason"]}"#;
 
@@ -207,8 +243,8 @@ fi
         .run(&container_args)
         .map_err(|e| ShipperError(format!("failed to start readiness container: {e}")))?;
 
-    let is_tty = logger.is_some_and(|l| l.display_supports_color())
-        || std::io::stdout().is_terminal();
+    let is_tty =
+        logger.is_some_and(|l| l.display_supports_color()) || std::io::stdout().is_terminal();
     let mut formatter = StreamFormatter::new(is_tty);
     let mut result_text = String::new();
 
@@ -260,6 +296,14 @@ fi
     DockerBuilder::remove_container(&container_name);
 
     if exit_code != 0 {
+        emit_event(
+            event_sink,
+            MrmouthEvent::failure(
+                "readiness check container exited",
+                Some(exit_code),
+                Some(format!("branch={current_branch}")),
+            ),
+        );
         return Err(ShipperError(format!(
             "readiness check container exited with code {exit_code}"
         )));
@@ -272,6 +316,14 @@ fi
                 logger,
                 &format!("WARNING: readiness check returned invalid JSON: {e}"),
             );
+            emit_event(
+                event_sink,
+                MrmouthEvent::ShipperLifecycle {
+                    action: ShipperAction::Blocked,
+                    current_branch: current_branch.to_string(),
+                    parent_branch: Some(parent_branch.to_string()),
+                },
+            );
             return Err(ShipperError(format!(
                 "readiness check returned invalid JSON: {e}"
             )));
@@ -281,10 +333,26 @@ fi
     let reason = parsed["reason"].as_str().unwrap_or("no reason given");
 
     if status == "BLOCKED" {
+        emit_event(
+            event_sink,
+            MrmouthEvent::ShipperLifecycle {
+                action: ShipperAction::Blocked,
+                current_branch: current_branch.to_string(),
+                parent_branch: Some(parent_branch.to_string()),
+            },
+        );
         return Err(ShipperError(format!("branch not ready to ship: {reason}")));
     }
 
     crate::logger::log(logger, &format!("Readiness check passed: {reason}"));
+    emit_event(
+        event_sink,
+        MrmouthEvent::ShipperLifecycle {
+            action: ShipperAction::Ready,
+            current_branch: current_branch.to_string(),
+            parent_branch: Some(parent_branch.to_string()),
+        },
+    );
     Ok(())
 }
 
@@ -311,6 +379,7 @@ fn merge_branch(
     current_branch: &str,
     parent_branch: &str,
     logger: Option<&Logger>,
+    event_sink: &Option<EventSinkHandle>,
 ) -> Result<(), ShipperError> {
     let has_github_remote = Command::new("git")
         .args([
@@ -328,6 +397,14 @@ fn merge_branch(
         crate::logger::log(
             logger,
             &format!("Creating and merging PR: {current_branch} -> {parent_branch}"),
+        );
+        emit_event(
+            event_sink,
+            MrmouthEvent::BranchLifecycle {
+                action: BranchAction::Merging,
+                branch: current_branch.to_string(),
+                parent_branch: Some(parent_branch.to_string()),
+            },
         );
 
         let pr_create = Command::new("gh")
@@ -384,6 +461,14 @@ fn merge_branch(
             logger,
             &format!("Merging {current_branch} into {parent_branch} (no-ff)..."),
         );
+        emit_event(
+            event_sink,
+            MrmouthEvent::BranchLifecycle {
+                action: BranchAction::Merging,
+                branch: current_branch.to_string(),
+                parent_branch: Some(parent_branch.to_string()),
+            },
+        );
 
         let checkout = Command::new("git")
             .args([
@@ -429,6 +514,14 @@ fn merge_branch(
             .status();
     }
 
+    emit_event(
+        event_sink,
+        MrmouthEvent::BranchLifecycle {
+            action: BranchAction::Merged,
+            branch: current_branch.to_string(),
+            parent_branch: Some(parent_branch.to_string()),
+        },
+    );
     Ok(())
 }
 
@@ -505,6 +598,7 @@ pub fn create_and_push_branch(
     repo_root: &Path,
     branch_name: &str,
     logger: Option<&Logger>,
+    event_sink: &Option<EventSinkHandle>,
 ) -> Result<(), ShipperError> {
     let branch_exists = Command::new("git")
         .args([
@@ -541,6 +635,18 @@ pub fn create_and_push_branch(
             "git checkout -b {branch_name} failed"
         )));
     }
+    emit_event(
+        event_sink,
+        MrmouthEvent::BranchLifecycle {
+            action: if branch_exists {
+                BranchAction::Switched
+            } else {
+                BranchAction::Created
+            },
+            branch: branch_name.to_string(),
+            parent_branch: None,
+        },
+    );
 
     let has_remote = Command::new("git")
         .args([
@@ -555,6 +661,14 @@ pub fn create_and_push_branch(
         .unwrap_or(false);
 
     if has_remote {
+        emit_event(
+            event_sink,
+            MrmouthEvent::BranchLifecycle {
+                action: BranchAction::Pushing,
+                branch: branch_name.to_string(),
+                parent_branch: None,
+            },
+        );
         let push = Command::new("git")
             .args([
                 "-C",
@@ -572,11 +686,26 @@ pub fn create_and_push_branch(
                 logger,
                 &format!("Warning: failed to push branch {branch_name} to origin"),
             );
+        } else {
+            emit_event(
+                event_sink,
+                MrmouthEvent::BranchLifecycle {
+                    action: BranchAction::Pushed,
+                    branch: branch_name.to_string(),
+                    parent_branch: None,
+                },
+            );
         }
     }
 
     crate::logger::log(logger, &format!("Created branch: {branch_name}"));
     Ok(())
+}
+
+fn emit_event(sink: &Option<EventSinkHandle>, event: MrmouthEvent) {
+    if let Some(sink) = sink {
+        sink.emit(event);
+    }
 }
 
 #[derive(Debug)]

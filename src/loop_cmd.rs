@@ -4,6 +4,10 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 
 use crate::config::Config;
+use crate::events::{
+    EventSinkHandle, FinishStatus, LifecycleSummary, MrmouthEvent, ReviewerAction, SyncAction,
+    SyncTool,
+};
 use crate::litebrite;
 use crate::logger::Logger;
 use crate::reviewer;
@@ -19,6 +23,7 @@ pub struct LoopOptions {
     pub max_runs: u32,
     pub no_summary: bool,
     pub model: String,
+    pub event_sink: Option<EventSinkHandle>,
 }
 
 /// Route a message to the TUI pane if available, otherwise stderr.
@@ -39,6 +44,12 @@ pub fn execute(
     // in one place — the user watches "AGENT SESSION" during runs and should
     // see post-run activity (reviewer, decider, etc.) on the same pane.
     let tui_tx = tui.map(|t| t.sender("AGENT SESSION"));
+    emit_event(
+        &opts.event_sink,
+        MrmouthEvent::StageChanged {
+            stage: "Loop".to_string(),
+        },
+    );
 
     // Create a loop-level logger so that sub-calls (shipper, reviewer, decider)
     // route output through the TUI instead of falling back to eprintln.
@@ -54,6 +65,12 @@ pub fn execute(
     let bootstrap_mode = !repo_root.join(".git").exists();
     if bootstrap_mode {
         emit(&tui_tx, "BOOTSTRAP");
+        emit_event(
+            &opts.event_sink,
+            MrmouthEvent::StageChanged {
+                stage: "Bootstrap".to_string(),
+            },
+        );
         emit(
             &tui_tx,
             &format!(
@@ -180,6 +197,12 @@ pub fn execute(
         parent_branch.clone()
     } else {
         emit(&tui_tx, "BRANCH SETUP");
+        emit_event(
+            &opts.event_sink,
+            MrmouthEvent::StageChanged {
+                stage: "Branch setup".to_string(),
+            },
+        );
         let branch_name = shipper::generate_branch_name(
             config,
             repo_root,
@@ -187,8 +210,13 @@ pub fn execute(
             loop_logger.as_ref(),
         )
         .map_err(|e| LoopError::BranchCreation(format!("failed to generate branch name: {e}")))?;
-        shipper::create_and_push_branch(repo_root, &branch_name, loop_logger.as_ref())
-            .map_err(|e| LoopError::BranchCreation(format!("failed to create branch: {e}")))?;
+        shipper::create_and_push_branch(
+            repo_root,
+            &branch_name,
+            loop_logger.as_ref(),
+            &opts.event_sink,
+        )
+        .map_err(|e| LoopError::BranchCreation(format!("failed to create branch: {e}")))?;
         branch_name
     };
 
@@ -216,6 +244,12 @@ pub fn execute(
     if let Some(t) = tui {
         t.set_stage("Session setup");
     }
+    emit_event(
+        &opts.event_sink,
+        MrmouthEvent::StageChanged {
+            stage: "Session setup".to_string(),
+        },
+    );
     emit(&tui_tx, "Starting session container...");
     let mut session = run::start_session(
         config,
@@ -236,12 +270,47 @@ pub fn execute(
             // Check if TUI user cancelled
             if tui.is_some_and(|t| t.is_cancelled()) {
                 emit(&tui_tx, "LOOP CANCELLED BY USER");
+                emit_event(
+                    &opts.event_sink,
+                    MrmouthEvent::finished(FinishStatus::Cancelled, Some("loop cancelled")),
+                );
+                emit_event(
+                    &opts.event_sink,
+                    MrmouthEvent::LifecycleSummary {
+                        summary: LifecycleSummary {
+                            status: FinishStatus::Cancelled,
+                            command: "loop".to_string(),
+                            item_id: None,
+                            branch: Some(current_branch.clone()),
+                            commit_range: None,
+                            log_path: None,
+                            jsonl_path: None,
+                            exit_code: None,
+                            failure: None,
+                            reviewer: None,
+                            shipper: None,
+                            next_action: Some("cancelled".to_string()),
+                        },
+                    },
+                );
                 break;
             }
 
             if opts.max_runs > 0 && run_number > opts.max_runs {
                 emit(&tui_tx, "");
                 emit(&tui_tx, &format!("LOOP COMPLETE  {} runs", opts.max_runs));
+                emit_event(
+                    &opts.event_sink,
+                    MrmouthEvent::finished(FinishStatus::Success, Some("max runs reached")),
+                );
+                emit_event(
+                    &opts.event_sink,
+                    MrmouthEvent::LifecycleSummary {
+                        summary: LifecycleSummary::success("loop")
+                            .branch(current_branch.clone())
+                            .next_action("max_runs_reached"),
+                    },
+                );
                 break;
             }
 
@@ -249,6 +318,12 @@ pub fn execute(
             if let Some(t) = tui {
                 t.set_stage("Deciding");
             }
+            emit_event(
+                &opts.event_sink,
+                MrmouthEvent::StageChanged {
+                    stage: "Deciding".to_string(),
+                },
+            );
             let decider_model = config.loop_config.decider_model.clone();
             let decision = should_continue(
                 config,
@@ -271,10 +346,17 @@ pub fn execute(
                     if let Some(t) = tui {
                         t.set_stage("Shipper");
                     }
+                    emit_event(
+                        &opts.event_sink,
+                        MrmouthEvent::StageChanged {
+                            stage: "Shipper".to_string(),
+                        },
+                    );
                     let ship_opts = shipper::ShipperOptions {
                         model: config.loop_config.shipper_model.clone(),
                         current_branch: current_branch.clone(),
                         parent_branch: parent_branch.clone(),
+                        event_sink: opts.event_sink.clone(),
                     };
 
                     match shipper::execute(config, repo_root, &ship_opts, loop_logger.as_ref()) {
@@ -288,12 +370,25 @@ pub fn execute(
                                 &tui_tx,
                                 &format!("LOOP COMPLETE  {completed} runs (shipped)"),
                             );
+                            emit_event(
+                                &opts.event_sink,
+                                MrmouthEvent::LifecycleSummary {
+                                    summary: LifecycleSummary::success("loop")
+                                        .branch(current_branch.clone())
+                                        .shipper("shipped")
+                                        .next_action("merged"),
+                                },
+                            );
                             break;
                         }
                         Err(e) => {
                             crate::logger::log(
                                 loop_logger.as_ref(),
                                 &format!("Ship failed (continuing on current branch): {e}"),
+                            );
+                            emit_event(
+                                &opts.event_sink,
+                                MrmouthEvent::failure("ship failed", None, Some(e.to_string())),
                             );
                         }
                     }
@@ -302,6 +397,14 @@ pub fn execute(
                     crate::logger::log(loop_logger.as_ref(), &format!("Decider: stop — {reason}"));
                     let completed = run_number - 1;
                     emit(&tui_tx, &format!("LOOP COMPLETE  {completed} runs"));
+                    emit_event(
+                        &opts.event_sink,
+                        MrmouthEvent::LifecycleSummary {
+                            summary: LifecycleSummary::success("loop")
+                                .branch(current_branch.clone())
+                                .next_action("stop"),
+                        },
+                    );
                     break;
                 }
                 Err(e) => {
@@ -309,12 +412,39 @@ pub fn execute(
                         loop_logger.as_ref(),
                         &format!("Decider error (continuing anyway): {e}"),
                     );
+                    emit_event(
+                        &opts.event_sink,
+                        MrmouthEvent::failure("decider error", None, Some(e.to_string())),
+                    );
                 }
             }
 
             // Check if TUI user cancelled after decider
             if tui.is_some_and(|t| t.is_cancelled()) {
                 emit(&tui_tx, "LOOP CANCELLED BY USER");
+                emit_event(
+                    &opts.event_sink,
+                    MrmouthEvent::finished(FinishStatus::Cancelled, Some("loop cancelled")),
+                );
+                emit_event(
+                    &opts.event_sink,
+                    MrmouthEvent::LifecycleSummary {
+                        summary: LifecycleSummary {
+                            status: FinishStatus::Cancelled,
+                            command: "loop".to_string(),
+                            item_id: None,
+                            branch: Some(current_branch.clone()),
+                            commit_range: None,
+                            log_path: None,
+                            jsonl_path: None,
+                            exit_code: None,
+                            failure: None,
+                            reviewer: None,
+                            shipper: None,
+                            next_action: Some("cancelled".to_string()),
+                        },
+                    },
+                );
                 break;
             }
 
@@ -326,7 +456,7 @@ pub fn execute(
                 local: false,
                 prompt_override: None,
                 branch: Some(current_branch.clone()),
-                event_sink: None,
+                event_sink: opts.event_sink.clone(),
             };
 
             let head_before = git_head(repo_root);
@@ -334,11 +464,26 @@ pub fn execute(
             if let Some(t) = tui {
                 t.set_run(Some(format!("Run {run_number}")));
             }
+            emit_event(
+                &opts.event_sink,
+                MrmouthEvent::RunLabel {
+                    name: "run".to_string(),
+                    value: format!("Run {run_number}"),
+                },
+            );
             let run_result = run::execute_in_session(config, repo_root, run_opts, &session, tui);
             let run_logger: Option<Logger> = match run_result {
                 Ok(logger) => Some(logger),
                 Err(e) => {
                     emit(&tui_tx, &format!("Run {run_number} failed: {e}"));
+                    emit_event(
+                        &opts.event_sink,
+                        MrmouthEvent::failure(
+                            format!("Run {run_number} failed"),
+                            e.exit_code(),
+                            Some(e.short_reason()),
+                        ),
+                    );
                     None
                 }
             };
@@ -348,11 +493,50 @@ pub fn execute(
             // Check if TUI user cancelled during the run
             if tui.is_some_and(|t| t.is_cancelled()) {
                 emit(&tui_tx, "LOOP CANCELLED BY USER");
+                emit_event(
+                    &opts.event_sink,
+                    MrmouthEvent::finished(FinishStatus::Cancelled, Some("loop cancelled")),
+                );
+                emit_event(
+                    &opts.event_sink,
+                    MrmouthEvent::LifecycleSummary {
+                        summary: LifecycleSummary {
+                            status: FinishStatus::Cancelled,
+                            command: "loop".to_string(),
+                            item_id: None,
+                            branch: Some(current_branch.clone()),
+                            commit_range: None,
+                            log_path: None,
+                            jsonl_path: None,
+                            exit_code: None,
+                            failure: None,
+                            reviewer: None,
+                            shipper: None,
+                            next_action: Some("cancelled".to_string()),
+                        },
+                    },
+                );
                 break;
             }
 
             // Sync litebrite so reviewer sees fresh task state
+            emit_event(
+                &opts.event_sink,
+                MrmouthEvent::Sync {
+                    action: SyncAction::Starting,
+                    tool: SyncTool::Litebrite,
+                    detail: Some("before reviewer".to_string()),
+                },
+            );
             litebrite::sync(repo_root, logger_opt);
+            emit_event(
+                &opts.event_sink,
+                MrmouthEvent::Sync {
+                    action: SyncAction::Finished,
+                    tool: SyncTool::Litebrite,
+                    detail: Some("before reviewer".to_string()),
+                },
+            );
 
             // --- Reviewer (only if the agent actually committed something) ---
             let head_after = git_head(repo_root);
@@ -365,20 +549,55 @@ pub fn execute(
                 if let Some(t) = tui {
                     t.set_stage("Reviewer");
                 }
+                emit_event(
+                    &opts.event_sink,
+                    MrmouthEvent::StageChanged {
+                        stage: "Reviewer".to_string(),
+                    },
+                );
                 let reviewer_opts = reviewer::ReviewerOptions {
                     model: config.loop_config.reviewer_model.clone(),
                     current_branch: current_branch.clone(),
                     commit_range,
+                    event_sink: opts.event_sink.clone(),
                 };
                 if let Err(e) = reviewer::execute(config, repo_root, &reviewer_opts, logger_opt) {
                     crate::logger::log(logger_opt, &format!("Reviewer failed (non-fatal): {e}"));
+                    emit_event(
+                        &opts.event_sink,
+                        MrmouthEvent::failure("reviewer failed", None, Some(e.to_string())),
+                    );
                 }
                 // Sync lb state pushed by reviewer container back to host
+                emit_event(
+                    &opts.event_sink,
+                    MrmouthEvent::Sync {
+                        action: SyncAction::Starting,
+                        tool: SyncTool::Litebrite,
+                        detail: Some("after reviewer".to_string()),
+                    },
+                );
                 litebrite::sync(repo_root, logger_opt);
+                emit_event(
+                    &opts.event_sink,
+                    MrmouthEvent::Sync {
+                        action: SyncAction::Finished,
+                        tool: SyncTool::Litebrite,
+                        detail: Some("after reviewer".to_string()),
+                    },
+                );
             } else {
                 crate::logger::log(
                     logger_opt,
                     "Reviewer skipped: no new commits from this run.",
+                );
+                emit_event(
+                    &opts.event_sink,
+                    MrmouthEvent::ReviewerLifecycle {
+                        action: ReviewerAction::Skipped,
+                        branch: current_branch.clone(),
+                        commit_range: None,
+                    },
                 );
             }
 
@@ -409,6 +628,29 @@ pub fn execute(
             // Check if TUI user cancelled before sleeping
             if tui.is_some_and(|t| t.is_cancelled()) {
                 emit(&tui_tx, "LOOP CANCELLED BY USER");
+                emit_event(
+                    &opts.event_sink,
+                    MrmouthEvent::finished(FinishStatus::Cancelled, Some("loop cancelled")),
+                );
+                emit_event(
+                    &opts.event_sink,
+                    MrmouthEvent::LifecycleSummary {
+                        summary: LifecycleSummary {
+                            status: FinishStatus::Cancelled,
+                            command: "loop".to_string(),
+                            item_id: None,
+                            branch: Some(current_branch.clone()),
+                            commit_range: None,
+                            log_path: None,
+                            jsonl_path: None,
+                            exit_code: None,
+                            failure: None,
+                            reviewer: None,
+                            shipper: None,
+                            next_action: Some("cancelled".to_string()),
+                        },
+                    },
+                );
                 break;
             }
 
@@ -427,6 +669,12 @@ pub fn execute(
     run::stop_session(session, loop_logger.as_ref());
 
     loop_result
+}
+
+fn emit_event(sink: &Option<EventSinkHandle>, event: MrmouthEvent) {
+    if let Some(sink) = sink {
+        sink.emit(event);
+    }
 }
 
 /// Rebuild the Docker image (cheap if cached) and, if the new image ID

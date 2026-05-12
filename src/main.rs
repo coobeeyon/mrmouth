@@ -85,6 +85,10 @@ enum Commands {
         /// Override the agent model (default: from config)
         #[arg(long)]
         model: Option<String>,
+
+        /// Output mrmouth lifecycle events as JSONL; disables the TUI
+        #[arg(long)]
+        json_events: bool,
     },
 
     /// Work through a litebrite item's tasks sequentially
@@ -122,6 +126,10 @@ enum Commands {
         /// Override the agent model (default: from config)
         #[arg(long)]
         model: Option<String>,
+
+        /// Output mrmouth lifecycle events as JSONL; disables the TUI
+        #[arg(long)]
+        json_events: bool,
     },
 
     /// Generate an AI summary of a run log
@@ -228,6 +236,7 @@ fn main() {
             max_runs,
             no_summary,
             model,
+            json_events: _,
         } => {
             let opts = loop_cmd::LoopOptions {
                 delay: if delay > 0 {
@@ -238,6 +247,7 @@ fn main() {
                 max_runs: max_runs.unwrap_or(config.loop_config.max_runs),
                 no_summary,
                 model: resolve_model(&config, model),
+                event_sink: lifecycle_events.clone(),
             };
             loop_cmd::execute(&config, &repo_root, opts, tui.as_ref()).map_err(|e| e.debrief())
         }
@@ -261,11 +271,13 @@ fn main() {
             timeout,
             max_failures,
             model,
+            json_events: _,
         } => {
             let opts = ready::ReadyOptions {
                 timeout: timeout.unwrap_or(config.do_config.timeout),
                 max_failures: max_failures.unwrap_or(config.do_config.max_failures),
                 model: resolve_model(&config, model),
+                event_sink: lifecycle_events.clone(),
             };
             ready::execute(&config, &repo_root, opts, tui.as_ref()).map_err(|e| e.debrief())
         }
@@ -307,6 +319,12 @@ fn output_modes(command: &Commands) -> OutputModes {
             json_events: true,
             ..
         } | Commands::Do {
+            json_events: true,
+            ..
+        } | Commands::Loop {
+            json_events: true,
+            ..
+        } | Commands::Ready {
             json_events: true,
             ..
         }
@@ -395,6 +413,43 @@ mod tests {
     fn json_events_mode_disables_tui_for_do() {
         let command = Commands::Do {
             item_id: "lb-1234".to_string(),
+            timeout: None,
+            max_failures: None,
+            model: None,
+            json_events: true,
+        };
+
+        assert_eq!(
+            output_modes(&command),
+            OutputModes {
+                json_events: true,
+                start_tui: false,
+            }
+        );
+    }
+
+    #[test]
+    fn json_events_mode_disables_tui_for_loop() {
+        let command = Commands::Loop {
+            delay: 0,
+            max_runs: None,
+            no_summary: false,
+            model: None,
+            json_events: true,
+        };
+
+        assert_eq!(
+            output_modes(&command),
+            OutputModes {
+                json_events: true,
+                start_tui: false,
+            }
+        );
+    }
+
+    #[test]
+    fn json_events_mode_disables_tui_for_ready() {
+        let command = Commands::Ready {
             timeout: None,
             max_failures: None,
             model: None,

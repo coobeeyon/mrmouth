@@ -282,6 +282,7 @@ fn execute_task(
             model: config.loop_config.reviewer_model.clone(),
             current_branch: feature_branch.to_string(),
             commit_range,
+            event_sink: opts.event_sink.clone(),
         };
         if let Err(e) = reviewer::execute(config, repo_root, &reviewer_opts, logger) {
             emit(tui_tx, &format!("Reviewer failed (non-fatal): {e}"));
@@ -446,6 +447,7 @@ fn execute_epic(
             model: config.loop_config.reviewer_model.clone(),
             current_branch: feature_branch.to_string(),
             commit_range,
+            event_sink: opts.event_sink.clone(),
         };
         if let Err(e) = reviewer::execute(config, repo_root, &reviewer_opts, logger) {
             emit(tui_tx, &format!("Reviewer failed (non-fatal): {e}"));
