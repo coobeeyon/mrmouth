@@ -167,6 +167,7 @@ pub fn execute(config: &Config, repo_root: &Path, opts: ReadyOptions, tui: Optio
             local: false,
             prompt_override: Some(prompt),
             branch: None,
+            event_sink: None,
         };
 
         let run_result = run::execute(config, repo_root, run_opts, tui);

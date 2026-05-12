@@ -35,6 +35,7 @@ COPY --from=tools-builder /usr/local/cargo/bin/lb /usr/local/bin/lb
 COPY --from=tools-builder /usr/local/cargo/bin/trk /usr/local/bin/trk
 ENV RUSTUP_HOME=/usr/local/rustup
 ENV PATH="/usr/local/cargo/bin:${PATH}"
+RUN rustup component add rustfmt
 
 # Layer 5: Agent CLIs (changes occasionally)
 RUN npm install -g @anthropic-ai/claude-code @openai/codex

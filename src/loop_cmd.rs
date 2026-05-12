@@ -326,6 +326,7 @@ pub fn execute(
                 local: false,
                 prompt_override: None,
                 branch: Some(current_branch.clone()),
+                event_sink: None,
             };
 
             let head_before = git_head(repo_root);

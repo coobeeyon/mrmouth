@@ -2,6 +2,9 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use crate::config::Config;
+use crate::events::{
+    BranchAction, EventSinkHandle, FinishStatus, MrmouthEvent, SyncAction, SyncTool,
+};
 use crate::litebrite;
 use crate::prompt;
 use crate::reviewer;
@@ -68,10 +71,17 @@ pub struct DoOptions {
     pub timeout: u32,
     pub max_failures: u32,
     pub model: String,
+    pub event_sink: Option<EventSinkHandle>,
 }
 
 pub fn execute(config: &Config, repo_root: &Path, opts: DoOptions, tui: Option<&TuiHandle>) -> Result<(), DoError> {
     let tui_tx = tui.map(|t| t.sender("AGENT SESSION"));
+    emit_event(
+        &opts.event_sink,
+        MrmouthEvent::StageChanged {
+            stage: "Do".to_string(),
+        },
+    );
 
     // Create an epic-level logger so litebrite/subprocess output routes through
     // the TUI instead of falling back to eprintln.
@@ -85,6 +95,22 @@ pub fn execute(config: &Config, repo_root: &Path, opts: DoOptions, tui: Option<&
     // 1. Verify the item exists and determine its type
     let item_info = lb_show(repo_root, &opts.item_id)?;
     emit(&tui_tx, &format!("DO: {item_info}"));
+    emit_event(
+        &opts.event_sink,
+        MrmouthEvent::TaskSelected {
+            item_id: opts.item_id.clone(),
+            title: item_info.title.clone(),
+            parent_id: None,
+        },
+    );
+    emit_event(
+        &opts.event_sink,
+        MrmouthEvent::TaskLabel {
+            item_id: opts.item_id.clone(),
+            name: "type".to_string(),
+            value: item_info.item_type.clone(),
+        },
+    );
 
     // 2. Create feature branch (if not already on one)
     let current_branch = git_current_branch(repo_root)?;
@@ -92,14 +118,47 @@ pub fn execute(config: &Config, repo_root: &Path, opts: DoOptions, tui: Option<&
         let slug = make_slug(&item_info.title);
         let branch_name = format!("{}-{}", opts.item_id, slug);
         emit(&tui_tx, &format!("Creating feature branch: {branch_name}"));
+        emit_event(
+            &opts.event_sink,
+            MrmouthEvent::BranchLifecycle {
+                action: BranchAction::Creating,
+                branch: branch_name.clone(),
+                parent_branch: Some(current_branch.clone()),
+            },
+        );
         git_checkout_new_branch(repo_root, &branch_name)?;
+        emit_event(
+            &opts.event_sink,
+            MrmouthEvent::BranchLifecycle {
+                action: BranchAction::Created,
+                branch: branch_name.clone(),
+                parent_branch: Some(current_branch.clone()),
+            },
+        );
         // Push the new branch so container can clone it
         emit(&tui_tx, "Pushing branch to remote...");
+        emit_event(
+            &opts.event_sink,
+            MrmouthEvent::BranchLifecycle {
+                action: BranchAction::Pushing,
+                branch: branch_name.clone(),
+                parent_branch: Some(current_branch.clone()),
+            },
+        );
         let push_output = Command::new("git")
             .args(["-C", &repo_root.to_string_lossy(), "push", "-u", "origin", &branch_name])
             .output();
         match push_output {
-            Ok(o) if o.status.success() => {}
+            Ok(o) if o.status.success() => {
+                emit_event(
+                    &opts.event_sink,
+                    MrmouthEvent::BranchLifecycle {
+                        action: BranchAction::Pushed,
+                        branch: branch_name.clone(),
+                        parent_branch: Some(current_branch.clone()),
+                    },
+                );
+            }
             Ok(o) => emit(&tui_tx, &format!("WARNING: git push exited with code {} — container may fail to clone this branch", o.status.code().unwrap_or(-1))),
             Err(e) => emit(&tui_tx, &format!("WARNING: git push failed: {e} — container may fail to clone this branch")),
         }
@@ -122,10 +181,36 @@ pub fn execute(config: &Config, repo_root: &Path, opts: DoOptions, tui: Option<&
     // Final sync
     emit(&tui_tx, "DO COMPLETE");
     emit(&tui_tx, "Final push to remote...");
+    emit_event(
+        &opts.event_sink,
+        MrmouthEvent::Sync {
+            action: SyncAction::Starting,
+            tool: SyncTool::Git,
+            detail: Some("final push".to_string()),
+        },
+    );
     sync_and_push(repo_root, &feature_branch, epic_logger.as_ref());
+    emit_event(
+        &opts.event_sink,
+        MrmouthEvent::Sync {
+            action: SyncAction::Finished,
+            tool: SyncTool::Git,
+            detail: Some("final push".to_string()),
+        },
+    );
     emit(&tui_tx, &format!("Done. Merge branch '{feature_branch}' when ready."));
+    emit_event(
+        &opts.event_sink,
+        MrmouthEvent::finished(FinishStatus::Success, None::<String>),
+    );
 
     Ok(())
+}
+
+fn emit_event(sink: &Option<EventSinkHandle>, event: MrmouthEvent) {
+    if let Some(sink) = sink {
+        sink.emit(event);
+    }
 }
 
 fn execute_task(
@@ -157,6 +242,7 @@ fn execute_task(
         local: false,
         prompt_override: Some(prompt),
         branch: None,
+        event_sink: opts.event_sink.clone(),
     };
 
     let run_result = run::execute(config, repo_root, run_opts, tui);
@@ -272,6 +358,7 @@ fn execute_epic(
             local: false,
             prompt_override: Some(prompt),
             branch: None,
+            event_sink: opts.event_sink.clone(),
         };
 
         let run_result = run::execute_in_session(config, repo_root, run_opts, &session, tui);

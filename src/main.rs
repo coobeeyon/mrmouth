@@ -51,6 +51,10 @@ enum Commands {
         #[arg(long)]
         raw: bool,
 
+        /// Output mrmouth lifecycle events as JSONL; distinct from --raw inner-agent JSON
+        #[arg(long)]
+        json_events: bool,
+
         /// Override the agent model (default: from config)
         #[arg(long)]
         model: Option<String>,
@@ -99,6 +103,10 @@ enum Commands {
         /// Override the agent model (default: from config)
         #[arg(long)]
         model: Option<String>,
+
+        /// Output mrmouth lifecycle events as JSONL; disables the TUI
+        #[arg(long)]
+        json_events: bool,
     },
 
     /// Pick up ready items from litebrite and work through them
@@ -167,7 +175,7 @@ fn main() {
         config.agent = crate::agent::AgentKind::Claude;
     }
 
-    // Start TUI unless --raw is set or stderr is not a TTY
+    // Start TUI unless machine-readable output is selected or stderr is not a TTY.
     let project_name = repo_root
         .file_name()
         .and_then(|n| n.to_str())
@@ -176,7 +184,20 @@ fn main() {
         cli.command,
         Commands::Run { raw: true, .. } | Commands::Summary { .. }
     );
-    let tui = if use_raw {
+    let use_json_events = matches!(
+        cli.command,
+        Commands::Run {
+            json_events: true,
+            ..
+        } | Commands::Do {
+            json_events: true,
+            ..
+        }
+    );
+    let lifecycle_events = use_json_events.then(|| {
+        crate::events::EventSinkHandle::new(crate::events::JsonlEventSink::stdout())
+    });
+    let tui = if use_raw || use_json_events {
         None
     } else {
         tui::TuiHandle::try_start(project_name)
@@ -185,6 +206,7 @@ fn main() {
     let result: Result<(), FailureDebrief> = match cli.command {
         Commands::Run {
             raw,
+            json_events: _,
             model,
             timeout,
             local,
@@ -196,6 +218,7 @@ fn main() {
                 local,
                 prompt_override: None,
                 branch: None,
+                event_sink: lifecycle_events.clone(),
             };
             run::execute(&config, &repo_root, opts, tui.as_ref())
                 .map(|_| ())
@@ -224,12 +247,14 @@ fn main() {
             timeout,
             max_failures,
             model,
+            json_events: _,
         } => {
             let opts = do_cmd::DoOptions {
                 item_id,
                 timeout: timeout.unwrap_or(config.do_config.timeout),
                 max_failures: max_failures.unwrap_or(config.do_config.max_failures),
                 model: resolve_model(&config, model),
+                event_sink: lifecycle_events.clone(),
             };
             do_cmd::execute(&config, &repo_root, opts, tui.as_ref()).map_err(|e| e.debrief())
         }
@@ -259,6 +284,13 @@ fn main() {
     drop(tui);
 
     if let Err(d) = result {
+        if let Some(sink) = lifecycle_events {
+            sink.emit(crate::events::MrmouthEvent::failure(
+                d.message.clone(),
+                d.exit_code,
+                None::<String>,
+            ));
+        }
         d.print();
         std::process::exit(1);
     }

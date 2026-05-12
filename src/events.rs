@@ -1,3 +1,4 @@
+use std::io::{self, Write};
 use std::sync::{Arc, Mutex};
 
 use serde::{Deserialize, Serialize};
@@ -321,6 +322,49 @@ impl EventSink for RecordingEventSink {
     }
 }
 
+/// Sink that writes one mrmouth lifecycle event per JSONL line.
+///
+/// Serialization or write failures are reported to stderr so lifecycle JSON on
+/// stdout remains reserved for successfully encoded event objects.
+pub struct JsonlEventSink<W: Write + Send> {
+    writer: Arc<Mutex<W>>,
+}
+
+impl JsonlEventSink<io::Stdout> {
+    pub fn stdout() -> Self {
+        Self::new(io::stdout())
+    }
+}
+
+impl<W: Write + Send> JsonlEventSink<W> {
+    pub fn new(writer: W) -> Self {
+        Self {
+            writer: Arc::new(Mutex::new(writer)),
+        }
+    }
+}
+
+impl<W: Write + Send> EventSink for JsonlEventSink<W> {
+    fn emit(&self, event: &MrmouthEvent) {
+        let line = match event.to_json_line() {
+            Ok(line) => line,
+            Err(e) => {
+                eprintln!("warning: failed to serialize lifecycle event: {e}");
+                return;
+            }
+        };
+        match self.writer.lock() {
+            Ok(mut writer) => {
+                if let Err(e) = writeln!(writer, "{line}") {
+                    eprintln!("warning: failed to write lifecycle event: {e}");
+                }
+                let _ = writer.flush();
+            }
+            Err(_) => eprintln!("warning: lifecycle event writer lock poisoned"),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -470,5 +514,39 @@ mod tests {
 
         assert_eq!(first.events(), vec![event.clone()]);
         assert_eq!(second.events(), vec![event]);
+    }
+
+    #[test]
+    fn jsonl_sink_writes_one_event_per_line() {
+        let output = Arc::new(Mutex::new(Vec::<u8>::new()));
+        let sink = JsonlEventSink::new(SharedTestWriter(output.clone()));
+
+        sink.emit(&MrmouthEvent::StageChanged {
+            stage: "Agent".to_string(),
+        });
+        sink.emit(&MrmouthEvent::RunLabel {
+            name: "branch".to_string(),
+            value: "feature".to_string(),
+        });
+
+        let bytes = output.lock().unwrap().clone();
+        let text = String::from_utf8(bytes).unwrap();
+        assert_eq!(
+            text,
+            "{\"type\":\"stage_changed\",\"stage\":\"Agent\"}\n{\"type\":\"run_label\",\"name\":\"branch\",\"value\":\"feature\"}\n"
+        );
+    }
+
+    struct SharedTestWriter(Arc<Mutex<Vec<u8>>>);
+
+    impl Write for SharedTestWriter {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(buf);
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
     }
 }

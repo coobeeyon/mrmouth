@@ -10,6 +10,9 @@ use std::sync::Arc;
 use crate::agent::AgentKind;
 use crate::config::Config;
 use crate::docker::{ContainerArgs, CopyFromContainerOutcome, DockerBuilder};
+use crate::events::{
+    ContainerAction, EventSinkHandle, FinishStatus, MrmouthEvent, RunAction, SyncAction, SyncTool,
+};
 use crate::litebrite;
 use crate::logger::Logger;
 use crate::prompt;
@@ -33,6 +36,7 @@ pub struct RunOptions {
     pub local: bool,
     pub prompt_override: Option<String>,
     pub branch: Option<String>,
+    pub event_sink: Option<EventSinkHandle>,
 }
 
 /// A long-lived session container shared across multiple task runs (epic mode).
@@ -101,6 +105,20 @@ pub fn execute(
     if let Some(t) = tui {
         t.set_stage("Agent");
     }
+    emit_event(
+        &opts.event_sink,
+        MrmouthEvent::StageChanged {
+            stage: "Agent".to_string(),
+        },
+    );
+    emit_event(
+        &opts.event_sink,
+        MrmouthEvent::RunLifecycle {
+            action: RunAction::Starting,
+            run_id: None,
+            branch: None,
+        },
+    );
     // 0. Set up logging first so every stage is captured
     let log_dir = repo_root.join(&config.log_dir);
     fs::create_dir_all(&log_dir).map_err(|e| RunError::Io("creating log directory".into(), e))?;
@@ -121,6 +139,13 @@ pub fn execute(
         .unwrap_or_else(|| git_current_branch(repo_root).unwrap_or_else(|_| "main".into()));
 
     logger.log(&format!("AGENT RUN  branch={branch}  {timestamp}"));
+    emit_event(
+        &opts.event_sink,
+        MrmouthEvent::RunLabel {
+            name: "branch".to_string(),
+            value: branch.clone(),
+        },
+    );
 
     // 1. Preflight checks
     let local = opts.local || has_local_only_tooling_branch(repo_root);
@@ -134,6 +159,14 @@ pub fn execute(
     } else {
         logger.log("Checking preflight conditions...");
     }
+    emit_event(
+        &opts.event_sink,
+        MrmouthEvent::RunLifecycle {
+            action: RunAction::Preflight,
+            run_id: Some(log_filename.clone()),
+            branch: Some(branch.clone()),
+        },
+    );
     preflight(repo_root, local, &effective_dockerfile, Some(&logger)).inspect_err(|_| {
         logger.flush();
     })?;
@@ -156,7 +189,23 @@ pub fn execute(
 
     // 3. Sync litebrite (best-effort)
     logger.log("Syncing litebrite...");
+    emit_event(
+        &opts.event_sink,
+        MrmouthEvent::Sync {
+            action: SyncAction::Starting,
+            tool: SyncTool::Litebrite,
+            detail: None,
+        },
+    );
     litebrite::init_and_sync(repo_root, Some(&logger));
+    emit_event(
+        &opts.event_sink,
+        MrmouthEvent::Sync {
+            action: SyncAction::Finished,
+            tool: SyncTool::Litebrite,
+            detail: None,
+        },
+    );
 
     // 4. Write runner entrypoint script
     let runner_script = write_runner_script(
@@ -171,6 +220,23 @@ pub fn execute(
 
     // 5. Build Docker image
     logger.log("Docker build starting...");
+    emit_event(
+        &opts.event_sink,
+        MrmouthEvent::RunLifecycle {
+            action: RunAction::BuildingImage,
+            run_id: Some(log_filename.clone()),
+            branch: Some(branch.clone()),
+        },
+    );
+    emit_event(
+        &opts.event_sink,
+        MrmouthEvent::ContainerLifecycle {
+            action: ContainerAction::BuildingImage,
+            name: config.image.clone(),
+            image_id: None,
+            exit_code: None,
+        },
+    );
     let docker = DockerBuilder::new(&config.image);
     let build_start = std::time::Instant::now();
     docker
@@ -180,6 +246,15 @@ pub fn execute(
         "::mrmouth::timing phase=docker-build elapsed_ms={}",
         build_start.elapsed().as_millis()
     ));
+    emit_event(
+        &opts.event_sink,
+        MrmouthEvent::ContainerLifecycle {
+            action: ContainerAction::ImageBuilt,
+            name: config.image.clone(),
+            image_id: docker.image_id(),
+            exit_code: None,
+        },
+    );
 
     // 6. Ensure persistent volume
     let volume = config.effective_volume(repo_root);
@@ -197,6 +272,15 @@ pub fn execute(
     // 8. Start container
     logger.log(&format!("AGENT SESSION  container={container_name}"));
     logger.log(&format!("Branch: {branch}"));
+    emit_event(
+        &opts.event_sink,
+        MrmouthEvent::ContainerLifecycle {
+            action: ContainerAction::Starting,
+            name: container_name.clone(),
+            image_id: docker.image_id(),
+            exit_code: None,
+        },
+    );
 
     let container_args = ContainerArgs {
         name: container_name.clone(),
@@ -212,6 +296,15 @@ pub fn execute(
 
     let container_start = std::time::Instant::now();
     let mut handle = docker.run(&container_args).map_err(RunError::Docker)?;
+    emit_event(
+        &opts.event_sink,
+        MrmouthEvent::ContainerLifecycle {
+            action: ContainerAction::Started,
+            name: container_name.clone(),
+            image_id: docker.image_id(),
+            exit_code: None,
+        },
+    );
 
     // 8b. Spawn a watcher that stops the container if the TUI user cancels (q / Ctrl+C)
     let watcher_done = Arc::new(AtomicBool::new(false));
@@ -252,6 +345,16 @@ pub fn execute(
                 logger.log_file_only(line);
             })
             .map_err(RunError::Docker)?;
+    } else if opts.event_sink.is_some() {
+        handle
+            .stream_output(|line| {
+                if should_suppress_stream_line(config.agent, line) {
+                    return;
+                }
+                let _ = writeln!(jsonl_writer, "{line}");
+                logger.log_file_only(line);
+            })
+            .map_err(RunError::Docker)?;
     } else {
         let mut formatter = StreamFormatter::new(is_tty);
         handle
@@ -280,6 +383,15 @@ pub fn execute(
     logger.log(&format!(
         "Container {container_name} finished (exit code {exit_code})."
     ));
+    emit_event(
+        &opts.event_sink,
+        MrmouthEvent::ContainerLifecycle {
+            action: ContainerAction::Exited,
+            name: container_name.clone(),
+            image_id: docker.image_id(),
+            exit_code: Some(exit_code),
+        },
+    );
 
     // 11. Update symlinks atomically (latest.jsonl and latest.log)
     let latest_jsonl = log_dir.join("latest.jsonl");
@@ -293,19 +405,60 @@ pub fn execute(
     // 12. Post-run sync before extracting files. This keeps self-produced,
     // already-pushed Dockerfile edits from dirtying the host before pull.
     logger.log("Post-run sync...");
+    emit_event(
+        &opts.event_sink,
+        MrmouthEvent::RunLifecycle {
+            action: RunAction::PullingChanges,
+            run_id: Some(log_filename.clone()),
+            branch: Some(branch.clone()),
+        },
+    );
     if !local && file_remote_path.is_none() {
         pull_code_changes(repo_root, &logger);
     }
 
     // 13. Extract updated Dockerfile from container (agent may have modified it)
     if !local {
+        emit_event(
+            &opts.event_sink,
+            MrmouthEvent::RunLifecycle {
+                action: RunAction::ExtractingDockerfile,
+                run_id: Some(log_filename.clone()),
+                branch: Some(branch.clone()),
+            },
+        );
         extract_updated_dockerfile(repo_root, &config.dockerfile, &container_name, &logger);
     }
 
     // 14. Clean up container
+    emit_event(
+        &opts.event_sink,
+        MrmouthEvent::ContainerLifecycle {
+            action: ContainerAction::Removed,
+            name: container_name.clone(),
+            image_id: docker.image_id(),
+            exit_code: None,
+        },
+    );
     DockerBuilder::remove_container(&container_name);
 
+    emit_event(
+        &opts.event_sink,
+        MrmouthEvent::Sync {
+            action: SyncAction::Starting,
+            tool: SyncTool::Litebrite,
+            detail: Some("post-run".to_string()),
+        },
+    );
     litebrite::init_and_sync(repo_root, Some(&logger));
+    emit_event(
+        &opts.event_sink,
+        MrmouthEvent::Sync {
+            action: SyncAction::Finished,
+            tool: SyncTool::Litebrite,
+            detail: Some("post-run".to_string()),
+        },
+    );
     logger.log(&format!("Done. Log saved: {}", log_path.display()));
 
     if exit_code != 0 {
@@ -319,7 +472,26 @@ pub fn execute(
         });
     }
 
+    emit_event(
+        &opts.event_sink,
+        MrmouthEvent::RunLifecycle {
+            action: RunAction::Finished,
+            run_id: Some(log_filename),
+            branch: Some(branch),
+        },
+    );
+    emit_event(
+        &opts.event_sink,
+        MrmouthEvent::finished(FinishStatus::Success, None::<String>),
+    );
+
     Ok(logger)
+}
+
+fn emit_event(sink: &Option<EventSinkHandle>, event: MrmouthEvent) {
+    if let Some(sink) = sink {
+        sink.emit(event);
+    }
 }
 
 /// Boot a long-lived session container: preflight, build image, start detached,
@@ -497,6 +669,20 @@ pub fn execute_in_session(
     if let Some(t) = tui {
         t.set_stage("Agent");
     }
+    emit_event(
+        &opts.event_sink,
+        MrmouthEvent::StageChanged {
+            stage: "Agent".to_string(),
+        },
+    );
+    emit_event(
+        &opts.event_sink,
+        MrmouthEvent::RunLifecycle {
+            action: RunAction::Starting,
+            run_id: None,
+            branch: None,
+        },
+    );
 
     // 0. Per-task log
     let log_dir = repo_root.join(&config.log_dir);
@@ -520,6 +706,13 @@ pub fn execute_in_session(
         "AGENT RUN  branch={branch}  {timestamp}  session={}",
         session.container_name
     ));
+    emit_event(
+        &opts.event_sink,
+        MrmouthEvent::RunLabel {
+            name: "branch".to_string(),
+            value: branch.clone(),
+        },
+    );
 
     // 1. Generate task.sh for this iteration
     let prompt_text = match opts.prompt_override.as_deref() {
@@ -545,6 +738,15 @@ pub fn execute_in_session(
     let is_tty = logger.has_tui() || std::io::stdout().is_terminal();
 
     let container_start = std::time::Instant::now();
+    emit_event(
+        &opts.event_sink,
+        MrmouthEvent::ContainerLifecycle {
+            action: ContainerAction::Starting,
+            name: session.container_name.clone(),
+            image_id: Some(session.image_id.clone()),
+            exit_code: None,
+        },
+    );
     let mut handle = crate::docker::DockerBuilder::exec_script(
         &session.container_name,
         "task.sh",
@@ -552,6 +754,15 @@ pub fn execute_in_session(
         timeout_secs,
     )
     .map_err(RunError::Docker)?;
+    emit_event(
+        &opts.event_sink,
+        MrmouthEvent::ContainerLifecycle {
+            action: ContainerAction::Started,
+            name: session.container_name.clone(),
+            image_id: Some(session.image_id.clone()),
+            exit_code: None,
+        },
+    );
 
     // Cancel watcher
     let watcher_done = Arc::new(AtomicBool::new(false));
@@ -584,6 +795,16 @@ pub fn execute_in_session(
                 logger.log_file_only(line);
             })
             .map_err(RunError::Docker)?;
+    } else if opts.event_sink.is_some() {
+        handle
+            .stream_output(|line| {
+                if should_suppress_stream_line(config.agent, line) {
+                    return;
+                }
+                let _ = writeln!(jsonl_writer, "{line}");
+                logger.log_file_only(line);
+            })
+            .map_err(RunError::Docker)?;
     } else {
         let mut formatter = StreamFormatter::new(is_tty);
         handle
@@ -611,6 +832,15 @@ pub fn execute_in_session(
         "Task in session {} finished (exit code {exit_code}).",
         session.container_name
     ));
+    emit_event(
+        &opts.event_sink,
+        MrmouthEvent::ContainerLifecycle {
+            action: ContainerAction::Exited,
+            name: session.container_name.clone(),
+            image_id: Some(session.image_id.clone()),
+            exit_code: Some(exit_code),
+        },
+    );
 
     // Update symlinks
     let latest_jsonl = log_dir.join("latest.jsonl");
@@ -625,6 +855,14 @@ pub fn execute_in_session(
     // self-produced, already-pushed Dockerfile edits from dirtying the host
     // before pull.
     logger.log("Post-run sync...");
+    emit_event(
+        &opts.event_sink,
+        MrmouthEvent::RunLifecycle {
+            action: RunAction::PullingChanges,
+            run_id: Some(log_filename.clone()),
+            branch: Some(branch.clone()),
+        },
+    );
     if !session.local && session.file_remote_path.is_none() {
         pull_code_changes(repo_root, &logger);
     }
@@ -632,6 +870,14 @@ pub fn execute_in_session(
     // Extract updated Dockerfile (agent may have edited it). Enables the caller
     // to detect Dockerfile changes and rebuild the session if needed.
     if !session.local {
+        emit_event(
+            &opts.event_sink,
+            MrmouthEvent::RunLifecycle {
+                action: RunAction::ExtractingDockerfile,
+                run_id: Some(log_filename.clone()),
+                branch: Some(branch.clone()),
+            },
+        );
         extract_updated_dockerfile(
             repo_root,
             &config.dockerfile,
@@ -640,7 +886,23 @@ pub fn execute_in_session(
         );
     }
 
+    emit_event(
+        &opts.event_sink,
+        MrmouthEvent::Sync {
+            action: SyncAction::Starting,
+            tool: SyncTool::Litebrite,
+            detail: Some("post-run".to_string()),
+        },
+    );
     litebrite::init_and_sync(repo_root, Some(&logger));
+    emit_event(
+        &opts.event_sink,
+        MrmouthEvent::Sync {
+            action: SyncAction::Finished,
+            tool: SyncTool::Litebrite,
+            detail: Some("post-run".to_string()),
+        },
+    );
     logger.log(&format!("Done. Log saved: {}", log_path.display()));
 
     if exit_code != 0 {
@@ -652,6 +914,15 @@ pub fn execute_in_session(
             log_path: log_path.clone(),
         });
     }
+
+    emit_event(
+        &opts.event_sink,
+        MrmouthEvent::RunLifecycle {
+            action: RunAction::Finished,
+            run_id: Some(log_filename),
+            branch: Some(branch),
+        },
+    );
 
     Ok(logger)
 }
