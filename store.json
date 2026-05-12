@@ -705,11 +705,10 @@
       "title": "Add structured lifecycle output mode",
       "description": "Outcome: supervising tools can run mrmouth with machine-readable lifecycle output instead of scraping the TUI or human log lines. Context: this should be mrmouth-level lifecycle JSON, distinct from existing raw inner-agent JSON streams. Completion: a CLI flag exposes JSONL lifecycle events with a final summary event and tests verify the contract.",
       "item_type": "feature",
-      "status": "open",
+      "status": "closed",
       "priority": 1,
-      "claimed_by": "agent-runner",
       "created_at": "2026-05-12T15:47:24.966878011Z",
-      "updated_at": "2026-05-12T18:03:36.118886698Z"
+      "updated_at": "2026-05-12T18:04:48.308537813Z"
     },
     "lb-dl1f": {
       "id": "lb-dl1f",
