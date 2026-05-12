@@ -987,8 +987,9 @@
       "item_type": "task",
       "status": "open",
       "priority": 1,
+      "claimed_by": "agent-runner",
       "created_at": "2026-05-12T15:47:37.811625052Z",
-      "updated_at": "2026-05-12T15:47:37.811625052Z"
+      "updated_at": "2026-05-12T16:34:00.511012332Z"
     },
     "lb-kl4s": {
       "id": "lb-kl4s",
