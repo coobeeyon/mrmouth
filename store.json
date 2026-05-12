@@ -15,11 +15,10 @@
       "title": "Add JSONL lifecycle renderer and CLI flag",
       "description": "Goal: Expose mrmouth-level lifecycle events as JSONL for supervising agents. Context: existing mrmouth run --raw prints raw Claude/Codex stream JSON and must remain distinct from lifecycle output. Requirements: add a clearly named flag such as --json-events or --agent-json for appropriate commands, at minimum mrmouth do and run if the implementation path is shared; disable TUI when lifecycle JSON is selected; write one JSON object per lifecycle event to stdout; keep human errors on stderr. Acceptance: cargo test passes and manual help text distinguishes raw inner-agent JSON from mrmouth lifecycle JSON. Out of scope: changing inner agent stream formats.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 1,
-      "claimed_by": "agent-runner",
       "created_at": "2026-05-12T15:48:34.200004779Z",
-      "updated_at": "2026-05-12T16:52:28.643864091Z"
+      "updated_at": "2026-05-12T16:59:59.145604294Z"
     },
     "lb-1ae5": {
       "id": "lb-1ae5",
