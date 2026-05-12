@@ -10,6 +10,16 @@
       "created_at": "2026-03-26T03:18:25.635507194Z",
       "updated_at": "2026-03-26T03:40:21.666644865Z"
     },
+    "lb-1ae5": {
+      "id": "lb-1ae5",
+      "title": "Drive TUI from mrmouth events",
+      "description": "Goal: Make src/tui.rs consume mrmouth events as a renderer rather than exposing orchestration-specific methods as the primary integration surface. Context: TuiHandle currently exposes sender, set_stage, set_run, cancellation flag, and pane-specific TuiSender values. Requirements: add a TUI event sink or adapter that maps Message events to panes and stage/run events to the header; preserve q and Ctrl+C cancellation behavior; keep the render loop focused on presentation. Acceptance: existing TUI behavior still works in an interactive terminal and cargo test passes. Out of scope: adding JSON output.",
+      "item_type": "task",
+      "status": "open",
+      "priority": 1,
+      "created_at": "2026-05-12T15:48:06.132722886Z",
+      "updated_at": "2026-05-12T15:48:06.132722886Z"
+    },
     "lb-1brq": {
       "id": "lb-1brq",
       "title": "Fix Epic CLI args not distinguishing explicit vs default values",
@@ -1934,6 +1944,11 @@
     },
     {
       "from_id": "lb-451n",
+      "to_id": "lb-hgyp",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-1ae5",
       "to_id": "lb-hgyp",
       "dep_type": "parent"
     }
