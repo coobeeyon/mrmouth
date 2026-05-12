@@ -460,6 +460,16 @@
       "created_at": "2026-03-30T04:00:10.132735429Z",
       "updated_at": "2026-03-30T04:04:00.332484872Z"
     },
+    "lb-7nr4": {
+      "id": "lb-7nr4",
+      "title": "Inception-test mrmouth output modes",
+      "description": "Goal: Verify the event-rendering refactor with real mrmouth invocations in the output modes that static tests do not cover.\nContext: The lb-40uv branch introduced lifecycle events, TUI event rendering, --json-events, and raw inner-agent output separation. Review found a likely behavior bug where normal TUI mode creates an event sink and run.rs uses opts.event_sink.is_some() to skip formatted stream display.\nRequirements: Run live smoke checks for plain mrmouth run, mrmouth run --json-events, and mrmouth run --raw in a disposable or clearly scoped repo/task so the agent cannot damage unrelated work. Capture stdout/stderr/log behavior for each mode. Specifically confirm whether plain TUI mode displays formatted agent stream output live, whether --json-events emits lifecycle JSONL on stdout without TUI, and whether --raw still emits inner-agent JSONL. If live Docker/agent execution is unavailable, document the exact blocker and create the smallest reproducible harness or command transcript needed for the next runner.\nAcceptance: Findings are recorded in the ticket or a follow-up commit, including commands run, observed outputs, log/jsonl paths, and pass/fail for each mode. Any confirmed regression has a child or sibling implementation task with exact file/line context. No unrelated code changes are made.\nOut of scope: Fixing the stream suppression regression unless the task is explicitly expanded; this ticket is for inception/live verification and precise follow-up scoping.",
+      "item_type": "task",
+      "status": "open",
+      "priority": 1,
+      "created_at": "2026-05-12T18:31:31.699147174Z",
+      "updated_at": "2026-05-12T18:31:31.699147174Z"
+    },
     "lb-7s17": {
       "id": "lb-7s17",
       "title": "Add .dockerignore to reduce Docker build context",
@@ -2100,6 +2110,11 @@
     {
       "from_id": "lb-zptt",
       "to_id": "lb-obsn",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-7nr4",
+      "to_id": "lb-40uv",
       "dep_type": "parent"
     }
   ]
