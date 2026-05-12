@@ -985,11 +985,10 @@
       "title": "Define mrmouth event model and sink abstraction",
       "description": "Goal: Add the internal event vocabulary and sink interface that separates orchestration from presentation. Context: current status messages are direct logger.log, eprintln, and TuiHandle calls across src/main.rs, src/run.rs, src/do_cmd.rs, src/ready.rs, src/loop_cmd.rs, src/reviewer.rs, and src/shipper.rs. Requirements: add a focused module such as src/events.rs with event structs or enums for message lines, stage changes, run/task labels, task selection, branch/container/run lifecycle, reviewer/shipper lifecycle, sync, finish, and failure; include an EventSink trait or cloneable sink type; include a no-op sink and fanout sink if useful. Acceptance: cargo test passes and event types are documented enough for later renderer tasks. Out of scope: migrating every caller or adding CLI JSON flags.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 1,
-      "claimed_by": "agent-runner",
       "created_at": "2026-05-12T15:47:37.811625052Z",
-      "updated_at": "2026-05-12T16:34:00.511012332Z"
+      "updated_at": "2026-05-12T16:42:19.226749309Z"
     },
     "lb-kl4s": {
       "id": "lb-kl4s",
