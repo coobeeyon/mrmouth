@@ -19,3 +19,20 @@ Structured lifecycle output should use a separate flag such as `--json-events`
 or `--agent-json`, with final summary events that supervising tools can parse.
 
 The Litebrite epic for this plan is `lb-40uv`.
+
+## Core Event Surface
+
+`src/events.rs` defines the first internal event vocabulary. `MrmouthEvent` is
+a serde-tagged enum with `snake_case` event names and variants for display
+messages, stage changes, run/task labels, task selection, branch lifecycle,
+container lifecycle, run lifecycle, reviewer lifecycle, shipper lifecycle,
+sync, finish, and failure. The types are intentionally mrmouth lifecycle
+events, not passthrough Claude/Codex stream events.
+
+The sink abstraction is `EventSink`, with `EventSinkHandle` as the cloneable
+handle passed through orchestration code. `NoopEventSink` provides a default
+do-nothing target, `FanoutEventSink` forwards one event to multiple sinks, and
+`RecordingEventSink` supports focused tests for event-producing code. Callers
+have not been migrated yet; later tasks should route existing `Logger`,
+`TuiHandle`, reviewer, shipper, and command lifecycle output through this
+surface.

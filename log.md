@@ -14,3 +14,6 @@ Created Litebrite epic `lb-40uv` for separating mrmouth lifecycle events from TU
 
 ## [2026-05-12] fixed | Dockerfile extraction after pull
 Recorded the lifecycle rule for container-edited Dockerfiles: remote-backed runs should pull first, then extract via a temporary file and leave the host worktree untouched when the post-pull Dockerfile already matches the container content. This prevents self-produced, already-pushed Dockerfile edits from blocking `git pull --ff-only`.
+
+## [2026-05-12] implemented | Core mrmouth event surface
+Recorded the new `src/events.rs` API for lifecycle event emission: serde-tagged `MrmouthEvent` variants, cloneable `EventSinkHandle`, no-op/fanout sinks, and a recording sink for focused tests. This is the foundation for later TUI, human, and JSONL renderers.
