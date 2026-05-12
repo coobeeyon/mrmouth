@@ -1427,8 +1427,9 @@
       "item_type": "task",
       "status": "open",
       "priority": 1,
+      "claimed_by": "agent-runner",
       "created_at": "2026-05-12T15:49:00.128131952Z",
-      "updated_at": "2026-05-12T15:49:00.128131952Z"
+      "updated_at": "2026-05-12T17:09:06.955031935Z"
     },
     "lb-v1qa": {
       "id": "lb-v1qa",
