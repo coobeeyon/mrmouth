@@ -48,11 +48,11 @@ enum Commands {
     /// Run one agent session
     Run {
         /// Output raw JSONL instead of formatted stream
-        #[arg(long)]
+        #[arg(long, conflicts_with = "json_events")]
         raw: bool,
 
         /// Output mrmouth lifecycle events as JSONL; distinct from --raw inner-agent JSON
-        #[arg(long)]
+        #[arg(long, conflicts_with = "raw")]
         json_events: bool,
 
         /// Override the agent model (default: from config)
@@ -180,23 +180,10 @@ fn main() {
         .file_name()
         .and_then(|n| n.to_str())
         .unwrap_or("mrmouth");
-    let use_raw = matches!(
-        cli.command,
-        Commands::Run { raw: true, .. } | Commands::Summary { .. }
-    );
-    let use_json_events = matches!(
-        cli.command,
-        Commands::Run {
-            json_events: true,
-            ..
-        } | Commands::Do {
-            json_events: true,
-            ..
-        }
-    );
-    let lifecycle_events = use_json_events.then(|| {
-        crate::events::EventSinkHandle::new(crate::events::JsonlEventSink::stdout())
-    });
+    let output_modes = output_modes(&cli.command);
+    let lifecycle_events = output_modes
+        .json_events
+        .then(|| crate::events::EventSinkHandle::new(crate::events::JsonlEventSink::stdout()));
     let lifecycle_command = match &cli.command {
         Commands::Run { .. } => "run",
         Commands::Do { .. } => "do",
@@ -209,10 +196,10 @@ fn main() {
         Commands::Do { item_id, .. } => Some(item_id.clone()),
         _ => None,
     };
-    let tui = if use_raw || use_json_events {
-        None
-    } else {
+    let tui = if output_modes.start_tui {
         tui::TuiHandle::try_start(project_name)
+    } else {
+        None
     };
 
     let result: Result<(), FailureDebrief> = match cli.command {
@@ -286,9 +273,7 @@ fn main() {
             let log_file = log_file.unwrap_or_else(|| format!("{}/latest.jsonl", config.log_dir));
             summary::execute(&config, &repo_root, &log_file, None).map_err(|e| e.debrief())
         }
-        Commands::CodexLogin => {
-            codex_login::execute(&config, &repo_root).map_err(|e| e.debrief())
-        }
+        Commands::CodexLogin => codex_login::execute(&config, &repo_root).map_err(|e| e.debrief()),
     };
 
     // Drop TUI first to restore terminal before printing errors or exiting —
@@ -297,26 +282,62 @@ fn main() {
 
     if let Err(d) = result {
         if let Some(sink) = lifecycle_events {
-            let mut summary =
-                crate::events::LifecycleSummary::failed(lifecycle_command, d.message.clone())
-                    .next_action("inspect_error");
-            if let Some(item_id) = lifecycle_item_id {
-                summary = summary.item_id(item_id);
-            }
-            if let Some(exit_code) = d.exit_code {
-                summary = summary.exit_code(exit_code);
-            }
-            if let Some(log_path) = &d.log_path {
-                summary = summary.log_path(log_path.display().to_string());
-                if let Some(jsonl_path) = inferred_jsonl_path(log_path) {
-                    summary = summary.jsonl_path(jsonl_path.display().to_string());
-                }
-            }
+            let summary = lifecycle_failure_summary(lifecycle_command, lifecycle_item_id, &d);
             sink.emit(crate::events::MrmouthEvent::LifecycleSummary { summary });
         }
         d.print();
         std::process::exit(1);
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct OutputModes {
+    json_events: bool,
+    start_tui: bool,
+}
+
+fn output_modes(command: &Commands) -> OutputModes {
+    let raw = matches!(
+        command,
+        Commands::Run { raw: true, .. } | Commands::Summary { .. }
+    );
+    let json_events = matches!(
+        command,
+        Commands::Run {
+            json_events: true,
+            ..
+        } | Commands::Do {
+            json_events: true,
+            ..
+        }
+    );
+
+    OutputModes {
+        json_events,
+        start_tui: !raw && !json_events,
+    }
+}
+
+fn lifecycle_failure_summary(
+    command: &str,
+    item_id: Option<String>,
+    d: &FailureDebrief,
+) -> crate::events::LifecycleSummary {
+    let mut summary = crate::events::LifecycleSummary::failed(command, d.message.clone())
+        .next_action("inspect_error");
+    if let Some(item_id) = item_id {
+        summary = summary.item_id(item_id);
+    }
+    if let Some(exit_code) = d.exit_code {
+        summary = summary.exit_code(exit_code);
+    }
+    if let Some(log_path) = &d.log_path {
+        summary = summary.log_path(log_path.display().to_string());
+        if let Some(jsonl_path) = inferred_jsonl_path(log_path) {
+            summary = summary.jsonl_path(jsonl_path.display().to_string());
+        }
+    }
+    summary
 }
 
 fn inferred_jsonl_path(log_path: &std::path::Path) -> Option<std::path::PathBuf> {
@@ -332,4 +353,106 @@ fn resolve_model(config: &Config, override_model: Option<String>) -> String {
         return String::new();
     }
     config.model.clone()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::Parser;
+    use serde_json::json;
+    use std::path::PathBuf;
+
+    #[test]
+    fn run_raw_and_json_events_conflict() {
+        let err = match Cli::try_parse_from(["mrmouth", "run", "--raw", "--json-events"]) {
+            Ok(_) => panic!("expected --raw and --json-events to conflict"),
+            Err(err) => err,
+        };
+
+        assert_eq!(err.kind(), clap::error::ErrorKind::ArgumentConflict);
+    }
+
+    #[test]
+    fn json_events_mode_disables_tui_for_run() {
+        let command = Commands::Run {
+            raw: false,
+            json_events: true,
+            model: None,
+            timeout: None,
+            local: false,
+        };
+
+        assert_eq!(
+            output_modes(&command),
+            OutputModes {
+                json_events: true,
+                start_tui: false,
+            }
+        );
+    }
+
+    #[test]
+    fn json_events_mode_disables_tui_for_do() {
+        let command = Commands::Do {
+            item_id: "lb-1234".to_string(),
+            timeout: None,
+            max_failures: None,
+            model: None,
+            json_events: true,
+        };
+
+        assert_eq!(
+            output_modes(&command),
+            OutputModes {
+                json_events: true,
+                start_tui: false,
+            }
+        );
+    }
+
+    #[test]
+    fn raw_mode_disables_tui_without_lifecycle_json() {
+        let command = Commands::Run {
+            raw: true,
+            json_events: false,
+            model: None,
+            timeout: None,
+            local: false,
+        };
+
+        assert_eq!(
+            output_modes(&command),
+            OutputModes {
+                json_events: false,
+                start_tui: false,
+            }
+        );
+    }
+
+    #[test]
+    fn failure_summary_includes_item_exit_and_inferred_jsonl_path() {
+        let mut debrief = FailureDebrief::new("container failed".to_string());
+        debrief.exit_code = Some(17);
+        debrief.log_path = Some(PathBuf::from("/repo/logs/run-1.log"));
+
+        let summary = lifecycle_failure_summary("do", Some("lb-1234".to_string()), &debrief);
+        let event = crate::events::MrmouthEvent::LifecycleSummary { summary };
+
+        assert_eq!(
+            event.to_json_value().unwrap(),
+            json!({
+                "type": "lifecycle_summary",
+                "summary": {
+                    "status": "failed",
+                    "command": "do",
+                    "item_id": "lb-1234",
+                    "log_path": "/repo/logs/run-1.log",
+                    "jsonl_path": "/repo/logs/run-1.jsonl",
+                    "exit_code": 17,
+                    "failure": "container failed",
+                    "next_action": "inspect_error",
+                }
+            })
+        );
+    }
 }

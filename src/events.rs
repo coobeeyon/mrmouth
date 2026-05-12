@@ -641,6 +641,34 @@ mod tests {
     }
 
     #[test]
+    fn constructs_success_lifecycle_summary_payload() {
+        let event = MrmouthEvent::LifecycleSummary {
+            summary: LifecycleSummary::success("run")
+                .branch("lb-work")
+                .log_path("/repo/logs/run.log")
+                .jsonl_path("/repo/logs/run.jsonl")
+                .exit_code(0)
+                .next_action("none"),
+        };
+
+        assert_eq!(
+            event.to_json_value().unwrap(),
+            json!({
+                "type": "lifecycle_summary",
+                "summary": {
+                    "status": "success",
+                    "command": "run",
+                    "branch": "lb-work",
+                    "log_path": "/repo/logs/run.log",
+                    "jsonl_path": "/repo/logs/run.jsonl",
+                    "exit_code": 0,
+                    "next_action": "none",
+                }
+            })
+        );
+    }
+
+    #[test]
     fn fanout_forwards_events_to_each_sink() {
         let first = RecordingEventSink::default();
         let second = RecordingEventSink::default();
@@ -677,6 +705,18 @@ mod tests {
         assert_eq!(
             text,
             "{\"type\":\"stage_changed\",\"stage\":\"Agent\"}\n{\"type\":\"run_label\",\"name\":\"branch\",\"value\":\"feature\"}\n"
+        );
+
+        let parsed: Vec<serde_json::Value> = text
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+        assert_eq!(
+            parsed,
+            vec![
+                json!({"type": "stage_changed", "stage": "Agent"}),
+                json!({"type": "run_label", "name": "branch", "value": "feature"}),
+            ]
         );
     }
 
