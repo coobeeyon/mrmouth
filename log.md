@@ -11,3 +11,6 @@ Captured that the desired Codex capability is broader than mrmouth operation: au
 
 ## [2026-05-12] planned | Event rendering separation
 Created Litebrite epic `lb-40uv` for separating mrmouth lifecycle events from TUI rendering and recorded the architectural intent: core flows emit events, renderers handle TUI/human/JSON/log presentation, and lifecycle JSON remains distinct from raw inner-agent JSON.
+
+## [2026-05-12] fixed | Dockerfile extraction after pull
+Recorded the lifecycle rule for container-edited Dockerfiles: remote-backed runs should pull first, then extract via a temporary file and leave the host worktree untouched when the post-pull Dockerfile already matches the container content. This prevents self-produced, already-pushed Dockerfile edits from blocking `git pull --ff-only`.
