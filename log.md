@@ -8,3 +8,6 @@ Recorded that mrmouth-prepared brites should primarily form a nested parent/chil
 
 ## [2026-05-12] generalized | Brite authoring as work graph design
 Captured that the desired Codex capability is broader than mrmouth operation: author nested litebrite work graphs from user goals, with parent brites for outcomes, leaf brites as ramp-in handoffs, and sibling `blocks` for true ordering constraints.
+
+## [2026-05-12] planned | Event rendering separation
+Created Litebrite epic `lb-40uv` for separating mrmouth lifecycle events from TUI rendering and recorded the architectural intent: core flows emit events, renderers handle TUI/human/JSON/log presentation, and lifecycle JSON remains distinct from raw inner-agent JSON.
