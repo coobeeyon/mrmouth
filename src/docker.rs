@@ -22,12 +22,12 @@ RUN MUSL_TARGET="$(uname -m)-unknown-linux-musl" && \
     cargo install --git https://github.com/coobeeyon/litebrite.git --target "$MUSL_TARGET" && \
     cargo install --git https://github.com/coobeeyon/trapperkeeper.git --target "$MUSL_TARGET"
 
-# Stage 2: Runtime image — no Rust toolchain
+# Stage 2: Runtime image
 FROM node:22
 
 # Layer 1: System deps (changes ~never)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    unzip openssh-client sudo curl git-lfs \
+    unzip openssh-client sudo curl git-lfs ripgrep cargo \
   && git lfs install \
   && rm -rf /var/lib/apt/lists/*
 

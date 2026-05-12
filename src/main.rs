@@ -4,6 +4,7 @@ mod config;
 mod debrief;
 mod do_cmd;
 mod docker;
+pub mod events;
 mod litebrite;
 mod logger;
 mod loop_cmd;
