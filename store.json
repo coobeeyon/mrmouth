@@ -295,11 +295,10 @@
       "title": "Refactor Logger to emit through display sinks",
       "description": "Goal: Decouple src/logger.rs from direct TuiSender ownership so log writing and display rendering are separate responsibilities. Context: Logger currently tees display to optional TuiSender or stderr while also writing log files, which makes TUI a dependency of shared logging. Requirements: keep durable file logging behavior; route display lines through an event/display sink abstraction; preserve tee_stderr behavior for subprocess stderr; avoid changing log file formats unless required. Acceptance: cargo test passes and non-TUI runs still print human-readable lines to stderr. Out of scope: full command migration and JSON lifecycle output.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 1,
-      "claimed_by": "agent-runner",
       "created_at": "2026-05-12T15:47:57.537623952Z",
-      "updated_at": "2026-05-12T17:20:21.662244967Z"
+      "updated_at": "2026-05-12T17:27:12.263923887Z"
     },
     "lb-472j": {
       "id": "lb-472j",
