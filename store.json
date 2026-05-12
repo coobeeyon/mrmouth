@@ -10,6 +10,16 @@
       "created_at": "2026-03-26T03:18:25.635507194Z",
       "updated_at": "2026-03-26T03:40:21.666644865Z"
     },
+    "lb-174a": {
+      "id": "lb-174a",
+      "title": "Add JSONL lifecycle renderer and CLI flag",
+      "description": "Goal: Expose mrmouth-level lifecycle events as JSONL for supervising agents. Context: existing mrmouth run --raw prints raw Claude/Codex stream JSON and must remain distinct from lifecycle output. Requirements: add a clearly named flag such as --json-events or --agent-json for appropriate commands, at minimum mrmouth do and run if the implementation path is shared; disable TUI when lifecycle JSON is selected; write one JSON object per lifecycle event to stdout; keep human errors on stderr. Acceptance: cargo test passes and manual help text distinguishes raw inner-agent JSON from mrmouth lifecycle JSON. Out of scope: changing inner agent stream formats.",
+      "item_type": "task",
+      "status": "open",
+      "priority": 1,
+      "created_at": "2026-05-12T15:48:34.200004779Z",
+      "updated_at": "2026-05-12T15:48:34.200004779Z"
+    },
     "lb-1ae5": {
       "id": "lb-1ae5",
       "title": "Drive TUI from mrmouth events",
@@ -1980,6 +1990,11 @@
     {
       "from_id": "lb-y8mm",
       "to_id": "lb-hgyp",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-174a",
+      "to_id": "lb-dbja",
       "dep_type": "parent"
     }
   ]
