@@ -26,3 +26,6 @@ Recorded the fix for the `lb-40uv` output-mode regression: `RunOptions` now carr
 
 ## [2026-05-12] fixed | Agent-aware credential preflight
 Recorded the credential preflight rule: Claude mode requires `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN`, while Codex mode must not be gated by Claude credentials because Codex may authenticate via env vars or persisted Docker-volume device auth.
+
+## [2026-05-13] implemented | Mr Mouth prime command
+Recorded `mrmouth prime` as the AI-facing context surface for supervising agents: it prints effective defaults, command semantics, lifecycle JSON guidance, and the recommended bounded delegation protocol without starting Docker, TUI, or mutating litebrite state.
