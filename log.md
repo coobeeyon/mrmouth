@@ -32,3 +32,6 @@ Recorded `mrmouth prime` as the AI-facing context surface for supervising agents
 
 ## [2026-05-13] updated | Codex setup command
 Recorded `mrmouth setup codex` as the primary Codex device-auth setup command for the persisted Docker home volume, with `mrmouth codex-login` retained as a legacy alias.
+
+## [2026-05-13] corrected | Codex setup command
+Corrected the meaning of `mrmouth setup codex`: it follows the Trapperkeeper hook setup pattern by enabling Codex hooks, adding a `SessionStart` hook for `mrmouth prime`, and allowing the `mrmouth` command prefix. Codex auth remains `mrmouth codex-login`.

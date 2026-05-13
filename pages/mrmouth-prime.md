@@ -12,8 +12,8 @@ The prime output covers:
 
 - effective local defaults: repository, agent, model, Docker image,
   Dockerfile, volume, log dir, base branch, timeout, and failure limit
-- core command semantics for `run`, `do`, `ready`, `loop`, `summary`, and
-  `setup codex`
+- core command semantics for `run`, `do`, `ready`, `loop`, `summary`,
+  `setup codex`, and `codex-login`
 - global `--claude` and `--codex` agent override flags
 - the supervisor output contract for `--json-events`, `--raw`, and the final
   `lifecycle_summary` event
@@ -27,3 +27,9 @@ autonomous draining. Supervising agents should default to `mrmouth do <id>
 provides machine-readable lifecycle status. `mrmouth ready` and `mrmouth loop`
 are intentionally broader and should be used only when the user asks for that
 behavior.
+
+`mrmouth setup codex` follows the Trapperkeeper-style hook setup pattern. It
+enables Codex hooks in `.codex/config.toml`, adds a `SessionStart` hook in
+`.codex/hooks.json` that runs `mrmouth prime`, and adds a
+`.codex/rules/default.rules` prefix allow rule for `mrmouth`. It is not the
+Codex auth flow; auth remains `mrmouth codex-login`.
