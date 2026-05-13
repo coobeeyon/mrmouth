@@ -207,7 +207,7 @@ pub fn execute(
         let branch_name = shipper::generate_branch_name(
             config,
             repo_root,
-            &config.loop_config.shipper_model,
+            &config.effective_model_for_agent(&config.loop_config.shipper_model),
             loop_logger.as_ref(),
         )
         .map_err(|e| LoopError::BranchCreation(format!("failed to generate branch name: {e}")))?;
@@ -319,7 +319,7 @@ pub fn execute(
                     stage: "Deciding".to_string(),
                 },
             );
-            let decider_model = config.loop_config.decider_model.clone();
+            let decider_model = config.effective_model_for_agent(&config.loop_config.decider_model);
             let decision = should_continue(
                 config,
                 repo_root,
@@ -345,7 +345,7 @@ pub fn execute(
                         },
                     );
                     let ship_opts = shipper::ShipperOptions {
-                        model: config.loop_config.shipper_model.clone(),
+                        model: config.effective_model_for_agent(&config.loop_config.shipper_model),
                         current_branch: current_branch.clone(),
                         parent_branch: parent_branch.clone(),
                         event_sink: opts.event_sink.clone(),
@@ -543,7 +543,7 @@ pub fn execute(
                     },
                 );
                 let reviewer_opts = reviewer::ReviewerOptions {
-                    model: config.loop_config.reviewer_model.clone(),
+                    model: config.effective_model_for_agent(&config.loop_config.reviewer_model),
                     current_branch: current_branch.clone(),
                     commit_range,
                     event_sink: opts.event_sink.clone(),

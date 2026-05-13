@@ -79,6 +79,18 @@ impl Default for DoConfig {
 }
 
 impl Config {
+    /// Returns a model suitable for the configured agent.
+    ///
+    /// The built-in role defaults are Claude model aliases. When Codex is the
+    /// active agent, omitting the model lets Codex use its configured default
+    /// instead of passing an invalid Claude alias such as `sonnet`.
+    pub fn effective_model_for_agent(&self, model: &str) -> String {
+        if self.agent == AgentKind::Codex && is_claude_model_alias(model) {
+            return String::new();
+        }
+        model.to_string()
+    }
+
     /// Returns the effective volume name: user-configured value, or the
     /// provider default. Claude keeps the historical per-repo default; Codex
     /// uses a shared machine-wide default so one login works across repos.
@@ -159,6 +171,10 @@ fn repo_slug(repo_root: &Path) -> String {
             }
         })
         .collect()
+}
+
+fn is_claude_model_alias(model: &str) -> bool {
+    matches!(model.trim(), "opus" | "sonnet" | "haiku")
 }
 
 #[derive(Debug)]
@@ -308,6 +324,35 @@ max_failures = 5
         };
         let path = std::path::Path::new("/some/path/myproject");
         assert_eq!(config.effective_volume(path), "custom-vol");
+    }
+
+    #[test]
+    fn effective_model_omits_claude_aliases_for_codex() {
+        let config = Config {
+            agent: AgentKind::Codex,
+            ..Config::default()
+        };
+
+        assert_eq!(config.effective_model_for_agent("sonnet"), "");
+        assert_eq!(config.effective_model_for_agent("haiku"), "");
+        assert_eq!(config.effective_model_for_agent("opus"), "");
+    }
+
+    #[test]
+    fn effective_model_preserves_codex_models_for_codex() {
+        let config = Config {
+            agent: AgentKind::Codex,
+            ..Config::default()
+        };
+
+        assert_eq!(config.effective_model_for_agent("gpt-5.2"), "gpt-5.2");
+    }
+
+    #[test]
+    fn effective_model_preserves_claude_aliases_for_claude() {
+        let config = Config::default();
+
+        assert_eq!(config.effective_model_for_agent("sonnet"), "sonnet");
     }
 
     #[test]

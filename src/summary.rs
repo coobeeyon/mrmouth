@@ -63,7 +63,7 @@ pub fn execute(
     let mut cmd = streaming::agent_stream_cmd(
         config.agent,
         repo_root,
-        &config.loop_config.summary_model,
+        &config.effective_model_for_agent(&config.loop_config.summary_model),
         "Read",
     );
 

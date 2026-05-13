@@ -321,7 +321,7 @@ fn execute_task(
             },
         );
         let reviewer_opts = reviewer::ReviewerOptions {
-            model: config.loop_config.reviewer_model.clone(),
+            model: config.effective_model_for_agent(&config.loop_config.reviewer_model),
             current_branch: feature_branch.to_string(),
             commit_range,
             event_sink: opts.event_sink.clone(),
@@ -525,7 +525,7 @@ fn execute_epic(
             },
         );
         let reviewer_opts = reviewer::ReviewerOptions {
-            model: config.loop_config.reviewer_model.clone(),
+            model: config.effective_model_for_agent(&config.loop_config.reviewer_model),
             current_branch: feature_branch.to_string(),
             commit_range,
             event_sink: opts.event_sink.clone(),
