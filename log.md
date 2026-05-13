@@ -35,3 +35,6 @@ Recorded `mrmouth setup codex` as the primary Codex device-auth setup command fo
 
 ## [2026-05-13] corrected | Codex setup command
 Corrected the meaning of `mrmouth setup codex`: it follows the Trapperkeeper hook setup pattern by enabling Codex hooks, adding a `SessionStart` hook for `mrmouth prime`, and allowing the `mrmouth` command prefix. Codex auth remains `mrmouth codex-login`.
+
+## [2026-05-13] debugged | Codex reviewer model failure
+Recorded the root cause of a `my2048` reviewer failure after `mrmouth do --codex`: the runner used a Codex-safe model path, but reviewer/loop role models still passed default Claude aliases such as `sonnet`. Codex role-model consumers should use `Config::effective_model_for_agent` so built-in Claude aliases become an omitted model in Codex mode.
