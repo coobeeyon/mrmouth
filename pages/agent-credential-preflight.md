@@ -4,7 +4,7 @@
 
 Claude preflight is allowed to fail early when neither `ANTHROPIC_API_KEY` nor `CLAUDE_CODE_OAUTH_TOKEN` is present. That mirrors Claude Code's host-passed credential model and gives a clear error before Docker build/run work starts.
 
-Codex preflight deliberately does not require Claude env vars, and it also should not hard-require an OpenAI env var on the host. Codex can authenticate through `OPENAI_API_KEY` or `CODEX_API_KEY`, but it can also use device auth stored in the persisted Docker home volume created by `mrmouth codex-login`. Host preflight cannot reliably inspect that volume without producing false negatives, so Codex auth failures are left to the Codex CLI inside the container.
+Codex preflight deliberately does not require Claude env vars, and it also should not hard-require an OpenAI env var on the host. Codex can authenticate through `OPENAI_API_KEY` or `CODEX_API_KEY`, but it can also use device auth stored in the persisted Docker home volume created by `mrmouth setup codex`. Host preflight cannot reliably inspect that volume without producing false negatives, so Codex auth failures are left to the Codex CLI inside the container. `mrmouth codex-login` remains a legacy alias for the same setup flow.
 
 The regression tests live in `src/run.rs` near the other preflight tests:
 

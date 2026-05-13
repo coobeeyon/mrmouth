@@ -29,3 +29,6 @@ Recorded the credential preflight rule: Claude mode requires `ANTHROPIC_API_KEY`
 
 ## [2026-05-13] implemented | Mr Mouth prime command
 Recorded `mrmouth prime` as the AI-facing context surface for supervising agents: it prints effective defaults, command semantics, lifecycle JSON guidance, and the recommended bounded delegation protocol without starting Docker, TUI, or mutating litebrite state.
+
+## [2026-05-13] updated | Codex setup command
+Recorded `mrmouth setup codex` as the primary Codex device-auth setup command for the persisted Docker home volume, with `mrmouth codex-login` retained as a legacy alias.

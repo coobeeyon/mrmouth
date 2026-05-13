@@ -13,7 +13,7 @@ The prime output covers:
 - effective local defaults: repository, agent, model, Docker image,
   Dockerfile, volume, log dir, base branch, timeout, and failure limit
 - core command semantics for `run`, `do`, `ready`, `loop`, `summary`, and
-  `codex-login`
+  `setup codex`
 - global `--claude` and `--codex` agent override flags
 - the supervisor output contract for `--json-events`, `--raw`, and the final
   `lifecycle_summary` event
