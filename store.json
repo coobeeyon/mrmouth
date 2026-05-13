@@ -285,10 +285,10 @@
       "title": "Separate mrmouth events from TUI rendering",
       "description": "Outcome: mrmouth orchestration should emit structured lifecycle events that can be rendered by the TUI, human terminal output, JSONL automation output, and logs without core flows depending directly on TuiHandle. Context: src/main.rs currently starts the TUI and passes Option<TuiHandle> through run, do, ready, loop, reviewer, and shipper paths; src/logger.rs also owns optional TuiSender display routing. Completion: child brites are closed, TUI behavior still works, non-TUI output remains usable, and a structured output mode exists for supervising agents.",
       "item_type": "epic",
-      "status": "open",
+      "status": "closed",
       "priority": 1,
       "created_at": "2026-05-12T15:47:02.607459015Z",
-      "updated_at": "2026-05-12T15:47:02.607459015Z"
+      "updated_at": "2026-05-13T00:29:52.897206233Z"
     },
     "lb-451n": {
       "id": "lb-451n",
