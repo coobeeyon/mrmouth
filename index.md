@@ -24,6 +24,8 @@ MrmouthEvent — [Event Rendering Architecture](pages/event-rendering-architectu
 output mode coupling — [Event Rendering Architecture](pages/event-rendering-architecture.md)
 parent child decomposition — [Litebrite Agent Contract](pages/litebrite-agent-contract.md)
 post-run pull ordering — [Dockerfile Extraction Lifecycle](pages/dockerfile-extraction-lifecycle.md)
+review fitness for purpose — [Reviewer Fitness For Purpose](pages/reviewer-fitness-for-purpose.md)
+review target — [Reviewer Fitness For Purpose](pages/reviewer-fitness-for-purpose.md)
 reviewer model normalization — [Codex Role Model Defaults](pages/codex-role-model-defaults.md)
 sibling dependencies — [Litebrite Agent Contract](pages/litebrite-agent-contract.md)
 supervisor output contract — [Mr Mouth Prime](pages/mrmouth-prime.md)

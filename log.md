@@ -38,3 +38,6 @@ Corrected the meaning of `mrmouth setup codex`: it follows the Trapperkeeper hoo
 
 ## [2026-05-13] debugged | Codex reviewer model failure
 Recorded the root cause of a `my2048` reviewer failure after `mrmouth do --codex`: the runner used a Codex-safe model path, but reviewer/loop role models still passed default Claude aliases such as `sonnet`. Codex role-model consumers should use `Config::effective_model_for_agent` so built-in Claude aliases become an omitted model in Codex mode.
+
+## [2026-05-14] implemented | Reviewer fitness for purpose context
+Recorded the reviewer rule that code review should judge the diff against the Litebrite item that triggered the run. `mrmouth do` and `mrmouth ready` now pass a review target so the prompt directs reviewers to `lb show <item-id>` and check fitness for purpose; `mrmouth loop` falls back to inferring purpose from Litebrite state, commits, and diff.
