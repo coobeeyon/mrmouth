@@ -320,6 +320,10 @@ pub fn execute(
                 model: config.effective_model_for_agent(&config.loop_config.reviewer_model),
                 current_branch: branch_name.clone(),
                 commit_range,
+                review_target: Some(reviewer::ReviewTarget {
+                    item_id: item_id.clone(),
+                    label: "ready task".to_string(),
+                }),
                 event_sink: opts.event_sink.clone(),
             };
             if let Err(e) = reviewer::execute(config, repo_root, &reviewer_opts, logger.as_ref()) {

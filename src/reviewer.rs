@@ -15,7 +15,14 @@ pub struct ReviewerOptions {
     /// If set, the reviewer scopes its review to only the changes in this
     /// commit range (before..after) instead of the entire branch.
     pub commit_range: Option<(String, String)>,
+    /// The litebrite item or work area the run was intended to satisfy.
+    pub review_target: Option<ReviewTarget>,
     pub event_sink: Option<EventSinkHandle>,
+}
+
+pub struct ReviewTarget {
+    pub item_id: String,
+    pub label: String,
 }
 
 /// Run a reviewer agent inside the project Docker container so it has access
@@ -61,11 +68,14 @@ pub fn execute(
         ),
     };
 
+    let purpose_instructions = review_purpose_instructions(opts.review_target.as_ref());
+
     let prompt = format!(
         "## System\n\n{preamble}\n\n\
         You are the **Reviewer**. Your job is to review code and file issues. You do NOT implement features, make architectural decisions, or decide whether the loop continues.\n\n\
         ## Instructions\n\n\
         {scope_instructions}\n\n\
+        {purpose_instructions}\n\n\
         First, verify the project builds and all tests pass. Discover the correct build/test \
         commands by examining the project structure (Makefile, package.json, Cargo.toml, etc.) \
         and run them. A build failure or test failure is a blocking issue that must be filed.\n\n\
@@ -79,8 +89,11 @@ pub fn execute(
         This means you must not miss genuine problems — but you also must not invent them. \
         A clean review is a valid and useful outcome. If the code looks good, say so and stop. \
         Do not manufacture issues to justify your existence.\n\n\
-        If you find issues (bugs, spec deviations, missing tests, build/test failures, code quality problems), \
-        create litebrite items for them: lb create \"<title>\" -d \"<description>\"\n\n\
+        If you find issues (bugs, failure to satisfy the requested item, spec deviations, missing tests, build/test failures, code quality problems), \
+        create litebrite items for them and attach them to the relevant current work context. \
+        For a reviewed epic or feature, create child tasks with `lb create \"<title>\" -t task --parent <reviewed-id> -d \"<description>\"`. \
+        For a reviewed task that has a parent, create sibling issue tasks under that same parent with `lb create \"<title>\" -t task --parent <parent-id> -d \"<description>\"`. \
+        Only create a top-level issue when no relevant parent/work context exists.\n\n\
         If you see completed items that are still open, close them: lb close <id>\n\n\
         Be concise. Only flag real issues, not style nits.",
     );
@@ -201,6 +214,7 @@ fi
     let timestamp = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
     let container_name = format!("review-{timestamp}");
     let volume = config.effective_volume(repo_root);
+    let uses_real_remote = file_remote_path.is_none();
 
     // Create dedicated review log + jsonl files
     let log_dir = repo_root.join(&config.log_dir);
@@ -282,6 +296,13 @@ fi
         .wait()
         .map_err(|e| ReviewerError(format!("container wait failed: {e}")))?;
 
+    // If the reviewer committed and pushed a Dockerfile edit, fast-forward the
+    // host checkout before extraction so we do not dirty the worktree with the
+    // same content that is already in git.
+    if uses_real_remote {
+        pull_code_changes(repo_root, logger);
+    }
+
     // Extract updated Dockerfile from container (reviewer may have modified it)
     let dockerfile_dest = repo_root.join(&config.dockerfile);
     let container_path = format!("/home/runner/workspace/{}", config.dockerfile);
@@ -349,6 +370,50 @@ fn commit_range_label(commit_range: &Option<(String, String)>) -> Option<String>
         .map(|(before, after)| format!("{before}..{after}"))
 }
 
+fn review_purpose_instructions(review_target: Option<&ReviewTarget>) -> String {
+    match review_target {
+        Some(target) => format!(
+            "The run was intended to satisfy this litebrite item: {} ({}). \
+            Run `lb show {}` and treat that item title, description, parent/child context, \
+            and acceptance details as the primary purpose of the change. Also read relevant \
+            parent items when the item has a parent. \
+            Review the diff for fitness for purpose: does the specific change accomplish \
+            what this item asked for, without closing the item prematurely or leaving required \
+            behavior/tests/documentation unfinished? \
+            If you file review issues, keep them attached to this work: for a reviewed epic or \
+            feature, create child tasks under {}; for a reviewed task with a parent, create \
+            sibling tasks under that parent.",
+            target.item_id, target.label, target.item_id, target.item_id
+        ),
+        None => "No single litebrite item was provided for this review. Use lb list, git log, \
+            commit messages, and the diff to infer the intended work, then review the change \
+            for fitness for that purpose as well as against SPEC.md."
+            .to_string(),
+    }
+}
+
+fn pull_code_changes(repo_root: &Path, logger: Option<&Logger>) {
+    crate::logger::log(logger, "Pulling reviewer code changes from remote...");
+    let pull_output = Command::new("git")
+        .args(["-C", &repo_root.to_string_lossy(), "pull", "--ff-only"])
+        .output();
+    match pull_output {
+        Ok(o) if o.status.success() => {}
+        Ok(o) => {
+            let stderr = String::from_utf8_lossy(&o.stderr);
+            if stderr.contains("Already up to date") || stderr.is_empty() {
+                crate::logger::log(logger, "No reviewer code changes to pull.");
+            } else {
+                crate::logger::log(
+                    logger,
+                    &format!("Warning: reviewer git pull failed: {}", stderr.trim()),
+                );
+            }
+        }
+        Err(e) => crate::logger::log(logger, &format!("Warning: reviewer git pull failed: {e}")),
+    }
+}
+
 fn git_remote_url(repo_root: &Path) -> Option<String> {
     let output = Command::new("git")
         .args([
@@ -377,3 +442,31 @@ impl std::fmt::Display for ReviewerError {
 }
 
 impl std::error::Error for ReviewerError {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn review_purpose_instructions_use_target_item_as_primary_purpose() {
+        let instructions = review_purpose_instructions(Some(&ReviewTarget {
+            item_id: "lb-1234".to_string(),
+            label: "[task] Add review context".to_string(),
+        }));
+
+        assert!(instructions.contains("lb show lb-1234"));
+        assert!(instructions.contains("primary purpose"));
+        assert!(instructions.contains("fitness for purpose"));
+        assert!(instructions.contains("create child tasks under lb-1234"));
+        assert!(instructions.contains("sibling tasks under that parent"));
+    }
+
+    #[test]
+    fn review_purpose_instructions_infer_purpose_without_target() {
+        let instructions = review_purpose_instructions(None);
+
+        assert!(instructions.contains("No single litebrite item"));
+        assert!(instructions.contains("infer the intended work"));
+        assert!(instructions.contains("against SPEC.md"));
+    }
+}

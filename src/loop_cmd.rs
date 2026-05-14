@@ -546,6 +546,7 @@ pub fn execute(
                     model: config.effective_model_for_agent(&config.loop_config.reviewer_model),
                     current_branch: current_branch.clone(),
                     commit_range,
+                    review_target: None,
                     event_sink: opts.event_sink.clone(),
                 };
                 if let Err(e) = reviewer::execute(config, repo_root, &reviewer_opts, logger_opt) {

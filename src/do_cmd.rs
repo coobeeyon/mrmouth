@@ -324,6 +324,10 @@ fn execute_task(
             model: config.effective_model_for_agent(&config.loop_config.reviewer_model),
             current_branch: feature_branch.to_string(),
             commit_range,
+            review_target: Some(reviewer::ReviewTarget {
+                item_id: opts.item_id.clone(),
+                label: item_info_label(repo_root, &opts.item_id),
+            }),
             event_sink: opts.event_sink.clone(),
         };
         if let Err(e) = reviewer::execute(config, repo_root, &reviewer_opts, logger) {
@@ -528,6 +532,10 @@ fn execute_epic(
             model: config.effective_model_for_agent(&config.loop_config.reviewer_model),
             current_branch: feature_branch.to_string(),
             commit_range,
+            review_target: Some(reviewer::ReviewTarget {
+                item_id: opts.item_id.clone(),
+                label: item_info_label(repo_root, &opts.item_id),
+            }),
             event_sink: opts.event_sink.clone(),
         };
         if let Err(e) = reviewer::execute(config, repo_root, &reviewer_opts, logger) {
@@ -590,6 +598,12 @@ fn lb_show(repo_root: &Path, item_id: &str) -> Result<ItemInfo, DoError> {
         .unwrap_or_else(|| "task".to_string());
 
     Ok(ItemInfo { title, item_type })
+}
+
+fn item_info_label(repo_root: &Path, item_id: &str) -> String {
+    lb_show(repo_root, item_id)
+        .map(|item| item.to_string())
+        .unwrap_or_else(|_| "requested item".to_string())
 }
 
 /// Rebuild the Docker image (cheap if cached) and, if the new image ID
