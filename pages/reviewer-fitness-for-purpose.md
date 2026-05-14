@@ -22,3 +22,8 @@ fitness against that inferred purpose plus `SPEC.md`.
 Issues that count for review include normal bugs and build/test failures, plus
 failure to satisfy the requested item, missing tests for the requested behavior,
 unfinished required documentation, and premature task closure.
+
+Review issue placement matters. For a reviewed epic or feature, issue tasks
+should be children of that reviewed item. For a reviewed task with a parent,
+issue tasks should be siblings under the same parent. Top-level review issues
+should be reserved for cases where no relevant work context exists.

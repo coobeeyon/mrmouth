@@ -44,3 +44,6 @@ Recorded the reviewer rule that code review should judge the diff against the Li
 
 ## [2026-05-14] fixed | Reviewer Dockerfile extraction ordering
 Recorded the reviewer-side Dockerfile extraction bug: reviewer containers could commit and push a Dockerfile edit, but the host copied the container Dockerfile before pulling that pushed commit, leaving an uncommitted host copy. Reviewer extraction now pulls first for real remotes, matching runner extraction.
+
+## [2026-05-14] tightened | Reviewer issue parentage
+Recorded that reviewer-created Litebrite issues should stay attached to the current work context: children under a reviewed epic/feature, siblings under a reviewed task's parent, and top-level only when no relevant parent exists.
