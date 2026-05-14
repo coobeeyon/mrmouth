@@ -47,3 +47,6 @@ Recorded the reviewer-side Dockerfile extraction bug: reviewer containers could 
 
 ## [2026-05-14] tightened | Reviewer issue parentage
 Recorded that reviewer-created Litebrite issues should stay attached to the current work context: children under a reviewed epic/feature, siblings under a reviewed task's parent, and top-level only when no relevant parent exists.
+
+## [2026-05-14] changed | Codex default agent
+Recorded that Codex is now the built-in default agent in both `Config::default()` and `AgentKind::default()`. Prime displays the effective model as "agent default" when Codex omits a historical Claude alias such as `opus`.

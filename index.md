@@ -7,6 +7,7 @@ brite authoring — [Litebrite Agent Contract](pages/litebrite-agent-contract.md
 brite hierarchy — [Litebrite Agent Contract](pages/litebrite-agent-contract.md)
 claim semantics — [Litebrite Agent Contract](pages/litebrite-agent-contract.md)
 Codex auth volume — [Agent Credential Preflight](pages/agent-credential-preflight.md)
+Codex default agent — [Codex Role Model Defaults](pages/codex-role-model-defaults.md)
 Codex role models — [Codex Role Model Defaults](pages/codex-role-model-defaults.md)
 container Dockerfile extraction — [Dockerfile Extraction Lifecycle](pages/dockerfile-extraction-lifecycle.md)
 Dockerfile self-modification — [Dockerfile Extraction Lifecycle](pages/dockerfile-extraction-lifecycle.md)
