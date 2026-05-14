@@ -41,3 +41,6 @@ Recorded the root cause of a `my2048` reviewer failure after `mrmouth do --codex
 
 ## [2026-05-14] implemented | Reviewer fitness for purpose context
 Recorded the reviewer rule that code review should judge the diff against the Litebrite item that triggered the run. `mrmouth do` and `mrmouth ready` now pass a review target so the prompt directs reviewers to `lb show <item-id>` and check fitness for purpose; `mrmouth loop` falls back to inferring purpose from Litebrite state, commits, and diff.
+
+## [2026-05-14] fixed | Reviewer Dockerfile extraction ordering
+Recorded the reviewer-side Dockerfile extraction bug: reviewer containers could commit and push a Dockerfile edit, but the host copied the container Dockerfile before pulling that pushed commit, leaving an uncommitted host copy. Reviewer extraction now pulls first for real remotes, matching runner extraction.
