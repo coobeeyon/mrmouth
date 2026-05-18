@@ -43,7 +43,7 @@ pub struct DoConfig {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            agent: AgentKind::Claude,
+            agent: AgentKind::Codex,
             model: "opus".into(),
             image: "mrmouth-runner".into(),
             dockerfile: ".mrmouth/Dockerfile".into(),
@@ -217,7 +217,7 @@ mod tests {
     fn defaults_when_no_config_file() {
         let tmp = tempfile::tempdir().unwrap();
         let config = Config::load(tmp.path()).unwrap();
-        assert_eq!(config.agent, AgentKind::Claude);
+        assert_eq!(config.agent, AgentKind::Codex);
         assert_eq!(config.model, "opus");
         assert_eq!(config.image, "mrmouth-runner");
         assert_eq!(config.loop_config.decider_model, "sonnet");
@@ -287,8 +287,11 @@ max_failures = 5
     }
 
     #[test]
-    fn effective_volume_uses_repo_name_when_not_configured() {
-        let config = Config::default();
+    fn effective_volume_uses_repo_name_for_claude_when_not_configured() {
+        let config = Config {
+            agent: AgentKind::Claude,
+            ..Config::default()
+        };
         let path = std::path::Path::new("/some/path/myproject");
         assert_eq!(
             config.effective_volume(path),
@@ -297,8 +300,11 @@ max_failures = 5
     }
 
     #[test]
-    fn effective_volume_sanitizes_special_chars() {
-        let config = Config::default();
+    fn effective_volume_sanitizes_special_chars_for_claude() {
+        let config = Config {
+            agent: AgentKind::Claude,
+            ..Config::default()
+        };
         let path = std::path::Path::new("/some/path/my.project_v2");
         assert_eq!(
             config.effective_volume(path),
@@ -308,10 +314,7 @@ max_failures = 5
 
     #[test]
     fn effective_volume_uses_shared_codex_default() {
-        let config = Config {
-            agent: AgentKind::Codex,
-            ..Config::default()
-        };
+        let config = Config::default();
         let path = std::path::Path::new("/some/path/myproject");
         assert_eq!(config.effective_volume(path), "mrmouth-codex-home");
     }
@@ -350,7 +353,10 @@ max_failures = 5
 
     #[test]
     fn effective_model_preserves_claude_aliases_for_claude() {
-        let config = Config::default();
+        let config = Config {
+            agent: AgentKind::Claude,
+            ..Config::default()
+        };
 
         assert_eq!(config.effective_model_for_agent("sonnet"), "sonnet");
     }

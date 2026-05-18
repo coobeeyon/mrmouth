@@ -3,8 +3,8 @@ use serde::Deserialize;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum AgentKind {
-    #[default]
     Claude,
+    #[default]
     Codex,
 }
 
