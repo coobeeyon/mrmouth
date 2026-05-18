@@ -377,8 +377,9 @@
       "item_type": "task",
       "status": "open",
       "priority": 2,
+      "claimed_by": "agent-runner",
       "created_at": "2026-05-18T12:11:10.395675974Z",
-      "updated_at": "2026-05-18T12:11:10.395675974Z"
+      "updated_at": "2026-05-18T12:12:42.255102584Z"
     },
     "lb-5amv": {
       "id": "lb-5amv",
