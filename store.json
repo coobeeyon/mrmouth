@@ -10,6 +10,26 @@
       "created_at": "2026-03-26T03:18:25.635507194Z",
       "updated_at": "2026-03-26T03:40:21.666644865Z"
     },
+    "lb-174a": {
+      "id": "lb-174a",
+      "title": "Add JSONL lifecycle renderer and CLI flag",
+      "description": "Goal: Expose mrmouth-level lifecycle events as JSONL for supervising agents. Context: existing mrmouth run --raw prints raw Claude/Codex stream JSON and must remain distinct from lifecycle output. Requirements: add a clearly named flag such as --json-events or --agent-json for appropriate commands, at minimum mrmouth do and run if the implementation path is shared; disable TUI when lifecycle JSON is selected; write one JSON object per lifecycle event to stdout; keep human errors on stderr. Acceptance: cargo test passes and manual help text distinguishes raw inner-agent JSON from mrmouth lifecycle JSON. Out of scope: changing inner agent stream formats.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 1,
+      "created_at": "2026-05-12T15:48:34.200004779Z",
+      "updated_at": "2026-05-12T16:59:59.145604294Z"
+    },
+    "lb-1ae5": {
+      "id": "lb-1ae5",
+      "title": "Drive TUI from mrmouth events",
+      "description": "Goal: Make src/tui.rs consume mrmouth events as a renderer rather than exposing orchestration-specific methods as the primary integration surface. Context: TuiHandle currently exposes sender, set_stage, set_run, cancellation flag, and pane-specific TuiSender values. Requirements: add a TUI event sink or adapter that maps Message events to panes and stage/run events to the header; preserve q and Ctrl+C cancellation behavior; keep the render loop focused on presentation. Acceptance: existing TUI behavior still works in an interactive terminal and cargo test passes. Out of scope: adding JSON output.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 1,
+      "created_at": "2026-05-12T15:48:06.132722886Z",
+      "updated_at": "2026-05-12T17:39:55.684086233Z"
+    },
     "lb-1brq": {
       "id": "lb-1brq",
       "title": "Fix Epic CLI args not distinguishing explicit vs default values",
@@ -140,6 +160,16 @@
       "created_at": "2026-03-26T16:12:27.507981777Z",
       "updated_at": "2026-03-29T23:43:12.858951910Z"
     },
+    "lb-2vab": {
+      "id": "lb-2vab",
+      "title": "Reuse Docker container across mrmouth do epic iterations",
+      "description": "Current epic loop starts a fresh container per task, paying clone + lb init + claude cold-start every iteration. Replace per-task container with a long-lived session: start detached container once per epic, exec task.sh per iteration, rebuild only when Dockerfile changes. Phases: (1) plumbing in docker.rs — start_detached, exec_script, image_id; (2) split runner script into setup.sh (once) + task.sh (per-task, handles branch switching); (3) execute_in_session variant in run.rs; (4) wire epic loop; (5) Dockerfile-hash invalidation.",
+      "item_type": "feature",
+      "status": "closed",
+      "priority": 1,
+      "created_at": "2026-04-23T21:45:18.703215507Z",
+      "updated_at": "2026-04-24T13:54:45.328214046Z"
+    },
     "lb-2x28": {
       "id": "lb-2x28",
       "title": "Fix misleading bootstrap comment in loop_cmd.rs",
@@ -179,6 +209,16 @@
       "priority": 1,
       "created_at": "2026-03-08T20:58:53.343680768Z",
       "updated_at": "2026-03-08T20:59:19.782759607Z"
+    },
+    "lb-3h63": {
+      "id": "lb-3h63",
+      "title": "Runner script error trap and tool guards",
+      "description": "In run.rs::write_runner_script, at the top of the generated bash add: 'set -o errtrace; trap '\"'\"'rc=\\0; echo \"::mrmouth::script-error rc=\\ line=\\1 cmd=\\\" >&2'\"'\"' ERR'. Before each conditional tool init block, also check that the binary exists in the container PATH — e.g. before 'lb init' under the litebrite branch check, 'command -v lb >/dev/null || { echo \"::mrmouth::missing-tool tool=lb reason=litebrite branch exists but binary not in image\"; exit 64; }'. Same for trk and claude. Uses exit 64 (EX_USAGE-ish) so mrmouth can distinguish from 127. These machine-parseable markers let exit-code classification (lb-zptt) produce precise diagnostics.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 1,
+      "created_at": "2026-04-22T15:15:51.416990835Z",
+      "updated_at": "2026-04-22T15:24:18.189730809Z"
     },
     "lb-3hsl": {
       "id": "lb-3hsl",
@@ -249,6 +289,26 @@
       "priority": 4,
       "created_at": "2026-03-25T20:11:16.671990114Z",
       "updated_at": "2026-03-25T20:12:12.051108929Z"
+    },
+    "lb-40uv": {
+      "id": "lb-40uv",
+      "title": "Separate mrmouth events from TUI rendering",
+      "description": "Outcome: mrmouth orchestration should emit structured lifecycle events that can be rendered by the TUI, human terminal output, JSONL automation output, and logs without core flows depending directly on TuiHandle. Context: src/main.rs currently starts the TUI and passes Option<TuiHandle> through run, do, ready, loop, reviewer, and shipper paths; src/logger.rs also owns optional TuiSender display routing. Completion: child brites are closed, TUI behavior still works, non-TUI output remains usable, and a structured output mode exists for supervising agents.",
+      "item_type": "epic",
+      "status": "closed",
+      "priority": 1,
+      "created_at": "2026-05-12T15:47:02.607459015Z",
+      "updated_at": "2026-05-13T00:29:52.897206233Z"
+    },
+    "lb-451n": {
+      "id": "lb-451n",
+      "title": "Refactor Logger to emit through display sinks",
+      "description": "Goal: Decouple src/logger.rs from direct TuiSender ownership so log writing and display rendering are separate responsibilities. Context: Logger currently tees display to optional TuiSender or stderr while also writing log files, which makes TUI a dependency of shared logging. Requirements: keep durable file logging behavior; route display lines through an event/display sink abstraction; preserve tee_stderr behavior for subprocess stderr; avoid changing log file formats unless required. Acceptance: cargo test passes and non-TUI runs still print human-readable lines to stderr. Out of scope: full command migration and JSON lifecycle output.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 1,
+      "created_at": "2026-05-12T15:47:57.537623952Z",
+      "updated_at": "2026-05-12T17:27:12.263923887Z"
     },
     "lb-472j": {
       "id": "lb-472j",
@@ -390,6 +450,16 @@
       "created_at": "2026-03-10T16:31:29.723677818Z",
       "updated_at": "2026-03-10T16:38:44.108011058Z"
     },
+    "lb-6zk8": {
+      "id": "lb-6zk8",
+      "title": "Skip decider LLM call when open brites exist",
+      "description": "Decider's step 1 is 'run lb list'; if leaf tasks exist it returns continue without needing an LLM decision. Short-circuit in loop_cmd.rs::should_continue: run lb list --tree on the host first, if any open leaf tasks exist, return Continue(\"open tasks: N\") directly without invoking claude. Falls back to the LLM only when lb list shows no leaf tasks (the actual judgement calls: decompose epics, check spec, decide ship/stop).",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 2,
+      "created_at": "2026-04-24T18:08:30.007098103Z",
+      "updated_at": "2026-04-26T12:37:29.790592411Z"
+    },
     "lb-731u": {
       "id": "lb-731u",
       "title": "Rename epic.rs to do_cmd.rs and update types",
@@ -400,6 +470,16 @@
       "created_at": "2026-03-30T04:00:10.132735429Z",
       "updated_at": "2026-03-30T04:04:00.332484872Z"
     },
+    "lb-7nr4": {
+      "id": "lb-7nr4",
+      "title": "Inception-test mrmouth output modes",
+      "description": "Goal: Verify the event-rendering refactor with real mrmouth invocations in the output modes that static tests do not cover.\nContext: The lb-40uv branch introduced lifecycle events, TUI event rendering, --json-events, and raw inner-agent output separation. Review found a likely behavior bug where normal TUI mode creates an event sink and run.rs uses opts.event_sink.is_some() to skip formatted stream display.\nResults: Built the current CLI with cargo build, then used a disposable nested smoke repo with a tiny Docker image that provides fake claude/lb/trk commands. Ran MRMOUTH_SKIP_PREFLIGHT=1 target/debug/mrmouth run --local --timeout 1 --json-events with stdout/stderr split: PASS for lifecycle JSON on stdout, including final lifecycle_summary, and human status on stderr. Ran --raw with split streams: PASS for inner-agent stream reaching stdout, but stdout also includes runner bootstrap/timing lines, so raw is not pure JSONL. Ran plain mode under script(1) pseudo-TTY: FAIL for formatted TUI stream regression; TUI alt screen opened, but logs/run-20260512-144219.log contained raw assistant/result JSON instead of formatted [text]/[done] output. Follow-up created: lb-ly6e Restore formatted TUI agent stream with event sink.\nAcceptance: Completed. Commands and observations captured above; no project code changes were required by this inception test.\nOut of scope: Fixing the stream suppression regression unless the task is explicitly expanded; this ticket was for inception/live verification and precise follow-up scoping.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 1,
+      "created_at": "2026-05-12T18:31:31.699147174Z",
+      "updated_at": "2026-05-12T18:44:03.642936567Z"
+    },
     "lb-7s17": {
       "id": "lb-7s17",
       "title": "Add .dockerignore to reduce Docker build context",
@@ -409,6 +489,36 @@
       "priority": 3,
       "created_at": "2026-03-25T20:29:51.143733453Z",
       "updated_at": "2026-03-25T20:32:45.448366837Z"
+    },
+    "lb-87en": {
+      "id": "lb-87en",
+      "title": "Preflight: SSH agent check when origin is git@",
+      "description": "If 'git remote get-url origin' returns a git@... URL (or ssh://), we need SSH_AUTH_SOCK in the env or the container clone will hang/fail. Add to preflight: detect ssh-style origin, require SSH_AUTH_SOCK set and the socket path to exist. Error message: 'origin is SSH (git@...) but SSH_AUTH_SOCK is not set — start an ssh-agent and ssh-add your key.'",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 2,
+      "created_at": "2026-04-22T15:16:12.232910290Z",
+      "updated_at": "2026-04-22T15:44:00.329136594Z"
+    },
+    "lb-87n3": {
+      "id": "lb-87n3",
+      "title": "Preflight: tooling branch vs Dockerfile coherence check",
+      "description": "Today's ai-agent failure: trapperkeeper branch exists on origin, but the user's .mrmouth/Dockerfile only builds 'lb'. The runner unconditionally calls 'trk init' → exit 127. Add a host-side preflight check in run.rs::preflight (or a new module): if a 'litebrite' or 'trapperkeeper' branch exists (locally OR on origin), grep the effective Dockerfile content for that word. If missing, fail preflight with a clear message: 'Your Dockerfile does not build trk, but a trapperkeeper branch exists. Either add the build stage (see DEFAULT_DOCKERFILE) or delete the branch.' Include an env escape hatch (MRMOUTH_SKIP_PREFLIGHT=1) for overrides.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 2,
+      "created_at": "2026-04-22T15:15:58.831548330Z",
+      "updated_at": "2026-04-22T15:53:05.554750440Z"
+    },
+    "lb-8ngb": {
+      "id": "lb-8ngb",
+      "title": "Preflight: disk space warning for Docker",
+      "description": "Docker build failures on low disk are obscure ('no space left on device' buried in layers). Best-effort: run 'df -P /var/lib/docker' (or parse 'docker system df') and warn (not fail) if less than ~2 GB free. Non-blocking warning printed to the TUI/stderr. Skip if the df command fails — this is pure diagnostic help, not a hard gate.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 3,
+      "created_at": "2026-04-22T15:16:23.725719785Z",
+      "updated_at": "2026-04-22T15:55:19.226313223Z"
     },
     "lb-8raq": {
       "id": "lb-8raq",
@@ -540,6 +650,16 @@
       "created_at": "2026-03-25T19:25:34.564958699Z",
       "updated_at": "2026-03-25T19:25:57.575038268Z"
     },
+    "lb-bk4s": {
+      "id": "lb-bk4s",
+      "title": "Migrate run command lifecycle reporting to events",
+      "description": "Goal: Route mrmouth run lifecycle status through the event sink while preserving current behavior. Context: src/run.rs has the densest lifecycle flow: preflight, litebrite sync, runner script, Docker build, volume setup, container start/stop, streaming, symlinks, Dockerfile extraction, pull, post-run sync, and failure classification. Requirements: replace direct TUI stage updates and display-only status with event emissions where practical; keep raw inner-agent JSON behavior unchanged; keep log files and latest symlinks working. Acceptance: cargo test passes and mrmouth run --raw still means raw inner-agent JSON, not lifecycle JSON. Out of scope: do/ready/loop migration.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 1,
+      "created_at": "2026-05-12T15:48:15.426306116Z",
+      "updated_at": "2026-05-12T17:34:57.380020231Z"
+    },
     "lb-btw1": {
       "id": "lb-btw1",
       "title": "Compose do_cmd prompts with full default prompt to restore Dockerfile editing",
@@ -559,6 +679,16 @@
       "priority": 2,
       "created_at": "2026-03-25T19:22:47.017215293Z",
       "updated_at": "2026-03-25T19:25:12.673241336Z"
+    },
+    "lb-ci6z": {
+      "id": "lb-ci6z",
+      "title": "Runner script: echo tool versions at startup",
+      "description": "Add to the top of the generated runner script (run.rs::write_runner_script): 'echo \"::mrmouth::versions\"; git --version || true; lb --version 2>/dev/null || echo \"lb: not installed\"; trk --version 2>/dev/null || echo \"trk: not installed\"; claude --version 2>/dev/null || echo \"claude: not installed\"; echo \"::mrmouth::versions-end\"'. Cheap, always-on diagnostic so when something breaks we can see at a glance whether the image contains what it should.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 2,
+      "created_at": "2026-04-22T15:16:17.973040295Z",
+      "updated_at": "2026-04-22T15:41:37.180147054Z"
     },
     "lb-cmnc": {
       "id": "lb-cmnc",
@@ -589,6 +719,16 @@
       "priority": 1,
       "created_at": "2026-03-28T15:31:36.053352615Z",
       "updated_at": "2026-03-28T15:40:50.837265458Z"
+    },
+    "lb-dbja": {
+      "id": "lb-dbja",
+      "title": "Add structured lifecycle output mode",
+      "description": "Outcome: supervising tools can run mrmouth with machine-readable lifecycle output instead of scraping the TUI or human log lines. Context: this should be mrmouth-level lifecycle JSON, distinct from existing raw inner-agent JSON streams. Completion: a CLI flag exposes JSONL lifecycle events with a final summary event and tests verify the contract.",
+      "item_type": "feature",
+      "status": "closed",
+      "priority": 1,
+      "created_at": "2026-05-12T15:47:24.966878011Z",
+      "updated_at": "2026-05-12T18:04:48.308537813Z"
     },
     "lb-dl1f": {
       "id": "lb-dl1f",
@@ -750,6 +890,16 @@
       "created_at": "2026-03-09T15:50:45.677736673Z",
       "updated_at": "2026-03-09T18:43:24.853311781Z"
     },
+    "lb-hgyp": {
+      "id": "lb-hgyp",
+      "title": "Move human and TUI display behind event renderers",
+      "description": "Outcome: presentation is handled by renderers that consume mrmouth events instead of orchestration code talking directly to TuiHandle. Context: TUI should become a display layer over event streams; existing terminal and log behavior should remain intact during migration. Completion: key orchestration flows emit events through a sink, TUI is driven from those events, and direct TUI dependencies in core command modules are reduced or isolated.",
+      "item_type": "feature",
+      "status": "closed",
+      "priority": 1,
+      "created_at": "2026-05-12T15:47:18.399198012Z",
+      "updated_at": "2026-05-12T18:02:45.984189436Z"
+    },
     "lb-hwg3": {
       "id": "lb-hwg3",
       "title": "Reviewer, Shipper, and Branch-per-Feature",
@@ -770,6 +920,16 @@
       "created_at": "2026-03-10T17:13:14.106194083Z",
       "updated_at": "2026-03-10T17:14:08.109844927Z"
     },
+    "lb-iyie": {
+      "id": "lb-iyie",
+      "title": "Print failure debrief after TUI teardown",
+      "description": "When any top-level error exits mrmouth (run/loop/do/ready), after dropping the TUI but before process exit, print: what failed, exit code if applicable, absolute path to the run log, and the last ~25 lines of that log. Currently main.rs only prints 'error: {e}' — which, for DoError::TooManyFailures, is just the count. Thread the log path through errors (RunError::ContainerFailed, DoError::TooManyFailures, etc.) so main.rs can tail it. This single change converts 'no idea what happened' into 'here is exactly what the container printed when it died.'",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 1,
+      "created_at": "2026-04-22T15:15:16.548962927Z",
+      "updated_at": "2026-04-22T16:06:56.470074162Z"
+    },
     "lb-j6dm": {
       "id": "lb-j6dm",
       "title": "Dockerfile extraction failure is silent",
@@ -789,6 +949,16 @@
       "priority": 3,
       "created_at": "2026-03-10T16:28:19.225487388Z",
       "updated_at": "2026-03-10T16:30:04.282411850Z"
+    },
+    "lb-jiq0": {
+      "id": "lb-jiq0",
+      "title": "Build core event surface",
+      "description": "Outcome: introduce a small, stable internal event API for mrmouth lifecycle reporting. Context: this feature should create the vocabulary and sink abstractions other commands can use before any renderer migration. Completion: event types and sinks compile, basic tests cover serialization or fanout behavior, and no user-visible CLI behavior needs to change yet.",
+      "item_type": "feature",
+      "status": "closed",
+      "priority": 1,
+      "created_at": "2026-05-12T15:47:11.038227603Z",
+      "updated_at": "2026-05-12T17:55:08.879745227Z"
     },
     "lb-jj12": {
       "id": "lb-jj12",
@@ -829,6 +999,16 @@
       "priority": 1,
       "created_at": "2026-03-12T22:35:37.318369415Z",
       "updated_at": "2026-03-25T18:48:47.162041484Z"
+    },
+    "lb-kbgv": {
+      "id": "lb-kbgv",
+      "title": "Define mrmouth event model and sink abstraction",
+      "description": "Goal: Add the internal event vocabulary and sink interface that separates orchestration from presentation. Context: current status messages are direct logger.log, eprintln, and TuiHandle calls across src/main.rs, src/run.rs, src/do_cmd.rs, src/ready.rs, src/loop_cmd.rs, src/reviewer.rs, and src/shipper.rs. Requirements: add a focused module such as src/events.rs with event structs or enums for message lines, stage changes, run/task labels, task selection, branch/container/run lifecycle, reviewer/shipper lifecycle, sync, finish, and failure; include an EventSink trait or cloneable sink type; include a no-op sink and fanout sink if useful. Acceptance: cargo test passes and event types are documented enough for later renderer tasks. Out of scope: migrating every caller or adding CLI JSON flags.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 1,
+      "created_at": "2026-05-12T15:47:37.811625052Z",
+      "updated_at": "2026-05-12T16:42:19.226749309Z"
     },
     "lb-kl4s": {
       "id": "lb-kl4s",
@@ -900,6 +1080,16 @@
       "created_at": "2026-03-08T21:02:10.433788241Z",
       "updated_at": "2026-03-08T21:02:30.562957936Z"
     },
+    "lb-ly6e": {
+      "id": "lb-ly6e",
+      "title": "Restore formatted TUI agent stream with event sink",
+      "description": "Goal: Fix normal TUI mrmouth runs so agent stream output is formatted and visible while lifecycle events still drive TUI status.\nContext: Live smoke test lb-7nr4 used a disposable fake-agent repo and current target/debug/mrmouth. Plain mode under a pseudo-TTY entered the TUI alt screen, but logs/run-20260512-144219.log contained raw Claude stream JSON for the agent output instead of formatted [init]/[text]/[done] output. The likely cause is src/run.rs treating opts.event_sink.is_some() as JSON lifecycle mode at the stream branches around one-shot run and session run; normal TUI mode now also has an event sink from main.rs lifecycle_event_sink(false, tui.as_ref()).\nRequirements: Separate machine lifecycle JSON mode from the presence of an event sink. Normal TUI mode should keep formatting inner agent stream output to the TUI/log while still emitting lifecycle events for status/header. --json-events should continue to write lifecycle JSONL to stdout and avoid formatted stream display. Update run.rs/main.rs or option structs as needed without re-coupling core logic directly to TuiHandle.\nAcceptance: A focused regression test covers event_sink-present/non-json mode and proves formatted stream output is still used. Live smoke equivalent of plain mrmouth run under a pseudo-TTY shows formatted agent output in the run log, while --json-events still emits lifecycle_summary on stdout. cargo fmt --check, cargo clippy --all-targets -- -D warnings, and cargo test pass.\nOut of scope: Redesigning the full event vocabulary or changing raw mode semantics.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 1,
+      "created_at": "2026-05-12T18:43:35.497581578Z",
+      "updated_at": "2026-05-12T19:12:25.232200050Z"
+    },
     "lb-m12l": {
       "id": "lb-m12l",
       "title": "Register modules in main.rs",
@@ -909,6 +1099,16 @@
       "priority": 2,
       "created_at": "2026-03-09T15:50:45.696492755Z",
       "updated_at": "2026-03-09T18:43:24.873621362Z"
+    },
+    "lb-m98v": {
+      "id": "lb-m98v",
+      "title": "Silence spurious 'litebrite already initialized' log noise",
+      "description": "litebrite.rs::run_lb logs 'lb init failed (exit 1): litebrite already initialized' whenever the repo is already initialized but lacks a local .litebrite dir guard. This clutters the run log and makes users suspect real failures. In run_lb (or init_and_sync), check for this specific stderr substring and treat it as benign — either log at debug/trace level or skip it entirely. Safer approach: in init_and_sync, check 'lb status' or similar before calling init, or unconditionally tolerate this specific error.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 3,
+      "created_at": "2026-04-22T15:16:30.410067733Z",
+      "updated_at": "2026-04-22T15:42:52.519482819Z"
     },
     "lb-mgza": {
       "id": "lb-mgza",
@@ -935,10 +1135,30 @@
       "title": "mrmouth epic should work with standalone tasks, not just epic children",
       "description": "Currently 'mrmouth epic <id>' only finds child tasks of the given epic. If you pass a standalone task (not an epic, or an epic with no children), it reports 'All tasks complete' and exits without doing anything.\n\nExpected behavior: 'mrmouth epic <task-id>' should work on any item — if it's a standalone task, treat it as a single-item workload. If it's an epic with children, work the children. The current behavior forces users to wrap standalone tasks in a parent epic as a workaround, which is unnecessary ceremony.\n\nDiscovered when trying to run 'mrmouth epic lb-nu6d' on a standalone task — it did nothing until the task was reparented under a new epic.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 2,
       "created_at": "2026-03-26T03:45:21.356840097Z",
-      "updated_at": "2026-03-26T03:45:21.356840097Z"
+      "updated_at": "2026-04-22T15:21:48.594123021Z"
+    },
+    "lb-mnql": {
+      "id": "lb-mnql",
+      "title": "Document event rendering architecture and JSON mode",
+      "description": "Goal: Update project docs to explain the separation between orchestration events, TUI rendering, human terminal output, log files, raw inner-agent JSON, and lifecycle JSON mode. Context: README currently documents --raw as raw JSONL for agent stream output and describes the TUI as part of command behavior. Requirements: document the new flag, what stdout/stderr contain, that --raw is still inner-agent stream output, and how supervising agents should consume final lifecycle summary events. Acceptance: README or SPEC changes are clear enough for future Codex sessions and users. Out of scope: long protocol reference beyond the stable fields implemented.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 2,
+      "created_at": "2026-05-12T15:49:10.906992178Z",
+      "updated_at": "2026-05-12T17:18:53.645080551Z"
+    },
+    "lb-mx2d": {
+      "id": "lb-mx2d",
+      "title": "Avoid dirtying host Dockerfile before post-run pull",
+      "description": "Host-side post-run cleanup extracts .mrmouth/Dockerfile from the container before git pull --ff-only. If the agent already committed and pushed the same Dockerfile content, the host worktree becomes dirty and the pull can fail. Make extraction idempotent or defer it so self-produced Dockerfile changes do not block pulling.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 1,
+      "created_at": "2026-05-12T16:23:20.844912018Z",
+      "updated_at": "2026-05-12T16:29:18.608985401Z"
     },
     "lb-mxo4": {
       "id": "lb-mxo4",
@@ -999,6 +1219,16 @@
       "priority": 2,
       "created_at": "2026-03-30T04:00:28.790343546Z",
       "updated_at": "2026-03-30T04:09:27.901832495Z"
+    },
+    "lb-obsn": {
+      "id": "lb-obsn",
+      "title": "Seriously improve mrmouth do preflight and error reporting",
+      "description": "When 'mrmouth do' fails 3 times in a row and the TUI tears down, the user is left with no visible cause. Today in ai-agent, all 3 attempts hit 'trk: command not found' (exit 127) because the custom Dockerfile lacks trk but a trapperkeeper branch exists. The message was buried: stderr is buffered until stdout closes, the TUI alt-screen wipes the visible history on exit, preflight didn't catch the Dockerfile/branch mismatch, and TooManyFailures prints only the count. Goal: convert 'N fails, no info' into 'fail fast with a clear cause', with strong preflight + real-time error streaming + a failure debrief after the TUI exits.",
+      "item_type": "epic",
+      "status": "closed",
+      "priority": 1,
+      "created_at": "2026-04-22T15:15:09.023948528Z",
+      "updated_at": "2026-04-24T10:59:54.077571845Z"
     },
     "lb-oj9p": {
       "id": "lb-oj9p",
@@ -1150,6 +1380,16 @@
       "created_at": "2026-03-09T15:50:45.683044731Z",
       "updated_at": "2026-03-09T18:43:24.859337500Z"
     },
+    "lb-ttyh": {
+      "id": "lb-ttyh",
+      "title": "Add event sink tests and serialization helpers",
+      "description": "Goal: Make the new event surface testable and ready for JSON output without committing to the final CLI flag yet. Context: the structured output mode will need deterministic event names and payloads. Requirements: derive or implement serde serialization for lifecycle events where appropriate; add tests for event name stability, fanout behavior, and summary/failure payload construction. Acceptance: cargo test passes and future JSON renderer work can write events without inventing another schema. Out of scope: changing runtime behavior in run/do/ready/loop.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 1,
+      "created_at": "2026-05-12T15:47:47.200108779Z",
+      "updated_at": "2026-05-12T16:49:43.400674478Z"
+    },
     "lb-tvkb": {
       "id": "lb-tvkb",
       "title": "Epic creates feature branch but doesn't push before first container run",
@@ -1210,6 +1450,16 @@
       "created_at": "2026-03-25T19:22:48.136683178Z",
       "updated_at": "2026-03-25T19:25:12.682386510Z"
     },
+    "lb-usb5": {
+      "id": "lb-usb5",
+      "title": "Add tests for lifecycle JSON mode",
+      "description": "Goal: Add regression coverage for structured lifecycle output mode without depending on Docker or external agent CLIs where possible. Context: tests should focus on event rendering, CLI flag interactions, and final summary construction rather than running real containers. Requirements: cover JSONL renderer writes valid one-object-per-line output, TUI is not started when JSON lifecycle mode is active, raw inner-agent output remains separate from lifecycle JSON, and final summary events are present in success/failure paths that can be unit-tested. Acceptance: cargo test passes. Out of scope: full end-to-end Docker integration tests.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 1,
+      "created_at": "2026-05-12T15:49:00.128131952Z",
+      "updated_at": "2026-05-12T17:14:29.814884372Z"
+    },
     "lb-v1qa": {
       "id": "lb-v1qa",
       "title": "Epic should pass feature branch to RunOptions explicitly",
@@ -1229,6 +1479,26 @@
       "priority": 1,
       "created_at": "2026-03-28T14:26:18.482524375Z",
       "updated_at": "2026-03-28T14:30:23.906606047Z"
+    },
+    "lb-vj6i": {
+      "id": "lb-vj6i",
+      "title": "Stream container stderr in real-time, interleaved with stdout",
+      "description": "In docker.rs::ContainerHandle::stream_output, stderr is currently read on a background thread into a Vec<String> and only flushed to the handler after stdout closes (lines 311-336). This means messages like 'trk: command not found' appear late and out of order. Replace with an mpsc channel: spawn a stdout reader thread and a stderr reader thread, both sending lines into a single channel; the main loop drains the channel and calls the handler. Use a small tag ('out'/'err') only internally if needed for diagnostics. Keep handler signature unchanged. The TUI/logger will then see errors when they happen.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 1,
+      "created_at": "2026-04-22T15:15:23.586726286Z",
+      "updated_at": "2026-04-22T15:36:15.118828783Z"
+    },
+    "lb-vjkd": {
+      "id": "lb-vjkd",
+      "title": "Per-attempt summary on TooManyFailures abort",
+      "description": "In do_cmd.rs::execute_epic, when consecutive_failures >= max_failures, we return DoError::TooManyFailures(n) which displays as 'aborted after N consecutive failures' with no detail. Track a Vec<(u32 attempt, String reason, PathBuf log_path)> across attempts (reason pulled from the RunError — exit code, classification, message). On abort, render each attempt: 'attempt 1: exit 127 — possibly missing command (log: logs/run-XXX.log)'. Combined with lb-iyie (failure debrief), the user sees the full story without hunting through logs/.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 1,
+      "created_at": "2026-04-22T15:15:31.214830728Z",
+      "updated_at": "2026-04-22T15:40:33.780939325Z"
     },
     "lb-vjkj": {
       "id": "lb-vjkj",
@@ -1255,10 +1525,10 @@
       "title": "Restore Dockerfile editing capability in do and ready flows",
       "description": "The do and ready flows use prompt_override with minimal hardcoded prompts that strip the Docker Environment section from the default runner prompt. Runners don't know they can edit .mrmouth/Dockerfile to install missing tools. Fix by composing prompts that prepend scope constraints onto the full default prompt.",
       "item_type": "epic",
-      "status": "open",
+      "status": "closed",
       "priority": 2,
       "created_at": "2026-03-30T21:11:24.119030309Z",
-      "updated_at": "2026-03-30T21:11:24.119030309Z"
+      "updated_at": "2026-04-07T15:31:47.221117710Z"
     },
     "lb-wi67": {
       "id": "lb-wi67",
@@ -1320,6 +1590,16 @@
       "created_at": "2026-03-25T20:05:00.003068403Z",
       "updated_at": "2026-03-25T20:09:50.407511948Z"
     },
+    "lb-xs49": {
+      "id": "lb-xs49",
+      "title": "Emit final lifecycle summary events",
+      "description": "Goal: Make lifecycle JSON runs end with a stable final summary event that tools can trust. Context: supervising agents need to know whether mrmouth completed, failed, or stopped; which item or command ran; branch name; commits or commit range when available; log paths; reviewer/shipper outcome when available; and next-action guidance. Requirements: define completed and failed summary payloads; include log paths and exit code or failure reason on errors; avoid requiring consumers to infer success from process text. Acceptance: tests cover success and failure summary serialization, and failed runs still exit nonzero. Out of scope: perfect commit detection for every command if not already available.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 1,
+      "created_at": "2026-05-12T15:48:46.971374297Z",
+      "updated_at": "2026-05-12T17:07:16.311734101Z"
+    },
     "lb-xxgz": {
       "id": "lb-xxgz",
       "title": "Epic branch push failure should warn instead of silently continuing",
@@ -1339,6 +1619,26 @@
       "priority": 3,
       "created_at": "2026-03-08T20:58:56.504066401Z",
       "updated_at": "2026-03-08T21:00:53.740269267Z"
+    },
+    "lb-y5z9": {
+      "id": "lb-y5z9",
+      "title": "Preflight: origin reachability with timeout",
+      "description": "In non-local mode we expect the container to clone from origin. If origin is unreachable (DNS, VPN, SSH key) the container fails opaquely inside 'git clone'. Add to preflight: run 'git ls-remote --exit-code origin HEAD' with a 5-10s timeout; on failure, emit 'cannot reach origin: {stderr}' and abort before docker build. Use std::process::Command with a wall-clock timeout helper.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 2,
+      "created_at": "2026-04-22T15:16:05.720681324Z",
+      "updated_at": "2026-04-22T15:49:07.555023236Z"
+    },
+    "lb-y8mm": {
+      "id": "lb-y8mm",
+      "title": "Migrate do ready loop reviewer and shipper reporting to events",
+      "description": "Goal: Finish moving orchestration status reporting behind the event sink across the higher-level commands. Context: src/do_cmd.rs and src/ready.rs use local emit helpers and TuiHandle methods; src/loop_cmd.rs coordinates decider, runner, reviewer, summary, and shipper stages; src/reviewer.rs and src/shipper.rs create stage-specific logs and stream agent output. Requirements: route task selection, branch creation, stage/run labels, reviewer and shipper lifecycle, sync, and failure messages through events where practical; preserve cancellation checks; keep existing logs useful. Acceptance: cargo test passes and non-TUI human output remains understandable. Out of scope: defining new JSON schema fields not needed by the event model.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 1,
+      "created_at": "2026-05-12T15:48:25.078001183Z",
+      "updated_at": "2026-05-12T17:53:20.412562730Z"
     },
     "lb-ys68": {
       "id": "lb-ys68",
@@ -1369,9 +1669,39 @@
       "priority": 2,
       "created_at": "2026-03-25T19:33:56.331811261Z",
       "updated_at": "2026-03-25T19:38:55.170091394Z"
+    },
+    "lb-zptt": {
+      "id": "lb-zptt",
+      "title": "Classify container exit codes into human causes",
+      "description": "Enrich RunError::ContainerFailed(i32) to RunError::ContainerFailed { code, reason }. Map: 127→'missing command in container (check your Dockerfile includes all expected tools)', 137→'container killed (likely OOM)', 143→'timed out (SIGTERM)', 124→'timed out (timeout wrapper)', 126→'permission denied / not executable', 0 with agent never starting→'agent exited before starting work'. Reason string feeds into the failure debrief and per-attempt summary. Scan the last few hundred bytes of the logged output for known patterns ('command not found', 'Killed', 'context deadline exceeded') to refine the classification.",
+      "item_type": "task",
+      "status": "closed",
+      "priority": 1,
+      "created_at": "2026-04-22T15:15:39.285238517Z",
+      "updated_at": "2026-04-22T15:29:45.132446876Z"
     }
   },
   "deps": [
+    {
+      "from_id": "lb-174a",
+      "to_id": "lb-dbja",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-174a",
+      "to_id": "lb-xs49",
+      "dep_type": "blocks"
+    },
+    {
+      "from_id": "lb-1ae5",
+      "to_id": "lb-bk4s",
+      "dep_type": "blocks"
+    },
+    {
+      "from_id": "lb-1ae5",
+      "to_id": "lb-hgyp",
+      "dep_type": "parent"
+    },
     {
       "from_id": "lb-1hfx",
       "to_id": "lb-2rj3",
@@ -1403,8 +1733,23 @@
       "dep_type": "parent"
     },
     {
+      "from_id": "lb-3h63",
+      "to_id": "lb-obsn",
+      "dep_type": "parent"
+    },
+    {
       "from_id": "lb-3m77",
       "to_id": "lb-2rj3",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-451n",
+      "to_id": "lb-1ae5",
+      "dep_type": "blocks"
+    },
+    {
+      "from_id": "lb-451n",
+      "to_id": "lb-hgyp",
       "dep_type": "parent"
     },
     {
@@ -1438,6 +1783,26 @@
       "dep_type": "parent"
     },
     {
+      "from_id": "lb-7nr4",
+      "to_id": "lb-40uv",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-87en",
+      "to_id": "lb-obsn",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-87n3",
+      "to_id": "lb-obsn",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-8ngb",
+      "to_id": "lb-obsn",
+      "dep_type": "parent"
+    },
+    {
       "from_id": "lb-8raq",
       "to_id": "lb-mke6",
       "dep_type": "parent"
@@ -1468,8 +1833,23 @@
       "dep_type": "parent"
     },
     {
+      "from_id": "lb-bk4s",
+      "to_id": "lb-hgyp",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-bk4s",
+      "to_id": "lb-y8mm",
+      "dep_type": "blocks"
+    },
+    {
       "from_id": "lb-btw1",
       "to_id": "lb-vy69",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-ci6z",
+      "to_id": "lb-obsn",
       "dep_type": "parent"
     },
     {
@@ -1480,6 +1860,11 @@
     {
       "from_id": "lb-dbfv",
       "to_id": "lb-2rj3",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-dbja",
+      "to_id": "lb-40uv",
       "dep_type": "parent"
     },
     {
@@ -1513,9 +1898,44 @@
       "dep_type": "parent"
     },
     {
+      "from_id": "lb-hgyp",
+      "to_id": "lb-40uv",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-iyie",
+      "to_id": "lb-obsn",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-jiq0",
+      "to_id": "lb-40uv",
+      "dep_type": "parent"
+    },
+    {
       "from_id": "lb-k3be",
       "to_id": "lb-21dd",
       "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-kbgv",
+      "to_id": "lb-174a",
+      "dep_type": "blocks"
+    },
+    {
+      "from_id": "lb-kbgv",
+      "to_id": "lb-451n",
+      "dep_type": "blocks"
+    },
+    {
+      "from_id": "lb-kbgv",
+      "to_id": "lb-jiq0",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-kbgv",
+      "to_id": "lb-ttyh",
+      "dep_type": "blocks"
     },
     {
       "from_id": "lb-kl4s",
@@ -1538,13 +1958,28 @@
       "dep_type": "parent"
     },
     {
+      "from_id": "lb-ly6e",
+      "to_id": "lb-40uv",
+      "dep_type": "parent"
+    },
+    {
       "from_id": "lb-m12l",
       "to_id": "lb-hwg3",
       "dep_type": "parent"
     },
     {
+      "from_id": "lb-m98v",
+      "to_id": "lb-obsn",
+      "dep_type": "parent"
+    },
+    {
       "from_id": "lb-mgza",
       "to_id": "lb-dvhr",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-mnql",
+      "to_id": "lb-dbja",
       "dep_type": "parent"
     },
     {
@@ -1593,6 +2028,11 @@
       "dep_type": "parent"
     },
     {
+      "from_id": "lb-ttyh",
+      "to_id": "lb-jiq0",
+      "dep_type": "parent"
+    },
+    {
       "from_id": "lb-u9z2",
       "to_id": "lb-cmnc",
       "dep_type": "parent"
@@ -1608,8 +2048,28 @@
       "dep_type": "parent"
     },
     {
+      "from_id": "lb-usb5",
+      "to_id": "lb-dbja",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-usb5",
+      "to_id": "lb-mnql",
+      "dep_type": "blocks"
+    },
+    {
       "from_id": "lb-vfnx",
       "to_id": "lb-2rj3",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-vj6i",
+      "to_id": "lb-obsn",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-vjkd",
+      "to_id": "lb-obsn",
       "dep_type": "parent"
     },
     {
@@ -1638,6 +2098,31 @@
       "dep_type": "parent"
     },
     {
+      "from_id": "lb-xs49",
+      "to_id": "lb-dbja",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-xs49",
+      "to_id": "lb-usb5",
+      "dep_type": "blocks"
+    },
+    {
+      "from_id": "lb-y5z9",
+      "to_id": "lb-obsn",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-y8mm",
+      "to_id": "lb-174a",
+      "dep_type": "blocks"
+    },
+    {
+      "from_id": "lb-y8mm",
+      "to_id": "lb-hgyp",
+      "dep_type": "parent"
+    },
+    {
       "from_id": "lb-ys68",
       "to_id": "lb-21dd",
       "dep_type": "parent"
@@ -1650,6 +2135,11 @@
     {
       "from_id": "lb-zcay",
       "to_id": "lb-dvhr",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-zptt",
+      "to_id": "lb-obsn",
       "dep_type": "parent"
     }
   ]
