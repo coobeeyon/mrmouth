@@ -2008,6 +2008,11 @@
       "dep_type": "parent"
     },
     {
+      "from_id": "lb-nywb",
+      "to_id": "lb-57jy",
+      "dep_type": "parent"
+    },
+    {
       "from_id": "lb-o60w",
       "to_id": "lb-95np",
       "dep_type": "blocks"
@@ -2160,11 +2165,6 @@
     {
       "from_id": "lb-zptt",
       "to_id": "lb-obsn",
-      "dep_type": "parent"
-    },
-    {
-      "from_id": "lb-nywb",
-      "to_id": "lb-57jy",
       "dep_type": "parent"
     }
   ]
