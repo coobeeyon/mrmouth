@@ -8,10 +8,12 @@ pub mod events;
 mod litebrite;
 mod logger;
 mod loop_cmd;
+mod prime;
 mod prompt;
 mod ready;
 mod reviewer;
 mod run;
+mod setup_codex;
 mod shipper;
 pub mod stream_fmt;
 mod streaming;
@@ -132,14 +134,29 @@ enum Commands {
         json_events: bool,
     },
 
+    /// Print agent-facing operating context for supervising mrmouth
+    Prime,
+
     /// Generate an AI summary of a run log
     Summary {
         /// Path to log file (default: logs/latest.jsonl)
         log_file: Option<String>,
     },
 
+    /// Setup mrmouth integrations for coding agents
+    Setup {
+        #[command(subcommand)]
+        command: SetupCommands,
+    },
+
     /// Sign in to Codex inside mrmouth's persisted Docker auth volume
     CodexLogin,
+}
+
+#[derive(Subcommand)]
+enum SetupCommands {
+    /// Configure Codex hooks and rules
+    Codex,
 }
 
 fn main() {
@@ -151,6 +168,8 @@ fn main() {
             | Commands::Loop { .. }
             | Commands::Summary { .. }
             | Commands::CodexLogin
+            | Commands::Setup { .. }
+            | Commands::Prime
     );
     let repo_root = if use_cwd_fallback {
         match Config::find_repo_root_or_cwd() {
@@ -194,6 +213,10 @@ fn main() {
         Commands::Do { .. } => "do",
         Commands::Loop { .. } => "loop",
         Commands::Ready { .. } => "ready",
+        Commands::Prime => "prime",
+        Commands::Setup {
+            command: SetupCommands::Codex,
+        } => "setup codex",
         Commands::Summary { .. } => "summary",
         Commands::CodexLogin => "codex-login",
     };
@@ -287,6 +310,13 @@ fn main() {
             let log_file = log_file.unwrap_or_else(|| format!("{}/latest.jsonl", config.log_dir));
             summary::execute(&config, &repo_root, &log_file, None).map_err(|e| e.debrief())
         }
+        Commands::Prime => {
+            prime::execute(&config, &repo_root);
+            Ok(())
+        }
+        Commands::Setup {
+            command: SetupCommands::Codex,
+        } => setup_codex::execute().map_err(|e| e.debrief()),
         Commands::CodexLogin => codex_login::execute(&config, &repo_root).map_err(|e| e.debrief()),
     };
 
@@ -313,7 +343,7 @@ struct OutputModes {
 fn output_modes(command: &Commands) -> OutputModes {
     let raw = matches!(
         command,
-        Commands::Run { raw: true, .. } | Commands::Summary { .. }
+        Commands::Run { raw: true, .. } | Commands::Summary { .. } | Commands::Prime
     );
     let json_events = matches!(
         command,
@@ -506,6 +536,29 @@ mod tests {
                 start_tui: false,
             }
         );
+    }
+
+    #[test]
+    fn prime_disables_tui_without_lifecycle_json() {
+        assert_eq!(
+            output_modes(&Commands::Prime),
+            OutputModes {
+                json_events: false,
+                start_tui: false,
+            }
+        );
+    }
+
+    #[test]
+    fn setup_codex_parses() {
+        let cli = Cli::try_parse_from(["mrmouth", "setup", "codex"]).unwrap();
+
+        assert!(matches!(
+            cli.command,
+            Commands::Setup {
+                command: SetupCommands::Codex
+            }
+        ));
     }
 
     #[test]

@@ -8,6 +8,20 @@ You run `mrmouth` from inside any git repo. It builds a Docker image, launches a
 
 ## Subcommands
 
+### `mrmouth prime`
+
+Print agent-facing operating context for mrmouth.
+
+**What it does:**
+
+1. Load local config when available, falling back to defaults
+2. Print the effective agent, model, Docker image, Dockerfile, volume, log dir, and task execution defaults
+3. Summarize safe supervisor usage for `run`, `do`, `ready`, `loop`, `summary`, `setup codex`, and `codex-login`
+4. Document the lifecycle JSON contract and recommend `mrmouth do <id> --json-events` for bounded delegation
+
+This command is intended for top-level coding agents and global shell hooks,
+similar to `lb prime`.
+
 ### `mrmouth run`
 
 Run one agent session. This is the core command — everything else builds on it.
@@ -55,6 +69,7 @@ Run the agent repeatedly until work is done.
 - `--delay <seconds>` — wait between runs (default: 0)
 - `--max-runs <n>` — stop after N runs regardless of decider
 - `--no-summary` — skip AI summary generation
+- `--json-events` — output mrmouth lifecycle events as JSONL and disable the TUI
 
 ### `mrmouth do <item-id>`
 
@@ -74,6 +89,7 @@ Work through a litebrite item — either an epic or a single task.
 - `--timeout <minutes>` — per-task timeout (default: 15)
 - `--max-failures <n>` — consecutive failures before aborting (default: 3)
 - `--model <model>` — override the Claude model
+- `--json-events` — output mrmouth lifecycle events as JSONL and disable the TUI
 
 ### `mrmouth ready`
 
@@ -92,6 +108,7 @@ Pick up unblocked items from litebrite and work through them.
 - `--timeout <minutes>` — per-task timeout (default: 15)
 - `--max-failures <n>` — consecutive failures before aborting (default: 3)
 - `--model <model>` — override the Claude model
+- `--json-events` — output mrmouth lifecycle events as JSONL and disable the TUI
 
 ### `mrmouth summary [log-file]`
 
@@ -104,6 +121,30 @@ Generate an AI summary of a run log.
 3. Write summary to `logs/summaries/<log-name>.md`
 4. Print summary to stdout
 
+### `mrmouth setup codex`
+
+Configure Codex hooks and rules so new Codex sessions load `mrmouth prime`
+context.
+
+**What it does:**
+
+1. Enable Codex hooks in `.codex/config.toml`
+2. Add a `SessionStart` hook in `.codex/hooks.json` that runs `mrmouth prime`
+3. Add a `.codex/rules/default.rules` allow rule for `mrmouth`
+
+This command is idempotent and merges with existing configuration.
+
+### `mrmouth codex-login`
+
+Sign in to Codex inside the shared persisted Docker volume used by `--codex`.
+
+**What it does:**
+
+1. Build the mrmouth runner image
+2. Ensure the Codex Docker home volume exists
+3. Run `codex login --device-auth` inside Docker with an interactive terminal
+4. Verify login status and leave credentials in the persisted Codex home volume
+
 ## Config Format
 
 Config file: `.mrmouth/config.toml`
@@ -111,6 +152,9 @@ Config file: `.mrmouth/config.toml`
 ```toml
 # Model for agent runs (default: opus)
 model = "opus"
+
+# Agent for all AI roles (default: codex; can be overridden with --claude/--codex)
+agent = "codex"
 
 # Docker image name (default: mrmouth-runner)
 image = "mrmouth-runner"
@@ -121,8 +165,9 @@ dockerfile = ".mrmouth/Dockerfile"
 # Branch to work on (default: current branch)
 # branch = "main"
 
-# Persistent Docker volume name for Claude memory (default: mrmouth-claude-home)
-volume = "mrmouth-claude-home"
+# Persistent Docker volume name (default: shared mrmouth-codex-home for Codex;
+# Claude defaults to a per-repo mrmouth-claude-home-* volume)
+volume = "mrmouth-codex-home"
 
 # Log directory relative to repo root (default: logs)
 log_dir = "logs"
