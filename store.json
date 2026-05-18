@@ -1210,6 +1210,16 @@
       "created_at": "2026-03-25T20:23:18.720902903Z",
       "updated_at": "2026-03-25T20:23:41.153789012Z"
     },
+    "lb-nywb": {
+      "id": "lb-nywb",
+      "title": "Add coverage for do --worktree Docker workspace mapping",
+      "description": "Review of 64e7b6cf0bb73bec06d2c7aa93923f54723c3820..9e07ce29ed820b0f2ea417afdc4163be696b16f4 found that lb-57jy added CLI parsing tests and prompt coverage for local worktree support, but the acceptance criteria also require focused tests or a documented manual smoke test covering the runner/workspace mapping. Add coverage or a smoke note that demonstrates mrmouth do --worktree <path> passes the resolved host path through RunOptions/SessionArgs/ContainerArgs and bind-mounts it at /home/runner/worktree, while preserving default clone behavior.",
+      "item_type": "task",
+      "status": "open",
+      "priority": 2,
+      "created_at": "2026-05-18T12:20:32.483865144Z",
+      "updated_at": "2026-05-18T12:20:32.483865144Z"
+    },
     "lb-o0x7": {
       "id": "lb-o0x7",
       "title": "mrmouth summary standalone command now outputs to stderr instead of stdout (spec deviation)",
@@ -2150,6 +2160,11 @@
     {
       "from_id": "lb-zptt",
       "to_id": "lb-obsn",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-nywb",
+      "to_id": "lb-57jy",
       "dep_type": "parent"
     }
   ]
