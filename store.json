@@ -360,6 +360,16 @@
       "created_at": "2026-03-10T15:49:11.375644641Z",
       "updated_at": "2026-03-10T15:54:04.661386232Z"
     },
+    "lb-57jy": {
+      "id": "lb-57jy",
+      "title": "[mrmouth] Add local worktree support to do",
+      "description": "Goal: Make the successful supervisor workaround first-class: allow `mrmouth do <item>` to run against a local bind-mounted workspace/worktree instead of cloning only the tracker repo.\nContext: In the Augmenta coordination repo, `mrmouth do lb-b1ev --codex` cloned only the outer planning repo, so the requested sibling service worktree `/home/mdaum/devel/clients/augmenta/acorn-frontend-one-port` was absent inside the container. A manual workaround succeeded with `mrmouth run --local --codex` plus a temporary `.mrmouth/prompt.md` that told the agent to edit the mounted sibling worktree. This should become a real, bounded `do` capability. Relevant code likely includes `src/main.rs`, `src/do_cmd.rs`, `src/run.rs`, `src/docker.rs`, and prompt construction.\nRequirements: Add an explicit option such as `mrmouth do --local <item>` and/or `mrmouth do --worktree <path> <item>`. The selected local workspace/worktree must be visible inside the container, and the generated task prompt must clearly tell the runner where to edit, claim/close behavior expectations, and what repo owns commits. Preserve existing clone-based `mrmouth do` behavior by default. Avoid requiring temporary `.mrmouth/prompt.md` shims. Ensure lifecycle JSON still reports the item id, branch/workspace, log paths, and final status.\nAcceptance: A task in a coordination repo can direct work into a sibling service worktree without the service repo being present in the cloned coordination repo. Add focused tests or a documented manual smoke test covering argument parsing and the runner prompt/workspace mapping. Existing `mrmouth do <item>` behavior remains unchanged.\nOut of scope: Replacing the normal clone-based execution model, changing `mrmouth run --local` semantics, or building a generalized multi-repo orchestration system beyond one explicit local worktree target.",
+      "item_type": "task",
+      "status": "open",
+      "priority": 2,
+      "created_at": "2026-05-18T12:11:10.395675974Z",
+      "updated_at": "2026-05-18T12:11:10.395675974Z"
+    },
     "lb-5amv": {
       "id": "lb-5amv",
       "title": "Fix stream_fmt result text not indented",
