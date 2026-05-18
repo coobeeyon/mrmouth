@@ -11,6 +11,7 @@ Codex default agent — [Codex Role Model Defaults](pages/codex-role-model-defau
 Codex role models — [Codex Role Model Defaults](pages/codex-role-model-defaults.md)
 container Dockerfile extraction — [Dockerfile Extraction Lifecycle](pages/dockerfile-extraction-lifecycle.md)
 Dockerfile self-modification — [Dockerfile Extraction Lifecycle](pages/dockerfile-extraction-lifecycle.md)
+do --worktree — [Mr Mouth Prime](pages/mrmouth-prime.md), src/do_cmd.rs, src/run.rs, src/docker.rs
 event rendering architecture — [Event Rendering Architecture](pages/event-rendering-architecture.md)
 event sink handle — [Event Rendering Architecture](pages/event-rendering-architecture.md)
 host post-run sync — [Dockerfile Extraction Lifecycle](pages/dockerfile-extraction-lifecycle.md)
@@ -18,6 +19,7 @@ json lifecycle output — [Event Rendering Architecture](pages/event-rendering-a
 lb prime — [Litebrite Agent Contract](pages/litebrite-agent-contract.md)
 lb ready — [Litebrite Agent Contract](pages/litebrite-agent-contract.md)
 litebrite — [Litebrite Agent Contract](pages/litebrite-agent-contract.md)
+local worktree support — [Mr Mouth Prime](pages/mrmouth-prime.md), src/do_cmd.rs, src/run.rs, src/docker.rs
 mrmouth prime — [Mr Mouth Prime](pages/mrmouth-prime.md)
 mrmouth setup codex — [Mr Mouth Prime](pages/mrmouth-prime.md)
 mrmouth task delegation — [Litebrite Agent Contract](pages/litebrite-agent-contract.md)

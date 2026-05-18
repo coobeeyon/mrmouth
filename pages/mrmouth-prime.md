@@ -28,6 +28,18 @@ provides machine-readable lifecycle status. `mrmouth ready` and `mrmouth loop`
 are intentionally broader and should be used only when the user asks for that
 behavior.
 
+`mrmouth do` supports two local execution modes. `--local` bind-mounts the
+current tracking repo at `/home/runner/workspace` instead of cloning. `--worktree
+<path>` preserves the normal cloned tracking repo at `/home/runner/workspace`
+and additionally bind-mounts the resolved host path at `/home/runner/worktree`
+with `MRMOUTH_WORKTREE=/home/runner/worktree`. The generated task prompt tells
+the runner to use `/home/runner/workspace` for Litebrite/tracking commands and
+`/home/runner/worktree` for code edits, commits, and pushes. The path is wired
+through `DoOptions` in `src/do_cmd.rs`, `RunOptions` and session setup in
+`src/run.rs`, and Docker command construction in `src/docker.rs`; tests cover
+CLI parsing, prompt wording, canonical host-path resolution, run/session arg
+propagation, and Docker bind-mount arguments.
+
 `mrmouth setup codex` follows the Trapperkeeper-style hook setup pattern. It
 enables Codex hooks in `.codex/config.toml`, adds a `SessionStart` hook in
 `.codex/hooks.json` that runs `mrmouth prime`, and adds a

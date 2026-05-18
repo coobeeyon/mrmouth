@@ -50,3 +50,6 @@ Recorded that reviewer-created Litebrite issues should stay attached to the curr
 
 ## [2026-05-14] changed | Codex default agent
 Recorded that Codex is now the built-in default agent in both `Config::default()` and `AgentKind::default()`. Prime displays the effective model as "agent default" when Codex omits a historical Claude alias such as `opus`.
+
+## [2026-05-18] implemented | mrmouth do local worktree mode
+Recorded `mrmouth do --worktree <path>` semantics: the tracking repo still lives at `/home/runner/workspace`, the resolved host worktree is mounted at `/home/runner/worktree`, and `MRMOUTH_WORKTREE` points there. The implementation spans `src/do_cmd.rs`, `src/run.rs`, and `src/docker.rs`; coverage now includes prompt text, path resolution, argument propagation, and Docker mount construction.
