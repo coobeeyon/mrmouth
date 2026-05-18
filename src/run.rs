@@ -36,6 +36,8 @@ pub struct RunOptions {
     pub model: String,
     pub timeout: Option<u32>,
     pub local: bool,
+    pub local_workspace_path: Option<PathBuf>,
+    pub worktree_path: Option<PathBuf>,
     pub prompt_override: Option<String>,
     pub branch: Option<String>,
     pub event_sink: Option<EventSinkHandle>,
@@ -50,6 +52,7 @@ pub struct Session {
     pub image_id: String,
     pub scripts_dir: tempfile::TempDir,
     pub local: bool,
+    pub worktree_path: Option<PathBuf>,
     pub file_remote_path: Option<PathBuf>,
 }
 
@@ -219,6 +222,12 @@ pub fn execute(
         name: "branch".to_string(),
         value: branch.clone(),
     });
+    if let Some(path) = opts.worktree_path.as_ref() {
+        reporter.emit(MrmouthEvent::RunLabel {
+            name: "workspace".to_string(),
+            value: path.display().to_string(),
+        });
+    }
 
     // 1. Preflight checks
     let local = opts.local || has_local_only_tooling_branch(repo_root);
@@ -361,6 +370,8 @@ pub fn execute(
         volume,
         agent_home: config.agent.home_mount(),
         local,
+        local_workspace_path: opts.local_workspace_path.clone(),
+        worktree_path: opts.worktree_path.clone(),
         file_remote_path: file_remote_path.clone(),
         timeout_secs: opts.timeout.map(|m| m as u64 * 60),
     };
@@ -535,6 +546,7 @@ pub fn execute(
                 format!("container exited with code {exit_code}: {reason}"),
             )
             .branch(branch.clone())
+            .workspace(run_workspace_label(local, opts.worktree_path.as_deref()))
             .log_path(log_path.display().to_string())
             .jsonl_path(jsonl_path.display().to_string())
             .exit_code(exit_code)
@@ -559,6 +571,7 @@ pub fn execute(
     reporter.emit(MrmouthEvent::LifecycleSummary {
         summary: LifecycleSummary::success("run")
             .branch(branch)
+            .workspace(run_workspace_label(local, opts.worktree_path.as_deref()))
             .log_path(log_path.display().to_string())
             .jsonl_path(jsonl_path.display().to_string())
             .exit_code(exit_code)
@@ -581,12 +594,15 @@ pub fn start_session(
     config: &Config,
     repo_root: &Path,
     initial_branch: &str,
+    local: bool,
+    local_workspace_path: Option<PathBuf>,
+    worktree_path: Option<PathBuf>,
     tui: Option<&TuiHandle>,
     logger: &Logger,
     log_path: &Path,
 ) -> Result<Session, RunError> {
     // 1. Preflight
-    let local = has_local_only_tooling_branch(repo_root);
+    let local = local || has_local_only_tooling_branch(repo_root);
     let effective_dockerfile =
         crate::docker::effective_dockerfile_content(repo_root, &config.dockerfile);
     if preflight_skipped() {
@@ -668,6 +684,8 @@ pub fn start_session(
         volume: volume.clone(),
         agent_home: config.agent.home_mount(),
         local,
+        local_workspace_path,
+        worktree_path: worktree_path.clone(),
         file_remote_path: file_remote_path.clone(),
     };
     docker
@@ -738,6 +756,7 @@ pub fn start_session(
         image_id,
         scripts_dir,
         local,
+        worktree_path,
         file_remote_path,
     })
 }
@@ -796,6 +815,15 @@ pub fn execute_in_session(
             value: branch.clone(),
         },
     );
+    if let Some(path) = session.worktree_path.as_ref().or(opts.worktree_path.as_ref()) {
+        emit_event(
+            &opts.event_sink,
+            MrmouthEvent::RunLabel {
+                name: "workspace".to_string(),
+                value: path.display().to_string(),
+            },
+        );
+    }
 
     // 1. Generate task.sh for this iteration
     let prompt_text = match opts.prompt_override.as_deref() {
@@ -1004,6 +1032,7 @@ pub fn execute_in_session(
                     format!("container exited with code {exit_code}: {reason}"),
                 )
                 .branch(branch.clone())
+                .workspace(run_workspace_label(session.local, session.worktree_path.as_deref()))
                 .log_path(log_path.display().to_string())
                 .jsonl_path(jsonl_path.display().to_string())
                 .exit_code(exit_code)
@@ -1027,6 +1056,14 @@ pub fn execute_in_session(
     );
 
     Ok(logger)
+}
+
+fn run_workspace_label(local: bool, worktree_path: Option<&Path>) -> String {
+    match worktree_path {
+        Some(path) => path.display().to_string(),
+        None if local => "/home/runner/workspace".to_string(),
+        None => "cloned repository".to_string(),
+    }
 }
 
 /// Stop and remove the session container. Scripts dir is cleaned up when
@@ -2051,6 +2088,8 @@ mod tests {
             model: "sonnet".to_string(),
             timeout: None,
             local: false,
+            local_workspace_path: None,
+            worktree_path: None,
             prompt_override: None,
             branch: None,
             event_sink: Some(EventSinkHandle::new(sink)),
@@ -2067,6 +2106,8 @@ mod tests {
             model: "sonnet".to_string(),
             timeout: None,
             local: false,
+            local_workspace_path: None,
+            worktree_path: None,
             prompt_override: None,
             branch: None,
             event_sink: None,

@@ -69,11 +69,63 @@ impl std::fmt::Display for ItemInfo {
 
 pub struct DoOptions {
     pub item_id: String,
+    pub local: bool,
+    pub worktree: Option<PathBuf>,
     pub timeout: u32,
     pub max_failures: u32,
     pub model: String,
     pub json_events: bool,
     pub event_sink: Option<EventSinkHandle>,
+}
+
+struct LocalWorktree {
+    target_mount: Option<PathBuf>,
+}
+
+impl LocalWorktree {
+    fn prompt_block(&self) -> Option<String> {
+        self.target_mount.as_ref().map(|host_path| {
+            format!(
+                "The litebrite/task tracking repo is `/home/runner/workspace`; run `lb` commands there. \
+                The code worktree to edit is bind-mounted at `/home/runner/worktree` from host path `{}`. \
+                Make code changes, commits, and pushes in `/home/runner/worktree`; make only task-state commits in `/home/runner/workspace` when needed. ",
+                host_path.display()
+            )
+        })
+    }
+
+    fn summary_workspace(&self) -> String {
+        self.target_mount
+            .as_ref()
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|| "/home/runner/workspace".to_string())
+    }
+}
+
+fn resolve_local_worktree(opts: &DoOptions) -> Result<LocalWorktree, DoError> {
+    let target_mount = match &opts.worktree {
+        Some(path) => {
+            let absolute = if path.is_absolute() {
+                path.clone()
+            } else {
+                std::env::current_dir()
+                    .map_err(|e| DoError::Command(format!("failed to get current dir: {e}")))?
+                    .join(path)
+            };
+            if !absolute.exists() {
+                return Err(DoError::Command(format!(
+                    "worktree path does not exist: {}",
+                    absolute.display()
+                )));
+            }
+            Some(std::fs::canonicalize(&absolute).map_err(|e| {
+                DoError::Command(format!("failed to resolve worktree path: {e}"))
+            })?)
+        }
+        None => None,
+    };
+
+    Ok(LocalWorktree { target_mount })
 }
 
 pub fn execute(
@@ -83,6 +135,7 @@ pub fn execute(
     tui: Option<&TuiHandle>,
 ) -> Result<(), DoError> {
     let tui_tx = tui.map(|t| t.sender("AGENT SESSION"));
+    let local_worktree = resolve_local_worktree(&opts)?;
     emit_event(
         &opts.event_sink,
         MrmouthEvent::StageChanged {
@@ -122,6 +175,16 @@ pub fn execute(
             value: item_info.item_type.clone(),
         },
     );
+    if let Some(path) = local_worktree.target_mount.as_ref() {
+        emit_event(
+            &opts.event_sink,
+            MrmouthEvent::TaskLabel {
+                item_id: opts.item_id.clone(),
+                name: "workspace".to_string(),
+                value: path.display().to_string(),
+            },
+        );
+    }
 
     // 2. Create feature branch (if not already on one)
     let current_branch = git_current_branch(repo_root)?;
@@ -195,6 +258,7 @@ pub fn execute(
             config,
             repo_root,
             &opts,
+            &local_worktree,
             &feature_branch,
             tui,
             &tui_tx,
@@ -205,6 +269,7 @@ pub fn execute(
             config,
             repo_root,
             &opts,
+            &local_worktree,
             &feature_branch,
             tui,
             &tui_tx,
@@ -246,6 +311,7 @@ pub fn execute(
             summary: LifecycleSummary::success("do")
                 .item_id(opts.item_id.clone())
                 .branch(feature_branch)
+                .workspace(local_worktree.summary_workspace())
                 .next_action("merge_when_ready"),
         },
     );
@@ -263,6 +329,7 @@ fn execute_task(
     config: &Config,
     repo_root: &Path,
     opts: &DoOptions,
+    local_worktree: &LocalWorktree,
     feature_branch: &str,
     tui: Option<&TuiHandle>,
     tui_tx: &Option<TuiSender>,
@@ -273,12 +340,10 @@ fn execute_task(
     let head_before = git_head(repo_root);
 
     let base_prompt = prompt::load_prompt(repo_root, logger);
-    let prompt = format!(
-        "## Scope\n\n\
-        Work on task {}. Run `lb show {}` to understand the task, then `lb claim {}`. \
-        Implement the changes, commit your code, then `lb close {}`, `lb sync`, and `git push`.\n\n\
-        {base_prompt}",
-        opts.item_id, opts.item_id, opts.item_id, opts.item_id
+    let prompt = task_prompt(
+        &opts.item_id,
+        &base_prompt,
+        local_worktree.prompt_block().as_deref(),
     );
 
     let run_opts = RunOptions {
@@ -286,7 +351,9 @@ fn execute_task(
         json_events: opts.json_events,
         model: opts.model.clone(),
         timeout: Some(opts.timeout),
-        local: false,
+        local: opts.local,
+        local_workspace_path: opts.local.then(|| repo_root.to_path_buf()),
+        worktree_path: local_worktree.target_mount.clone(),
         prompt_override: Some(prompt),
         branch: None,
         event_sink: opts.event_sink.clone(),
@@ -341,10 +408,22 @@ fn execute_task(
     Ok(())
 }
 
+fn task_prompt(item_id: &str, base_prompt: &str, worktree_block: Option<&str>) -> String {
+    let worktree_block = worktree_block.unwrap_or("");
+    format!(
+        "## Scope\n\n\
+        Work on task {item_id}. Run `lb show {item_id}` to understand the task, then `lb claim {item_id}`. \
+        {worktree_block}\
+        Implement the changes, commit your code, then `lb close {item_id}`, `lb sync`, and `git push`.\n\n\
+        {base_prompt}",
+    )
+}
+
 fn execute_epic(
     config: &Config,
     repo_root: &Path,
     opts: &DoOptions,
+    local_worktree: &LocalWorktree,
     feature_branch: &str,
     tui: Option<&TuiHandle>,
     tui_tx: &Option<TuiSender>,
@@ -379,6 +458,9 @@ fn execute_epic(
         config,
         repo_root,
         feature_branch,
+        opts.local,
+        opts.local.then(|| repo_root.to_path_buf()),
+        local_worktree.target_mount.clone(),
         tui,
         epic_logger,
         &epic_log_path,
@@ -427,9 +509,12 @@ fn execute_epic(
             You are working on epic {}. \
             Run 'lb list --parent {}' to see tasks. Pick ONE open child task and complete it. \
             Do NOT work on tasks outside this epic. \
+            {}\
             Commit your changes, close the item, and push when done.\n\n\
             {base_prompt}",
-                opts.item_id, opts.item_id
+                opts.item_id,
+                opts.item_id,
+                local_worktree.prompt_block().unwrap_or_default()
             );
 
             let run_opts = RunOptions {
@@ -437,7 +522,9 @@ fn execute_epic(
                 json_events: opts.json_events,
                 model: opts.model.clone(),
                 timeout: Some(opts.timeout),
-                local: false,
+                local: opts.local,
+                local_workspace_path: opts.local.then(|| repo_root.to_path_buf()),
+                worktree_path: local_worktree.target_mount.clone(),
                 prompt_override: Some(prompt),
                 branch: None,
                 event_sink: opts.event_sink.clone(),
@@ -496,6 +583,9 @@ fn execute_epic(
                 config,
                 repo_root,
                 feature_branch,
+                opts.local,
+                opts.local.then(|| repo_root.to_path_buf()),
+                session.worktree_path.clone(),
                 &mut session,
                 tui,
                 tui_tx,
@@ -615,6 +705,9 @@ fn maybe_restart_session_on_dockerfile_change(
     config: &Config,
     repo_root: &Path,
     feature_branch: &str,
+    local: bool,
+    local_workspace_path: Option<PathBuf>,
+    worktree_path: Option<PathBuf>,
     session: &mut crate::run::Session,
     tui: Option<&TuiHandle>,
     tui_tx: &Option<TuiSender>,
@@ -638,6 +731,9 @@ fn maybe_restart_session_on_dockerfile_change(
         config,
         repo_root,
         feature_branch,
+        local,
+        local_workspace_path,
+        worktree_path,
         tui,
         epic_logger,
         &epic_log_path,
@@ -869,6 +965,20 @@ mod tests {
         assert!(slug.len() <= 50);
         // Verify it's valid UTF-8 (would panic on bad boundary)
         let _ = slug.chars().count();
+    }
+
+    #[test]
+    fn task_prompt_maps_tracking_repo_and_worktree() {
+        let worktree = LocalWorktree {
+            target_mount: Some(PathBuf::from("/host/service")),
+        };
+        let prompt = task_prompt("lb-1234", "base prompt", worktree.prompt_block().as_deref());
+
+        assert!(prompt.contains("lb show lb-1234"));
+        assert!(prompt.contains("litebrite/task tracking repo is `/home/runner/workspace`"));
+        assert!(prompt.contains("code worktree to edit is bind-mounted at `/home/runner/worktree`"));
+        assert!(prompt.contains("Make code changes, commits, and pushes in `/home/runner/worktree`"));
+        assert!(prompt.contains("/host/service"));
     }
 
     #[test]

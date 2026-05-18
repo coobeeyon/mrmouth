@@ -254,6 +254,8 @@ fi
         volume,
         agent_home: config.agent.home_mount(),
         local: false,
+        local_workspace_path: None,
+        worktree_path: None,
         file_remote_path,
         timeout_secs: None,
     };

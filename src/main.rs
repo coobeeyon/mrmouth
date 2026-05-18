@@ -98,6 +98,14 @@ enum Commands {
         /// The litebrite item ID
         item_id: String,
 
+        /// Bind-mount the current repo as the task workspace instead of cloning
+        #[arg(long, conflicts_with = "worktree")]
+        local: bool,
+
+        /// Bind-mount a local worktree for code edits at /home/runner/worktree
+        #[arg(long, value_name = "PATH")]
+        worktree: Option<std::path::PathBuf>,
+
         /// Per-task timeout in minutes (default: from config or 15)
         #[arg(long)]
         timeout: Option<u32>,
@@ -224,6 +232,18 @@ fn main() {
         Commands::Do { item_id, .. } => Some(item_id.clone()),
         _ => None,
     };
+    let lifecycle_workspace = match &cli.command {
+        Commands::Do {
+            local: true,
+            worktree: None,
+            ..
+        } => Some("/home/runner/workspace".to_string()),
+        Commands::Do {
+            worktree: Some(path),
+            ..
+        } => Some(path.display().to_string()),
+        _ => None,
+    };
     let tui = if output_modes.start_tui {
         tui::TuiHandle::try_start(project_name)
     } else {
@@ -245,6 +265,8 @@ fn main() {
                 model: resolve_model(&config, model),
                 timeout,
                 local,
+                local_workspace_path: None,
+                worktree_path: None,
                 prompt_override: None,
                 branch: None,
                 event_sink: lifecycle_events.clone(),
@@ -276,6 +298,8 @@ fn main() {
         }
         Commands::Do {
             item_id,
+            local,
+            worktree,
             timeout,
             max_failures,
             model,
@@ -283,6 +307,8 @@ fn main() {
         } => {
             let opts = do_cmd::DoOptions {
                 item_id,
+                local,
+                worktree,
                 timeout: timeout.unwrap_or(config.do_config.timeout),
                 max_failures: max_failures.unwrap_or(config.do_config.max_failures),
                 model: resolve_model(&config, model),
@@ -326,7 +352,12 @@ fn main() {
 
     if let Err(d) = result {
         if let Some(sink) = lifecycle_events {
-            let summary = lifecycle_failure_summary(lifecycle_command, lifecycle_item_id, &d);
+            let summary = lifecycle_failure_summary(
+                lifecycle_command,
+                lifecycle_item_id,
+                lifecycle_workspace,
+                &d,
+            );
             sink.emit(crate::events::MrmouthEvent::LifecycleSummary { summary });
         }
         d.print();
@@ -393,12 +424,16 @@ fn lifecycle_event_sink(
 fn lifecycle_failure_summary(
     command: &str,
     item_id: Option<String>,
+    workspace: Option<String>,
     d: &FailureDebrief,
 ) -> crate::events::LifecycleSummary {
     let mut summary = crate::events::LifecycleSummary::failed(command, d.message.clone())
         .next_action("inspect_error");
     if let Some(item_id) = item_id {
         summary = summary.item_id(item_id);
+    }
+    if let Some(workspace) = workspace {
+        summary = summary.workspace(workspace);
     }
     if let Some(exit_code) = d.exit_code {
         summary = summary.exit_code(exit_code);
@@ -467,6 +502,8 @@ mod tests {
     fn json_events_mode_disables_tui_for_do() {
         let command = Commands::Do {
             item_id: "lb-1234".to_string(),
+            local: false,
+            worktree: None,
             timeout: None,
             max_failures: None,
             model: None,
@@ -562,12 +599,64 @@ mod tests {
     }
 
     #[test]
+    fn do_local_parses() {
+        let cli = Cli::try_parse_from(["mrmouth", "do", "--local", "lb-1234"]).unwrap();
+
+        match cli.command {
+            Commands::Do {
+                item_id,
+                local,
+                worktree,
+                ..
+            } => {
+                assert_eq!(item_id, "lb-1234");
+                assert!(local);
+                assert_eq!(worktree, None);
+            }
+            _ => panic!("unexpected command"),
+        }
+    }
+
+    #[test]
+    fn do_worktree_parses() {
+        let cli =
+            Cli::try_parse_from(["mrmouth", "do", "--worktree", "../service", "lb-1234"]).unwrap();
+
+        match cli.command {
+            Commands::Do {
+                item_id, worktree, ..
+            } => {
+                assert_eq!(item_id, "lb-1234");
+                assert_eq!(worktree, Some(std::path::PathBuf::from("../service")));
+            }
+            _ => panic!("unexpected command"),
+        }
+    }
+
+    #[test]
+    fn do_local_and_worktree_conflict() {
+        let err = match Cli::try_parse_from([
+            "mrmouth",
+            "do",
+            "--local",
+            "--worktree",
+            "../service",
+            "lb-1234",
+        ]) {
+            Ok(_) => panic!("expected --local and --worktree to conflict"),
+            Err(err) => err,
+        };
+
+        assert_eq!(err.kind(), clap::error::ErrorKind::ArgumentConflict);
+    }
+
+    #[test]
     fn failure_summary_includes_item_exit_and_inferred_jsonl_path() {
         let mut debrief = FailureDebrief::new("container failed".to_string());
         debrief.exit_code = Some(17);
         debrief.log_path = Some(PathBuf::from("/repo/logs/run-1.log"));
 
-        let summary = lifecycle_failure_summary("do", Some("lb-1234".to_string()), &debrief);
+        let summary = lifecycle_failure_summary("do", Some("lb-1234".to_string()), None, &debrief);
         let event = crate::events::MrmouthEvent::LifecycleSummary { summary };
 
         assert_eq!(
@@ -586,5 +675,19 @@ mod tests {
                 }
             })
         );
+    }
+
+    #[test]
+    fn failure_summary_includes_workspace_when_present() {
+        let debrief = FailureDebrief::new("container failed".to_string());
+
+        let summary = lifecycle_failure_summary(
+            "do",
+            Some("lb-1234".to_string()),
+            Some("../service".to_string()),
+            &debrief,
+        );
+
+        assert_eq!(summary.workspace.as_deref(), Some("../service"));
     }
 }

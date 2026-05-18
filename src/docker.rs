@@ -1,6 +1,6 @@
 use std::fs;
 use std::io::{self, BufRead, BufReader};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
@@ -208,12 +208,23 @@ impl DockerBuilder {
 
         // Local mode: bind-mount workspace
         if args.local {
-            let cwd =
-                std::env::current_dir().map_err(|e| DockerError::Io("getting cwd".into(), e))?;
+            let cwd = match &args.local_workspace_path {
+                Some(path) => path.clone(),
+                None => std::env::current_dir()
+                    .map_err(|e| DockerError::Io("getting cwd".into(), e))?,
+            };
             cmd.args([
                 "-v",
                 &format!("{}:/home/runner/workspace", cwd.to_string_lossy()),
             ]);
+        }
+
+        if let Some(ref path) = args.worktree_path {
+            cmd.args([
+                "-v",
+                &format!("{}:/home/runner/worktree", path.to_string_lossy()),
+            ]);
+            cmd.args(["-e", "MRMOUTH_WORKTREE=/home/runner/worktree"]);
         }
 
         // File-remote mode: mount host repo as a git remote the container can clone from and push to
@@ -392,12 +403,23 @@ impl DockerBuilder {
 
         // Local mode: bind-mount workspace
         if args.local {
-            let cwd =
-                std::env::current_dir().map_err(|e| DockerError::Io("getting cwd".into(), e))?;
+            let cwd = match &args.local_workspace_path {
+                Some(path) => path.clone(),
+                None => std::env::current_dir()
+                    .map_err(|e| DockerError::Io("getting cwd".into(), e))?,
+            };
             cmd.args([
                 "-v",
                 &format!("{}:/home/runner/workspace", cwd.to_string_lossy()),
             ]);
+        }
+
+        if let Some(ref path) = args.worktree_path {
+            cmd.args([
+                "-v",
+                &format!("{}:/home/runner/worktree", path.to_string_lossy()),
+            ]);
+            cmd.args(["-e", "MRMOUTH_WORKTREE=/home/runner/worktree"]);
         }
 
         // File-remote mode
@@ -501,11 +523,13 @@ pub struct ContainerArgs {
     pub name: String,
     pub repo_url: String,
     pub branch: String,
-    pub runner_script: std::path::PathBuf,
+    pub runner_script: PathBuf,
     pub volume: String,
     pub agent_home: &'static str,
     pub local: bool,
-    pub file_remote_path: Option<std::path::PathBuf>,
+    pub local_workspace_path: Option<PathBuf>,
+    pub worktree_path: Option<PathBuf>,
+    pub file_remote_path: Option<PathBuf>,
     pub timeout_secs: Option<u64>,
 }
 
@@ -515,11 +539,13 @@ pub struct ContainerArgs {
 pub struct SessionArgs {
     pub name: String,
     pub repo_url: String,
-    pub scripts_dir: std::path::PathBuf,
+    pub scripts_dir: PathBuf,
     pub volume: String,
     pub agent_home: &'static str,
     pub local: bool,
-    pub file_remote_path: Option<std::path::PathBuf>,
+    pub local_workspace_path: Option<PathBuf>,
+    pub worktree_path: Option<PathBuf>,
+    pub file_remote_path: Option<PathBuf>,
 }
 
 pub struct ContainerHandle {

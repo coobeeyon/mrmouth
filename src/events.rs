@@ -143,6 +143,8 @@ pub struct LifecycleSummary {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub branch: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub workspace: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub commit_range: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub log_path: Option<String>,
@@ -167,6 +169,7 @@ impl LifecycleSummary {
             command: command.into(),
             item_id: None,
             branch: None,
+            workspace: None,
             commit_range: None,
             log_path: None,
             jsonl_path: None,
@@ -184,6 +187,7 @@ impl LifecycleSummary {
             command: command.into(),
             item_id: None,
             branch: None,
+            workspace: None,
             commit_range: None,
             log_path: None,
             jsonl_path: None,
@@ -202,6 +206,11 @@ impl LifecycleSummary {
 
     pub fn branch(mut self, branch: impl Into<String>) -> Self {
         self.branch = Some(branch.into());
+        self
+    }
+
+    pub fn workspace(mut self, workspace: impl Into<String>) -> Self {
+        self.workspace = Some(workspace.into());
         self
     }
 
