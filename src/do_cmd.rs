@@ -103,27 +103,28 @@ impl LocalWorktree {
 }
 
 fn resolve_local_worktree(opts: &DoOptions) -> Result<LocalWorktree, DoError> {
-    let target_mount = match &opts.worktree {
-        Some(path) => {
-            let absolute = if path.is_absolute() {
-                path.clone()
-            } else {
-                std::env::current_dir()
-                    .map_err(|e| DoError::Command(format!("failed to get current dir: {e}")))?
-                    .join(path)
-            };
-            if !absolute.exists() {
-                return Err(DoError::Command(format!(
-                    "worktree path does not exist: {}",
-                    absolute.display()
-                )));
+    let target_mount =
+        match &opts.worktree {
+            Some(path) => {
+                let absolute = if path.is_absolute() {
+                    path.clone()
+                } else {
+                    std::env::current_dir()
+                        .map_err(|e| DoError::Command(format!("failed to get current dir: {e}")))?
+                        .join(path)
+                };
+                if !absolute.exists() {
+                    return Err(DoError::Command(format!(
+                        "worktree path does not exist: {}",
+                        absolute.display()
+                    )));
+                }
+                Some(std::fs::canonicalize(&absolute).map_err(|e| {
+                    DoError::Command(format!("failed to resolve worktree path: {e}"))
+                })?)
             }
-            Some(std::fs::canonicalize(&absolute).map_err(|e| {
-                DoError::Command(format!("failed to resolve worktree path: {e}"))
-            })?)
-        }
-        None => None,
-    };
+            None => None,
+        };
 
     Ok(LocalWorktree { target_mount })
 }
@@ -977,8 +978,32 @@ mod tests {
         assert!(prompt.contains("lb show lb-1234"));
         assert!(prompt.contains("litebrite/task tracking repo is `/home/runner/workspace`"));
         assert!(prompt.contains("code worktree to edit is bind-mounted at `/home/runner/worktree`"));
-        assert!(prompt.contains("Make code changes, commits, and pushes in `/home/runner/worktree`"));
+        assert!(
+            prompt.contains("Make code changes, commits, and pushes in `/home/runner/worktree`")
+        );
         assert!(prompt.contains("/host/service"));
+    }
+
+    #[test]
+    fn resolve_local_worktree_canonicalizes_host_path_for_runner() {
+        let dir = tempfile::tempdir().unwrap();
+        let opts = DoOptions {
+            item_id: "lb-1234".to_string(),
+            local: false,
+            worktree: Some(dir.path().to_path_buf()),
+            timeout: 15,
+            max_failures: 3,
+            model: "sonnet".to_string(),
+            json_events: false,
+            event_sink: None,
+        };
+
+        let worktree = resolve_local_worktree(&opts).unwrap();
+
+        assert_eq!(
+            worktree.target_mount.as_deref(),
+            Some(std::fs::canonicalize(dir.path()).unwrap().as_path())
+        );
     }
 
     #[test]

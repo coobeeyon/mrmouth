@@ -170,6 +170,44 @@ impl DockerBuilder {
 
     /// Start the container and return a handle for streaming output.
     pub fn run(&self, args: &ContainerArgs) -> Result<ContainerHandle, DockerError> {
+        let mut cmd = self.run_command(args)?;
+        cmd.stdout(Stdio::piped());
+        cmd.stderr(Stdio::piped());
+
+        let child = cmd
+            .spawn()
+            .map_err(|e| DockerError::Io("spawning docker run".into(), e))?;
+
+        // Spawn a watchdog thread that stops the container after the timeout
+        let cancelled = Arc::new(AtomicBool::new(false));
+        if let Some(timeout_secs) = args.timeout_secs {
+            let container_name = args.name.clone();
+            let cancelled_clone = Arc::clone(&cancelled);
+            std::thread::spawn(move || {
+                // Sleep in 1-second increments so we can check for cancellation
+                for _ in 0..timeout_secs {
+                    std::thread::sleep(std::time::Duration::from_secs(1));
+                    if cancelled_clone.load(Ordering::Relaxed) {
+                        return;
+                    }
+                }
+                if !cancelled_clone.load(Ordering::Relaxed) {
+                    let _ = Command::new("docker")
+                        .args(["stop", &container_name])
+                        .stdout(Stdio::null())
+                        .stderr(Stdio::null())
+                        .status();
+                }
+            });
+        }
+
+        Ok(ContainerHandle {
+            child,
+            watchdog_cancelled: cancelled,
+        })
+    }
+
+    fn run_command(&self, args: &ContainerArgs) -> Result<Command, DockerError> {
         let mut cmd = Command::new("docker");
         cmd.arg("run");
         cmd.arg("--init");
@@ -210,8 +248,9 @@ impl DockerBuilder {
         if args.local {
             let cwd = match &args.local_workspace_path {
                 Some(path) => path.clone(),
-                None => std::env::current_dir()
-                    .map_err(|e| DockerError::Io("getting cwd".into(), e))?,
+                None => {
+                    std::env::current_dir().map_err(|e| DockerError::Io("getting cwd".into(), e))?
+                }
             };
             cmd.args([
                 "-v",
@@ -235,40 +274,7 @@ impl DockerBuilder {
         cmd.arg(&self.image_name);
         cmd.arg("/run.sh");
 
-        cmd.stdout(Stdio::piped());
-        cmd.stderr(Stdio::piped());
-
-        let child = cmd
-            .spawn()
-            .map_err(|e| DockerError::Io("spawning docker run".into(), e))?;
-
-        // Spawn a watchdog thread that stops the container after the timeout
-        let cancelled = Arc::new(AtomicBool::new(false));
-        if let Some(timeout_secs) = args.timeout_secs {
-            let container_name = args.name.clone();
-            let cancelled_clone = Arc::clone(&cancelled);
-            std::thread::spawn(move || {
-                // Sleep in 1-second increments so we can check for cancellation
-                for _ in 0..timeout_secs {
-                    std::thread::sleep(std::time::Duration::from_secs(1));
-                    if cancelled_clone.load(Ordering::Relaxed) {
-                        return;
-                    }
-                }
-                if !cancelled_clone.load(Ordering::Relaxed) {
-                    let _ = Command::new("docker")
-                        .args(["stop", &container_name])
-                        .stdout(Stdio::null())
-                        .stderr(Stdio::null())
-                        .status();
-                }
-            });
-        }
-
-        Ok(ContainerHandle {
-            child,
-            watchdog_cancelled: cancelled,
-        })
+        Ok(cmd)
     }
 
     /// Copy a file from a stopped container to a local path (best-effort).
@@ -365,6 +371,23 @@ impl DockerBuilder {
     /// Mounts `scripts_dir` at `/mrmouth-scripts:ro` so the host can update
     /// scripts between tasks without restarting the container.
     pub fn start_session(&self, args: &SessionArgs) -> Result<(), DockerError> {
+        let mut cmd = self.start_session_command(args)?;
+        let output = cmd
+            .output()
+            .map_err(|e| DockerError::Io("running docker run -d".into(), e))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+            return Err(DockerError::SessionStartFailed(
+                output.status.code().unwrap_or(-1),
+                stderr,
+            ));
+        }
+
+        Ok(())
+    }
+
+    fn start_session_command(&self, args: &SessionArgs) -> Result<Command, DockerError> {
         let mut cmd = Command::new("docker");
         cmd.arg("run");
         cmd.arg("-d");
@@ -405,8 +428,9 @@ impl DockerBuilder {
         if args.local {
             let cwd = match &args.local_workspace_path {
                 Some(path) => path.clone(),
-                None => std::env::current_dir()
-                    .map_err(|e| DockerError::Io("getting cwd".into(), e))?,
+                None => {
+                    std::env::current_dir().map_err(|e| DockerError::Io("getting cwd".into(), e))?
+                }
             };
             cmd.args([
                 "-v",
@@ -430,19 +454,7 @@ impl DockerBuilder {
         cmd.arg(&self.image_name);
         cmd.args(["-c", "tail -f /dev/null"]);
 
-        let output = cmd
-            .output()
-            .map_err(|e| DockerError::Io("running docker run -d".into(), e))?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-            return Err(DockerError::SessionStartFailed(
-                output.status.code().unwrap_or(-1),
-                stderr,
-            ));
-        }
-
-        Ok(())
+        Ok(cmd)
     }
 
     /// Exec a script that lives at `/mrmouth-scripts/<script_name>` inside the
@@ -669,3 +681,98 @@ impl std::fmt::Display for DockerError {
 }
 
 impl std::error::Error for DockerError {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn args(cmd: &Command) -> Vec<String> {
+        cmd.get_args()
+            .map(|arg| arg.to_string_lossy().to_string())
+            .collect()
+    }
+
+    #[test]
+    fn run_command_mounts_worktree_without_replacing_default_workspace_clone() {
+        let docker = DockerBuilder::new("mrmouth-test");
+        let container_args = ContainerArgs {
+            name: "run-test".to_string(),
+            repo_url: "git@example.com:org/repo.git".to_string(),
+            branch: "feature".to_string(),
+            runner_script: PathBuf::from("/tmp/run.sh"),
+            volume: "mrmouth-home".to_string(),
+            agent_home: "/home/runner/.codex",
+            local: false,
+            local_workspace_path: None,
+            worktree_path: Some(PathBuf::from("/host/service")),
+            file_remote_path: None,
+            timeout_secs: None,
+        };
+
+        let cmd = docker.run_command(&container_args).unwrap();
+        let args = args(&cmd);
+
+        assert!(args.contains(&"REPO_URL=git@example.com:org/repo.git".to_string()));
+        assert!(args.contains(&"BRANCH=feature".to_string()));
+        assert!(args.contains(&"/host/service:/home/runner/worktree".to_string()));
+        assert!(args.contains(&"MRMOUTH_WORKTREE=/home/runner/worktree".to_string()));
+        assert!(!args
+            .iter()
+            .any(|arg| arg.ends_with(":/home/runner/workspace")));
+        assert_eq!(args.last().map(String::as_str), Some("/run.sh"));
+    }
+
+    #[test]
+    fn session_command_mounts_worktree_without_replacing_default_workspace_clone() {
+        let docker = DockerBuilder::new("mrmouth-test");
+        let session_args = SessionArgs {
+            name: "session-test".to_string(),
+            repo_url: "git@example.com:org/repo.git".to_string(),
+            scripts_dir: PathBuf::from("/tmp/scripts"),
+            volume: "mrmouth-home".to_string(),
+            agent_home: "/home/runner/.codex",
+            local: false,
+            local_workspace_path: None,
+            worktree_path: Some(PathBuf::from("/host/service")),
+            file_remote_path: None,
+        };
+
+        let cmd = docker.start_session_command(&session_args).unwrap();
+        let args = args(&cmd);
+
+        assert!(args.contains(&"REPO_URL=git@example.com:org/repo.git".to_string()));
+        assert!(args.contains(&"/host/service:/home/runner/worktree".to_string()));
+        assert!(args.contains(&"MRMOUTH_WORKTREE=/home/runner/worktree".to_string()));
+        assert!(!args
+            .iter()
+            .any(|arg| arg.ends_with(":/home/runner/workspace")));
+        assert_eq!(args.last().map(String::as_str), Some("tail -f /dev/null"));
+    }
+
+    #[test]
+    fn local_mode_still_mounts_workspace_at_default_path() {
+        let docker = DockerBuilder::new("mrmouth-test");
+        let container_args = ContainerArgs {
+            name: "run-test".to_string(),
+            repo_url: String::new(),
+            branch: "feature".to_string(),
+            runner_script: PathBuf::from("/tmp/run.sh"),
+            volume: "mrmouth-home".to_string(),
+            agent_home: "/home/runner/.codex",
+            local: true,
+            local_workspace_path: Some(PathBuf::from("/host/tracking")),
+            worktree_path: None,
+            file_remote_path: None,
+            timeout_secs: None,
+        };
+
+        let cmd = docker.run_command(&container_args).unwrap();
+        let args = args(&cmd);
+
+        assert!(args.contains(&"/host/tracking:/home/runner/workspace".to_string()));
+        assert!(!args
+            .iter()
+            .any(|arg| arg.ends_with(":/home/runner/worktree")));
+        assert!(!args.contains(&"MRMOUTH_WORKTREE=/home/runner/worktree".to_string()));
+    }
+}

@@ -362,19 +362,17 @@ pub fn execute(
         exit_code: None,
     });
 
-    let container_args = ContainerArgs {
-        name: container_name.clone(),
+    let container_args = container_args_from_run_options(
+        container_name.clone(),
         repo_url,
-        branch: branch.clone(),
-        runner_script: runner_script.to_path_buf(),
+        branch.clone(),
+        runner_script.to_path_buf(),
         volume,
-        agent_home: config.agent.home_mount(),
+        config.agent.home_mount(),
         local,
-        local_workspace_path: opts.local_workspace_path.clone(),
-        worktree_path: opts.worktree_path.clone(),
-        file_remote_path: file_remote_path.clone(),
-        timeout_secs: opts.timeout.map(|m| m as u64 * 60),
-    };
+        file_remote_path.clone(),
+        &opts,
+    );
 
     let container_start = std::time::Instant::now();
     let mut handle = docker.run(&container_args).map_err(RunError::Docker)?;
@@ -677,17 +675,17 @@ pub fn start_session(
     let container_name = format!("session-{timestamp}");
     DockerBuilder::remove_container(&container_name);
 
-    let session_args = crate::docker::SessionArgs {
-        name: container_name.clone(),
-        repo_url: repo_url.clone(),
-        scripts_dir: scripts_dir.path().to_path_buf(),
-        volume: volume.clone(),
-        agent_home: config.agent.home_mount(),
+    let session_args = session_args(
+        container_name.clone(),
+        repo_url.clone(),
+        scripts_dir.path().to_path_buf(),
+        volume.clone(),
+        config.agent.home_mount(),
         local,
         local_workspace_path,
-        worktree_path: worktree_path.clone(),
-        file_remote_path: file_remote_path.clone(),
-    };
+        worktree_path.clone(),
+        file_remote_path.clone(),
+    );
     docker
         .start_session(&session_args)
         .map_err(RunError::Docker)?;
@@ -761,6 +759,57 @@ pub fn start_session(
     })
 }
 
+fn container_args_from_run_options(
+    name: String,
+    repo_url: String,
+    branch: String,
+    runner_script: PathBuf,
+    volume: String,
+    agent_home: &'static str,
+    local: bool,
+    file_remote_path: Option<PathBuf>,
+    opts: &RunOptions,
+) -> ContainerArgs {
+    ContainerArgs {
+        name,
+        repo_url,
+        branch,
+        runner_script,
+        volume,
+        agent_home,
+        local,
+        local_workspace_path: opts.local_workspace_path.clone(),
+        worktree_path: opts.worktree_path.clone(),
+        file_remote_path,
+        timeout_secs: opts.timeout.map(|m| m as u64 * 60),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn session_args(
+    name: String,
+    repo_url: String,
+    scripts_dir: PathBuf,
+    volume: String,
+    agent_home: &'static str,
+    local: bool,
+    local_workspace_path: Option<PathBuf>,
+    worktree_path: Option<PathBuf>,
+    file_remote_path: Option<PathBuf>,
+) -> crate::docker::SessionArgs {
+    crate::docker::SessionArgs {
+        name,
+        repo_url,
+        scripts_dir,
+        volume,
+        agent_home,
+        local,
+        local_workspace_path,
+        worktree_path,
+        file_remote_path,
+    }
+}
+
 /// Execute one task inside an existing session container via `docker exec`.
 /// Writes `task.sh` into the session's scripts dir (overwriting any prior task),
 /// then streams output into a new per-task log/jsonl pair.
@@ -815,7 +864,11 @@ pub fn execute_in_session(
             value: branch.clone(),
         },
     );
-    if let Some(path) = session.worktree_path.as_ref().or(opts.worktree_path.as_ref()) {
+    if let Some(path) = session
+        .worktree_path
+        .as_ref()
+        .or(opts.worktree_path.as_ref())
+    {
         emit_event(
             &opts.event_sink,
             MrmouthEvent::RunLabel {
@@ -1032,7 +1085,10 @@ pub fn execute_in_session(
                     format!("container exited with code {exit_code}: {reason}"),
                 )
                 .branch(branch.clone())
-                .workspace(run_workspace_label(session.local, session.worktree_path.as_deref()))
+                .workspace(run_workspace_label(
+                    session.local,
+                    session.worktree_path.as_deref(),
+                ))
                 .log_path(log_path.display().to_string())
                 .jsonl_path(jsonl_path.display().to_string())
                 .exit_code(exit_code)
@@ -2114,6 +2170,60 @@ mod tests {
         };
 
         assert_eq!(stream_display_mode(&opts), StreamDisplayMode::LifecycleJson);
+    }
+
+    #[test]
+    fn run_options_worktree_flows_into_container_args() {
+        let worktree = PathBuf::from("/host/service");
+        let opts = RunOptions {
+            raw: false,
+            json_events: false,
+            model: "sonnet".to_string(),
+            timeout: Some(7),
+            local: false,
+            local_workspace_path: None,
+            worktree_path: Some(worktree.clone()),
+            prompt_override: None,
+            branch: None,
+            event_sink: None,
+        };
+
+        let args = container_args_from_run_options(
+            "run-test".to_string(),
+            "git@example.com:org/repo.git".to_string(),
+            "feature".to_string(),
+            PathBuf::from("/tmp/run.sh"),
+            "mrmouth-home".to_string(),
+            "/home/runner/.codex",
+            false,
+            None,
+            &opts,
+        );
+
+        assert_eq!(args.worktree_path.as_deref(), Some(worktree.as_path()));
+        assert_eq!(args.local_workspace_path, None);
+        assert!(!args.local);
+        assert_eq!(args.timeout_secs, Some(420));
+    }
+
+    #[test]
+    fn session_args_preserve_worktree_mapping() {
+        let worktree = PathBuf::from("/host/service");
+        let args = session_args(
+            "session-test".to_string(),
+            "git@example.com:org/repo.git".to_string(),
+            PathBuf::from("/tmp/scripts"),
+            "mrmouth-home".to_string(),
+            "/home/runner/.codex",
+            false,
+            None,
+            Some(worktree.clone()),
+            None,
+        );
+
+        assert_eq!(args.worktree_path.as_deref(), Some(worktree.as_path()));
+        assert_eq!(args.local_workspace_path, None);
+        assert!(!args.local);
     }
 
     #[test]
