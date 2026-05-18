@@ -66,6 +66,22 @@ fn is_benign_lb_error(args: &[&str], stderr: &str) -> bool {
     matches!(args.first(), Some(&"init")) && stderr.contains("already initialized")
 }
 
+/// Check whether a local git branch exists.
+fn has_local_branch(repo_root: &Path, branch: &str) -> bool {
+    Command::new("git")
+        .args([
+            "-C",
+            &repo_root.to_string_lossy(),
+            "show-ref",
+            "--quiet",
+            &format!("refs/heads/{branch}"),
+        ])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_ok_and(|s| s.success())
+}
+
 /// Check whether the repo has a git remote named "origin".
 fn has_git_remote(repo_root: &Path) -> bool {
     Command::new("git")
@@ -88,7 +104,7 @@ pub fn init_and_sync(repo_root: &Path, logger: Option<&Logger>) {
     if !has_lb() {
         return;
     }
-    if !repo_root.join(".litebrite").exists() {
+    if !has_local_branch(repo_root, "litebrite") {
         run_lb(repo_root, &["init"], logger);
     }
     run_lb(repo_root, &["setup", "claude"], logger);
@@ -136,6 +152,8 @@ pub fn sync(repo_root: &Path, logger: Option<&Logger>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+    use std::process::Command;
 
     #[test]
     fn benign_lb_init_already_initialized() {
@@ -179,5 +197,78 @@ mod tests {
                    ------------------------------------------------------------\n";
         assert_eq!(count_lb_rows(out), 0);
         assert_eq!(count_lb_rows(""), 0);
+    }
+
+    fn git(repo: &Path, args: &[&str]) {
+        let output = Command::new("git")
+            .arg("-C")
+            .arg(repo)
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "git {} failed: {}",
+            args.join(" "),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    fn git_succeeds(repo: &Path, args: &[&str]) -> bool {
+        Command::new("git")
+            .arg("-C")
+            .arg(repo)
+            .args(args)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .unwrap()
+            .success()
+    }
+
+    fn initialized_repo() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        git(dir.path(), &["init"]);
+        fs::write(dir.path().join("README.md"), "test\n").unwrap();
+        git(dir.path(), &["add", "README.md"]);
+        git(
+            dir.path(),
+            &[
+                "-c",
+                "user.name=Test User",
+                "-c",
+                "user.email=test@example.com",
+                "commit",
+                "-m",
+                "Initial commit",
+            ],
+        );
+        dir
+    }
+
+    #[test]
+    fn local_branch_check_detects_litebrite_without_worktree_dir() {
+        let repo = initialized_repo();
+        git(repo.path(), &["branch", "litebrite"]);
+
+        assert!(has_local_branch(repo.path(), "litebrite"));
+        assert!(!repo.path().join(".litebrite").exists());
+    }
+
+    #[test]
+    fn git_remote_check_allows_sync_before_litebrite_remote_ref_exists() {
+        let repo = initialized_repo();
+        let remote = tempfile::tempdir().unwrap();
+        git(remote.path(), &["init", "--bare"]);
+        git(
+            repo.path(),
+            &["remote", "add", "origin", remote.path().to_str().unwrap()],
+        );
+
+        assert!(has_git_remote(repo.path()));
+        assert!(!git_succeeds(
+            repo.path(),
+            &["show-ref", "--quiet", "refs/remotes/origin/litebrite"]
+        ));
     }
 }
