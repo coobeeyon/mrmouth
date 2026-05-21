@@ -1360,6 +1360,16 @@
       "created_at": "2026-03-08T20:58:54.952121479Z",
       "updated_at": "2026-03-08T21:00:10.717950372Z"
     },
+    "lb-sis3": {
+      "id": "lb-sis3",
+      "title": "Support current-container execution",
+      "description": "Add a no-Docker mode for mrmouth do/run/ready so agents can execute directly in the current container workspace while preserving Docker mode.",
+      "item_type": "task",
+      "status": "open",
+      "priority": 1,
+      "created_at": "2026-05-21T20:55:47.169813106Z",
+      "updated_at": "2026-05-21T20:55:47.169813106Z"
+    },
     "lb-skwk": {
       "id": "lb-skwk",
       "title": "Add reviewer step to epic mode",
