@@ -1,7 +1,7 @@
 use std::fs::{self, File};
-use std::io::{BufWriter, IsTerminal, Write};
+use std::io::{BufRead, BufReader, BufWriter, IsTerminal, Write};
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Child, Command};
 use std::time::Duration;
 
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -18,6 +18,7 @@ use crate::litebrite;
 use crate::logger::Logger;
 use crate::prompt;
 use crate::stream_fmt::{self, StreamFormatter};
+use crate::streaming::{self, StreamTarget};
 use crate::tui::TuiHandle;
 
 /// Guard that sets an AtomicBool to true on drop, ensuring the cancel watcher
@@ -36,6 +37,7 @@ pub struct RunOptions {
     pub model: String,
     pub timeout: Option<u32>,
     pub local: bool,
+    pub current_container: bool,
     pub local_workspace_path: Option<PathBuf>,
     pub worktree_path: Option<PathBuf>,
     pub prompt_override: Option<String>,
@@ -222,16 +224,46 @@ pub fn execute(
         name: "branch".to_string(),
         value: branch.clone(),
     });
-    if let Some(path) = opts.worktree_path.as_ref() {
+    if opts.current_container {
+        reporter.emit(MrmouthEvent::RunLabel {
+            name: "workspace".to_string(),
+            value: opts
+                .worktree_path
+                .as_deref()
+                .unwrap_or(repo_root)
+                .display()
+                .to_string(),
+        });
+    } else if let Some(path) = opts.worktree_path.as_ref() {
         reporter.emit(MrmouthEvent::RunLabel {
             name: "workspace".to_string(),
             value: path.display().to_string(),
         });
     }
+    if opts.current_container {
+        reporter.emit(MrmouthEvent::RunLabel {
+            name: "mode".to_string(),
+            value: "current_container".to_string(),
+        });
+        return execute_current_container(
+            config,
+            repo_root,
+            &opts,
+            tui,
+            logger,
+            log_dir,
+            timestamp,
+            log_filename,
+            log_path,
+            branch,
+            &reporter,
+        );
+    }
 
     // 1. Preflight checks
-    let local = opts.local || has_local_only_tooling_branch(repo_root);
-    if local && !opts.local {
+    let has_local_only_tooling = has_local_only_tooling_branch(repo_root);
+    let local = opts.local || has_local_only_tooling;
+    if has_local_only_tooling && !opts.local {
         reporter.log(
             &logger,
             "Tooling branch exists locally but not on remote — using local mode.",
@@ -256,6 +288,7 @@ pub fn execute(
         repo_root,
         config.agent,
         local,
+        false,
         &effective_dockerfile,
         Some(&logger),
     )
@@ -579,6 +612,226 @@ pub fn execute(
     Ok(logger)
 }
 
+#[allow(clippy::too_many_arguments)]
+fn execute_current_container(
+    config: &Config,
+    repo_root: &Path,
+    opts: &RunOptions,
+    tui: Option<&TuiHandle>,
+    logger: Logger,
+    log_dir: PathBuf,
+    timestamp: String,
+    log_filename: String,
+    log_path: PathBuf,
+    branch: String,
+    reporter: &RunReporter<'_>,
+) -> Result<Logger, RunError> {
+    let current_workspace = opts
+        .worktree_path
+        .as_deref()
+        .unwrap_or(repo_root)
+        .display()
+        .to_string();
+    reporter.log(
+        &logger,
+        "Current-container mode: running agent CLI directly in the current checkout.",
+    );
+    reporter.emit(MrmouthEvent::RunLifecycle {
+        action: RunAction::Preflight,
+        run_id: Some(log_filename.clone()),
+        branch: Some(branch.clone()),
+    });
+    if preflight_skipped() {
+        reporter.log(
+            &logger,
+            "MRMOUTH_SKIP_PREFLIGHT=1 — skipping current-container preflight checks.",
+        );
+    } else {
+        check_agent_credentials(config.agent)?;
+        check_current_container_tools(repo_root, config.agent)?;
+    }
+
+    reporter.log(&logger, "Syncing litebrite...");
+    reporter.emit(MrmouthEvent::Sync {
+        action: SyncAction::Starting,
+        tool: SyncTool::Litebrite,
+        detail: None,
+    });
+    litebrite::init_and_sync(repo_root, Some(&logger));
+    reporter.emit(MrmouthEvent::Sync {
+        action: SyncAction::Finished,
+        tool: SyncTool::Litebrite,
+        detail: None,
+    });
+
+    let prompt_text = match opts.prompt_override.as_deref() {
+        Some(prompt) => prompt.to_string(),
+        None => prompt::load_prompt(repo_root, Some(&logger)),
+    };
+
+    let jsonl_filename = format!("run-{timestamp}.jsonl");
+    let jsonl_path = log_dir.join(&jsonl_filename);
+    let jsonl_file =
+        File::create(&jsonl_path).map_err(|e| RunError::Io("creating jsonl file".into(), e))?;
+    let mut jsonl_writer = Some(BufWriter::new(jsonl_file));
+
+    reporter.emit(MrmouthEvent::RunLifecycle {
+        action: RunAction::RunningAgent,
+        run_id: Some(log_filename.clone()),
+        branch: Some(branch.clone()),
+    });
+    reporter.log(&logger, "Starting current-container agent run...");
+    let mut cmd = streaming::agent_runner_stream_cmd(config.agent, repo_root, &opts.model);
+    cmd.env("MRMOUTH_TRACKING_REPO", repo_root);
+    if let Some(path) = opts.worktree_path.as_ref() {
+        cmd.env("MRMOUTH_WORKTREE", path);
+    }
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| RunError::Io(format!("spawning {} CLI", config.agent.as_str()), e))?;
+    streaming::send_prompt(&mut child, &prompt_text);
+
+    let watcher_done = Arc::new(AtomicBool::new(false));
+    let _done_guard = DoneGuard(Arc::clone(&watcher_done));
+    let _watcher = spawn_current_container_watcher(
+        tui,
+        opts.timeout.map(|m| m as u64 * 60),
+        child.id(),
+        Arc::clone(&watcher_done),
+    );
+
+    let run_start = std::time::Instant::now();
+    let exit_code = if opts.raw {
+        run_current_container_raw(child, config.agent, &logger, &mut jsonl_writer)
+    } else {
+        let target = match logger.display_sink() {
+            Some(display) => StreamTarget::Display(display),
+            None => StreamTarget::Stderr,
+        };
+        let mut formatter = StreamFormatter::new(target.supports_color());
+        streaming::run_streaming_claude(
+            child,
+            &mut formatter,
+            Some(&logger),
+            &target,
+            &mut jsonl_writer,
+        )
+        .map(|(_, exit_code)| exit_code)
+    }
+    .map_err(|e| RunError::Io("streaming current-container agent".into(), e))?;
+    watcher_done.store(true, Ordering::Relaxed);
+
+    reporter.log(
+        &logger,
+        &format!(
+            "::mrmouth::timing phase=current-container-wall elapsed_ms={}",
+            run_start.elapsed().as_millis()
+        ),
+    );
+    reporter.log(
+        &logger,
+        &format!("Current-container agent finished (exit code {exit_code})."),
+    );
+
+    let latest_jsonl = log_dir.join("latest.jsonl");
+    let latest_log = log_dir.join("latest.log");
+    #[cfg(unix)]
+    {
+        atomic_symlink(&jsonl_filename, &latest_jsonl);
+        atomic_symlink(&log_filename, &latest_log);
+    }
+
+    reporter.log(&logger, "Post-run sync...");
+    reporter.emit(MrmouthEvent::Sync {
+        action: SyncAction::Starting,
+        tool: SyncTool::Litebrite,
+        detail: Some("post-run".to_string()),
+    });
+    litebrite::init_and_sync(repo_root, Some(&logger));
+    reporter.emit(MrmouthEvent::Sync {
+        action: SyncAction::Finished,
+        tool: SyncTool::Litebrite,
+        detail: Some("post-run".to_string()),
+    });
+    logger.log(&format!("Done. Log saved: {}", log_path.display()));
+
+    if exit_code != 0 {
+        logger.flush();
+        let reason = classify_exit(exit_code, &log_path);
+        reporter.emit(MrmouthEvent::LifecycleSummary {
+            summary: LifecycleSummary::failed(
+                "run",
+                format!("agent exited with code {exit_code}: {reason}"),
+            )
+            .branch(branch.clone())
+            .workspace(current_workspace.clone())
+            .log_path(log_path.display().to_string())
+            .jsonl_path(jsonl_path.display().to_string())
+            .exit_code(exit_code)
+            .next_action("inspect_log"),
+        });
+        return Err(RunError::ProcessFailed {
+            code: exit_code,
+            reason,
+            log_path,
+        });
+    }
+
+    reporter.emit(MrmouthEvent::RunLifecycle {
+        action: RunAction::Finished,
+        run_id: Some(log_filename),
+        branch: Some(branch.clone()),
+    });
+    reporter.emit(MrmouthEvent::finished(
+        FinishStatus::Success,
+        None::<String>,
+    ));
+    reporter.emit(MrmouthEvent::LifecycleSummary {
+        summary: LifecycleSummary::success("run")
+            .branch(branch)
+            .workspace(current_workspace)
+            .log_path(log_path.display().to_string())
+            .jsonl_path(jsonl_path.display().to_string())
+            .exit_code(exit_code)
+            .next_action("none"),
+    });
+
+    Ok(logger)
+}
+
+fn run_current_container_raw(
+    mut child: Child,
+    agent: AgentKind,
+    logger: &Logger,
+    jsonl_writer: &mut Option<BufWriter<File>>,
+) -> Result<i32, std::io::Error> {
+    let tee_handle = child.stderr.take().map(|stderr| logger.tee_stderr(stderr));
+    if let Some(stdout) = child.stdout.take() {
+        let reader = BufReader::new(stdout);
+        let stdout = std::io::stdout();
+        let mut stdout = stdout.lock();
+        for line in reader.lines().map_while(Result::ok) {
+            let trimmed = line.trim();
+            if trimmed.is_empty() || should_suppress_stream_line(agent, trimmed) {
+                continue;
+            }
+            let _ = writeln!(stdout, "{trimmed}");
+            if let Some(writer) = jsonl_writer.as_mut() {
+                let _ = writeln!(writer, "{trimmed}");
+            }
+            logger.log_file_only(trimmed);
+        }
+    }
+    if let Some(writer) = jsonl_writer.as_mut() {
+        let _ = writer.flush();
+    }
+    if let Some(handle) = tee_handle {
+        let _ = handle.join();
+    }
+    let status = child.wait()?;
+    Ok(status.code().unwrap_or(-1))
+}
+
 fn emit_event(sink: &Option<EventSinkHandle>, event: MrmouthEvent) {
     if let Some(sink) = sink {
         sink.emit(event);
@@ -612,6 +865,7 @@ pub fn start_session(
         repo_root,
         config.agent,
         local,
+        false,
         &effective_dockerfile,
         Some(logger),
     )
@@ -1140,10 +1394,52 @@ fn preflight_skipped() -> bool {
     std::env::var("MRMOUTH_SKIP_PREFLIGHT").ok().as_deref() == Some("1")
 }
 
+fn spawn_current_container_watcher(
+    tui: Option<&TuiHandle>,
+    timeout_secs: Option<u64>,
+    pid: u32,
+    done: Arc<AtomicBool>,
+) -> Option<std::thread::JoinHandle<()>> {
+    let cancelled = tui.map(|t| t.cancelled_flag());
+    if cancelled.is_none() && timeout_secs.is_none() {
+        return None;
+    }
+
+    Some(std::thread::spawn(move || {
+        let started = std::time::Instant::now();
+        loop {
+            if done.load(Ordering::Relaxed) {
+                break;
+            }
+            let cancelled = cancelled
+                .as_ref()
+                .is_some_and(|flag| flag.load(Ordering::Relaxed));
+            let timed_out =
+                timeout_secs.is_some_and(|secs| started.elapsed() >= Duration::from_secs(secs));
+            if cancelled || timed_out {
+                terminate_process(pid);
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(200));
+        }
+    }))
+}
+
+#[cfg(unix)]
+fn terminate_process(pid: u32) {
+    unsafe {
+        libc::kill(pid as i32, libc::SIGTERM);
+    }
+}
+
+#[cfg(not(unix))]
+fn terminate_process(_pid: u32) {}
+
 fn preflight(
     repo_root: &Path,
     agent: AgentKind,
     local: bool,
+    current_container: bool,
     dockerfile_content: &str,
     logger: Option<&Logger>,
 ) -> Result<(), RunError> {
@@ -1151,26 +1447,30 @@ fn preflight(
         return Ok(());
     }
 
-    let docker_check = Command::new("docker")
-        .arg("info")
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status();
-    match docker_check {
-        Ok(s) if s.success() => {}
-        _ => {
-            return Err(RunError::Preflight(
-                "Docker is not available. Is Docker running?".into(),
-            ))
-        }
-    }
-
-    // Best-effort diagnostic — never blocks preflight.
-    check_disk_space(logger);
-
     check_agent_credentials(agent)?;
 
-    check_tooling_coherence(repo_root, dockerfile_content)?;
+    if current_container {
+        check_current_container_tools(repo_root, agent)?;
+    } else {
+        let docker_check = Command::new("docker")
+            .arg("info")
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
+        match docker_check {
+            Ok(s) if s.success() => {}
+            _ => {
+                return Err(RunError::Preflight(
+                    "Docker is not available. Is Docker running?".into(),
+                ))
+            }
+        }
+
+        // Best-effort diagnostic — never blocks preflight.
+        check_disk_space(logger);
+
+        check_tooling_coherence(repo_root, dockerfile_content)?;
+    }
 
     if !local {
         let diff_status = Command::new("git")
@@ -1230,6 +1530,55 @@ fn check_agent_credentials(agent: AgentKind) -> Result<(), RunError> {
     }
 
     Ok(())
+}
+
+fn check_current_container_tools(repo_root: &Path, agent: AgentKind) -> Result<(), RunError> {
+    for binary in ["git", agent.binary()] {
+        if !command_exists(binary) {
+            return Err(RunError::Preflight(format!(
+                "current-container mode requires `{binary}` on PATH"
+            )));
+        }
+    }
+
+    for &(branch, binary) in TOOLING_PAIRS {
+        if tooling_branch_exists(repo_root, branch) && !command_exists(binary) {
+            return Err(RunError::Preflight(format!(
+                "current-container mode requires `{binary}` on PATH because a {branch} branch exists"
+            )));
+        }
+    }
+
+    Ok(())
+}
+
+fn command_exists(binary: &str) -> bool {
+    if binary.contains(std::path::MAIN_SEPARATOR) {
+        return is_executable(Path::new(binary));
+    }
+
+    let Some(path_var) = std::env::var_os("PATH") else {
+        return false;
+    };
+    std::env::split_paths(&path_var).any(|dir| is_executable(&dir.join(binary)))
+}
+
+fn is_executable(path: &Path) -> bool {
+    let Ok(meta) = path.metadata() else {
+        return false;
+    };
+    if !meta.is_file() {
+        return false;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        meta.permissions().mode() & 0o111 != 0
+    }
+    #[cfg(not(unix))]
+    {
+        true
+    }
 }
 
 /// Pairs of (branch name, binary name) for task-tracking tools that the runner
@@ -1894,6 +2243,11 @@ pub enum RunError {
         reason: String,
         log_path: PathBuf,
     },
+    ProcessFailed {
+        code: i32,
+        reason: String,
+        log_path: PathBuf,
+    },
     SessionSetupFailed {
         code: i32,
         reason: String,
@@ -1910,6 +2264,9 @@ impl std::fmt::Display for RunError {
             Self::ContainerFailed { code, reason, .. } => {
                 write!(f, "container exited with code {code}: {reason}")
             }
+            Self::ProcessFailed { code, reason, .. } => {
+                write!(f, "agent process exited with code {code}: {reason}")
+            }
             Self::SessionSetupFailed { code, reason, .. } => {
                 write!(f, "session setup failed (exit code {code}): {reason}")
             }
@@ -1925,6 +2282,7 @@ impl RunError {
     pub fn log_path(&self) -> Option<&Path> {
         match self {
             Self::ContainerFailed { log_path, .. } => Some(log_path),
+            Self::ProcessFailed { log_path, .. } => Some(log_path),
             Self::SessionSetupFailed { log_path, .. } => Some(log_path),
             _ => None,
         }
@@ -1934,6 +2292,7 @@ impl RunError {
     pub fn exit_code(&self) -> Option<i32> {
         match self {
             Self::ContainerFailed { code, .. } => Some(*code),
+            Self::ProcessFailed { code, .. } => Some(*code),
             Self::SessionSetupFailed { code, .. } => Some(*code),
             _ => None,
         }
@@ -1944,6 +2303,7 @@ impl RunError {
     pub fn short_reason(&self) -> String {
         match self {
             Self::ContainerFailed { code, reason, .. } => format!("exit {code} — {reason}"),
+            Self::ProcessFailed { code, reason, .. } => format!("exit {code} — {reason}"),
             Self::SessionSetupFailed { code, reason, .. } => {
                 format!("session setup exit {code} — {reason}")
             }
@@ -1961,9 +2321,19 @@ impl RunError {
                 code,
                 reason,
                 log_path,
+            }
+            | Self::ProcessFailed {
+                code,
+                reason,
+                log_path,
             } => {
                 let mut d = crate::debrief::FailureDebrief::new(format!(
-                    "container exited with code {code}: {reason}"
+                    "{} exited with code {code}: {reason}",
+                    if matches!(self, Self::ContainerFailed { .. }) {
+                        "container"
+                    } else {
+                        "agent process"
+                    }
                 ));
                 d.exit_code = Some(*code);
                 d.log_path = Some(log_path.clone());
@@ -2144,6 +2514,7 @@ mod tests {
             model: "sonnet".to_string(),
             timeout: None,
             local: false,
+            current_container: false,
             local_workspace_path: None,
             worktree_path: None,
             prompt_override: None,
@@ -2162,6 +2533,7 @@ mod tests {
             model: "sonnet".to_string(),
             timeout: None,
             local: false,
+            current_container: false,
             local_workspace_path: None,
             worktree_path: None,
             prompt_override: None,
@@ -2181,6 +2553,7 @@ mod tests {
             model: "sonnet".to_string(),
             timeout: Some(7),
             local: false,
+            current_container: false,
             local_workspace_path: None,
             worktree_path: Some(worktree.clone()),
             prompt_override: None,
@@ -2918,7 +3291,14 @@ mod tests {
         let prev_skip = std::env::var_os("MRMOUTH_SKIP_PREFLIGHT");
         std::env::set_var("MRMOUTH_SKIP_PREFLIGHT", "1");
         // Dockerfile lacks trk, but env skip must bypass that (and all other checks).
-        let result = preflight(dir.path(), AgentKind::Claude, true, "FROM scratch\n", None);
+        let result = preflight(
+            dir.path(),
+            AgentKind::Claude,
+            true,
+            false,
+            "FROM scratch\n",
+            None,
+        );
         match prev_skip {
             Some(v) => std::env::set_var("MRMOUTH_SKIP_PREFLIGHT", v),
             None => std::env::remove_var("MRMOUTH_SKIP_PREFLIGHT"),

@@ -30,7 +30,7 @@ const CLAUDE_DEFAULT_MODEL: &str = "opus";
 #[command(
     name = "mrmouth",
     version,
-    about = "Run Claude Code or Codex as an autonomous coding agent in Docker containers"
+    about = "Run Claude Code or Codex as an autonomous coding agent"
 )]
 struct Cli {
     /// Run all AI roles with Claude Code, overriding config
@@ -66,8 +66,12 @@ enum Commands {
         timeout: Option<u32>,
 
         /// Bind-mount current directory instead of cloning
-        #[arg(long)]
+        #[arg(long, conflicts_with = "current_container")]
         local: bool,
+
+        /// Run directly in the current container/workspace without Docker
+        #[arg(long, visible_alias = "no-docker", conflicts_with = "local")]
+        current_container: bool,
     },
 
     /// Run the agent repeatedly until work is done
@@ -102,9 +106,18 @@ enum Commands {
         #[arg(long, conflicts_with = "worktree")]
         local: bool,
 
-        /// Bind-mount a local worktree for code edits at /home/runner/worktree
+        /// Use a local worktree for code edits
         #[arg(long, value_name = "PATH")]
         worktree: Option<std::path::PathBuf>,
+
+        /// Run directly in the current container/workspace without Docker
+        #[arg(
+            long,
+            visible_alias = "no-docker",
+            alias = "in-place",
+            conflicts_with = "local"
+        )]
+        current_container: bool,
 
         /// Per-task timeout in minutes (default: from config or 15)
         #[arg(long)]
@@ -173,6 +186,10 @@ fn main() {
     let use_cwd_fallback = matches!(
         cli.command,
         Commands::Run { local: true, .. }
+            | Commands::Run {
+                current_container: true,
+                ..
+            }
             | Commands::Loop { .. }
             | Commands::Summary { .. }
             | Commands::CodexLogin
@@ -236,12 +253,17 @@ fn main() {
         Commands::Do {
             local: true,
             worktree: None,
+            current_container: false,
             ..
         } => Some("/home/runner/workspace".to_string()),
         Commands::Do {
             worktree: Some(path),
             ..
         } => Some(path.display().to_string()),
+        Commands::Do {
+            current_container: true,
+            ..
+        } => Some(repo_root.display().to_string()),
         _ => None,
     };
     let tui = if output_modes.start_tui {
@@ -258,6 +280,7 @@ fn main() {
             model,
             timeout,
             local,
+            current_container,
         } => {
             let opts = run::RunOptions {
                 raw,
@@ -265,6 +288,7 @@ fn main() {
                 model: resolve_model(&config, model),
                 timeout,
                 local,
+                current_container,
                 local_workspace_path: None,
                 worktree_path: None,
                 prompt_override: None,
@@ -300,6 +324,7 @@ fn main() {
             item_id,
             local,
             worktree,
+            current_container,
             timeout,
             max_failures,
             model,
@@ -309,6 +334,7 @@ fn main() {
                 item_id,
                 local,
                 worktree,
+                current_container,
                 timeout: timeout.unwrap_or(config.do_config.timeout),
                 max_failures: max_failures.unwrap_or(config.do_config.max_failures),
                 model: resolve_model(&config, model),
@@ -487,6 +513,7 @@ mod tests {
             model: None,
             timeout: None,
             local: false,
+            current_container: false,
         };
 
         assert_eq!(
@@ -504,6 +531,7 @@ mod tests {
             item_id: "lb-1234".to_string(),
             local: false,
             worktree: None,
+            current_container: false,
             timeout: None,
             max_failures: None,
             model: None,
@@ -564,6 +592,7 @@ mod tests {
             model: None,
             timeout: None,
             local: false,
+            current_container: false,
         };
 
         assert_eq!(
@@ -607,11 +636,13 @@ mod tests {
                 item_id,
                 local,
                 worktree,
+                current_container,
                 ..
             } => {
                 assert_eq!(item_id, "lb-1234");
                 assert!(local);
                 assert_eq!(worktree, None);
+                assert!(!current_container);
             }
             _ => panic!("unexpected command"),
         }
@@ -624,11 +655,48 @@ mod tests {
 
         match cli.command {
             Commands::Do {
-                item_id, worktree, ..
+                item_id,
+                worktree,
+                current_container,
+                ..
             } => {
                 assert_eq!(item_id, "lb-1234");
                 assert_eq!(worktree, Some(std::path::PathBuf::from("../service")));
+                assert!(!current_container);
             }
+            _ => panic!("unexpected command"),
+        }
+    }
+
+    #[test]
+    fn do_current_container_parses() {
+        let cli = Cli::try_parse_from(["mrmouth", "do", "--current-container", "lb-1234"]).unwrap();
+
+        match cli.command {
+            Commands::Do {
+                item_id,
+                local,
+                worktree,
+                current_container,
+                ..
+            } => {
+                assert_eq!(item_id, "lb-1234");
+                assert!(!local);
+                assert_eq!(worktree, None);
+                assert!(current_container);
+            }
+            _ => panic!("unexpected command"),
+        }
+    }
+
+    #[test]
+    fn do_in_place_alias_parses() {
+        let cli = Cli::try_parse_from(["mrmouth", "do", "--in-place", "lb-1234"]).unwrap();
+
+        match cli.command {
+            Commands::Do {
+                current_container, ..
+            } => assert!(current_container),
             _ => panic!("unexpected command"),
         }
     }
@@ -648,6 +716,47 @@ mod tests {
         };
 
         assert_eq!(err.kind(), clap::error::ErrorKind::ArgumentConflict);
+    }
+
+    #[test]
+    fn do_current_container_conflicts_with_local() {
+        let err = match Cli::try_parse_from([
+            "mrmouth",
+            "do",
+            "--current-container",
+            "--local",
+            "lb-1234",
+        ]) {
+            Ok(_) => panic!("expected --current-container and --local to conflict"),
+            Err(err) => err,
+        };
+
+        assert_eq!(err.kind(), clap::error::ErrorKind::ArgumentConflict);
+    }
+
+    #[test]
+    fn do_current_container_allows_worktree() {
+        let cli = Cli::try_parse_from([
+            "mrmouth",
+            "do",
+            "--current-container",
+            "--worktree",
+            "../service",
+            "lb-1234",
+        ])
+        .unwrap();
+
+        match cli.command {
+            Commands::Do {
+                current_container,
+                worktree,
+                ..
+            } => {
+                assert!(current_container);
+                assert_eq!(worktree, Some(std::path::PathBuf::from("../service")));
+            }
+            _ => panic!("unexpected command"),
+        }
     }
 
     #[test]

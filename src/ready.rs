@@ -238,6 +238,7 @@ pub fn execute(
             model: opts.model.clone(),
             timeout: Some(opts.timeout),
             local: false,
+            current_container: false,
             local_workspace_path: None,
             worktree_path: None,
             prompt_override: Some(prompt),

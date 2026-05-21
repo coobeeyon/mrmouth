@@ -173,6 +173,19 @@ pub fn agent_stream_cmd(
     }
 }
 
+/// Build a provider-specific command for a full coding runner. This is used by
+/// current-container mode, where there is no wrapper script to add runner flags.
+pub fn agent_runner_stream_cmd(
+    agent: AgentKind,
+    repo_root: &std::path::Path,
+    model: &str,
+) -> std::process::Command {
+    match agent {
+        AgentKind::Claude => claude_runner_stream_cmd(repo_root, model),
+        AgentKind::Codex => codex_stream_cmd(repo_root, model, None),
+    }
+}
+
 /// Build a provider-specific non-interactive agent command with structured
 /// output when the provider supports a schema flag.
 pub fn agent_stream_cmd_with_schema(
@@ -206,6 +219,30 @@ pub fn claude_stream_cmd(
         "xhigh",
         "--allowedTools",
         allowed_tools,
+        "--output-format",
+        "stream-json",
+    ])
+    .env("CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING", "1")
+    .stdin(Stdio::piped())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
+    .current_dir(repo_root);
+    cmd
+}
+
+fn claude_runner_stream_cmd(repo_root: &std::path::Path, model: &str) -> std::process::Command {
+    let mut cmd = std::process::Command::new("claude");
+    cmd.args([
+        "-p",
+        "--dangerously-skip-permissions",
+        "--verbose",
+        "--no-session-persistence",
+        "--model",
+        model,
+        "--effort",
+        "xhigh",
+        "--disallowedTools",
+        "EnterPlanMode,ExitPlanMode",
         "--output-format",
         "stream-json",
     ])
@@ -354,5 +391,21 @@ mod tests {
             extract_codex_result_text(&event).as_deref(),
             Some("{\"action\":\"continue\",\"reason\":\"work remains\"}")
         );
+    }
+
+    #[test]
+    fn claude_runner_command_skips_permissions_and_plan_mode() {
+        let cmd = agent_runner_stream_cmd(
+            AgentKind::Claude,
+            std::path::Path::new("/tmp/workspace"),
+            "opus",
+        );
+        let args: Vec<String> = cmd
+            .get_args()
+            .map(|a| a.to_string_lossy().to_string())
+            .collect();
+        assert!(args.contains(&"--dangerously-skip-permissions".to_string()));
+        assert!(args.contains(&"--disallowedTools".to_string()));
+        assert!(args.contains(&"EnterPlanMode,ExitPlanMode".to_string()));
     }
 }

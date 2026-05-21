@@ -2,9 +2,9 @@
 
 ## Overview
 
-Mr Mouth is a Rust CLI tool that runs Claude Code as an autonomous coding agent inside Docker containers. It replaces the current bash harness (`scripts/`) with a single binary distributed via `cargo install` or GitHub releases.
+Mr Mouth is a Rust CLI tool that runs Claude Code or Codex as an autonomous coding agent. Docker is the default isolated runner, and current-container mode runs the configured agent CLI directly in the current checkout. It replaces the current bash harness (`scripts/`) with a single binary distributed via `cargo install` or GitHub releases.
 
-You run `mrmouth` from inside any git repo. It builds a Docker image, launches a container with the repo mounted or cloned, runs Claude Code with a structured prompt, streams formatted output, and pulls changes when the agent exits. Config lives in the target repo under `.mrmouth/`.
+You run `mrmouth` from inside any git repo. In Docker mode it builds an image, launches a container with the repo mounted or cloned, runs the agent with a structured prompt, streams formatted output, and pulls changes when the agent exits. Config lives in the target repo under `.mrmouth/`.
 
 ## Subcommands
 
@@ -47,8 +47,9 @@ Run one agent session. This is the core command — everything else builds on it
 
 - `--raw` — output raw JSONL instead of formatted stream
 - `--model <model>` — override the Claude model (default: from config or `opus`)
-- `--timeout <minutes>` — kill container after N minutes
+- `--timeout <minutes>` — kill container or current-container agent process after N minutes
 - `--local` — bind-mount current directory instead of cloning (see Local/Bootstrap Mode below)
+- `--current-container` / `--no-docker` — run the agent CLI directly in the current checkout without Docker
 
 ### `mrmouth loop`
 
@@ -90,6 +91,8 @@ Work through a litebrite item — either an epic or a single task.
 - `--max-failures <n>` — consecutive failures before aborting (default: 3)
 - `--model <model>` — override the Claude model
 - `--json-events` — output mrmouth lifecycle events as JSONL and disable the TUI
+- `--current-container` / `--no-docker` / `--in-place` — run task agents directly in the current checkout without Docker; skips Docker reviewers
+- `--worktree <path>` — use a local code worktree while keeping task state in the current repo; compatible with `--current-container`
 
 ### `mrmouth ready`
 
@@ -260,6 +263,17 @@ This also works for adopting mrmouth in an existing repo that doesn't have `.mrm
 - `run.rs` must not call `git_remote_url()` when `--local` is set — there may be no remote.
 - Preflight must skip the dirty-tree check when `--local` is set.
 - The runner entrypoint script already handles this: it checks `[ ! -d "$work_dir/.git" ]` before cloning.
+
+### Current-Container Mode
+
+`mrmouth run --current-container` and `mrmouth do <item-id> --current-container`
+skip Docker preflight, image build, container startup, and repository clone. The
+configured agent CLI runs directly in the current checkout. This mode requires
+the current environment to already have `git`, the selected agent CLI, and task
+tools such as `lb`/`trk` when the corresponding branches exist. `mrmouth do`
+can combine `--current-container` with `--worktree <path>` when task state and
+code live in separate local checkouts. For `do`, Docker reviewers are skipped so
+the full run remains Docker-free.
 
 ## Stream Formatter
 

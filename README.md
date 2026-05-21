@@ -1,8 +1,8 @@
 # Mr Mouth
 
-Run Claude Code or Codex as an autonomous coding agent inside Docker containers.
+Run Claude Code or Codex as an autonomous coding agent.
 
-You run `mrmouth` from inside any git repo. It builds a Docker image, launches a container with the repo cloned, runs an agent CLI with a structured prompt, streams formatted output, and pulls changes when the agent exits.
+You run `mrmouth` from inside any git repo. Docker mode builds an image, launches a container with the repo cloned, runs an agent CLI with a structured prompt, streams formatted output, and pulls changes when the agent exits. Current-container mode runs the agent CLI directly in the current checkout when Docker is unavailable or unnecessary.
 
 ## Install
 
@@ -12,12 +12,13 @@ cargo install --git https://github.com/coobeeyon/mrmouth.git
 
 ## Prerequisites
 
-- **Docker** — container runtime for agent isolation
+- **Docker** — container runtime for the default isolated agent path
 - **SSH agent** — running with keys that have access to your repo (`ssh-add`)
 - **Credentials** — for Claude, set `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN`; for Codex, set `OPENAI_API_KEY` or log in with Codex in the persisted container home
 
 Optional:
 - **lb** ([litebrite](https://github.com/coobeeyon/litebrite)) — task tracking CLI for the relay pattern
+- **No-Docker/current-container mode** — requires the configured agent CLI, `git`, and task tools such as `lb`/`trk` on the current PATH.
 
 ## Quick Start
 
@@ -49,15 +50,16 @@ a repository, but it also works outside a git repo with built-in defaults.
 Run one agent session.
 
 ```bash
-mrmouth run [--claude|--codex] [--raw|--json-events] [--model <model>] [--timeout <minutes>] [--local]
+mrmouth run [--claude|--codex] [--raw|--json-events] [--model <model>] [--timeout <minutes>] [--local|--current-container]
 ```
 
 - `--claude` / `--codex` — override the configured agent for all AI roles
 - `--raw` — output the inner Claude/Codex stream JSONL instead of the formatted terminal stream
 - `--json-events` — output mrmouth lifecycle events as JSONL for supervisors; conflicts with `--raw`
 - `--model` — override the agent model (default: `opus`)
-- `--timeout` — kill container after N minutes
+- `--timeout` — kill the container or current-container agent process after N minutes
 - `--local` — bind-mount current directory instead of cloning
+- `--current-container` / `--no-docker` — run the agent CLI directly in the current checkout without Docker
 
 ### `mrmouth loop`
 
@@ -74,12 +76,15 @@ Each iteration starts with an AI **decider** that reads SPEC.md and litebrite st
 Work through a litebrite item — either an epic or a single task.
 
 ```bash
-mrmouth do <item-id> [--claude|--codex] [--timeout <minutes>] [--max-failures <n>] [--model <model>] [--json-events]
+mrmouth do <item-id> [--claude|--codex] [--timeout <minutes>] [--max-failures <n>] [--model <model>] [--json-events] [--current-container] [--worktree <path>]
 ```
 
 Creates a feature branch and dispatches based on item type. For epics, loops through child tasks one at a time and runs a reviewer on the full diff at the end. For individual tasks, runs a single agent session focused on that task and then runs a reviewer. Aborts after N consecutive failures.
 
 - `--json-events` — output mrmouth lifecycle events as JSONL and disable the TUI
+- `--current-container` / `--no-docker` / `--in-place` — execute runner agents directly in the current container/current checkout. Docker mode remains the default; Docker reviewers are skipped in current-container mode.
+- `--worktree <path>` — with Docker, bind-mount a separate code worktree; with `--current-container`, pass the local code worktree path in the task prompt and `MRMOUTH_WORKTREE`.
+- `--worktree <path>` — for `do`, keep Litebrite/task state in the current repo while directing code edits and code commits to another local worktree; this can be combined with `--current-container`.
 
 ### `mrmouth ready`
 
@@ -179,6 +184,8 @@ The prompt given to the agent. The built-in default implements the relay pattern
 **Self-modification:** The agent can create or edit `.mrmouth/Dockerfile` to add tools and dependencies. Changes are committed and rebuilt on the next run.
 
 **Local mode:** `mrmouth run --local` bind-mounts the current directory. Works with repos that have no remote, or even directories that aren't git repos yet.
+
+**Current-container mode:** `mrmouth run --current-container` and `mrmouth do <item-id> --current-container` do not build or start Docker. They run the configured agent CLI from the current checkout, keep normal run logs and lifecycle JSON, and require the needed tools (`git`, agent CLI, and `lb`/`trk` when those branches exist) to already be on `PATH`. For split tracking/code repos, use `mrmouth do <item-id> --current-container --worktree <path>`.
 
 ## Roadmap
 

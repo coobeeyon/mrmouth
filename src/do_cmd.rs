@@ -71,6 +71,7 @@ pub struct DoOptions {
     pub item_id: String,
     pub local: bool,
     pub worktree: Option<PathBuf>,
+    pub current_container: bool,
     pub timeout: u32,
     pub max_failures: u32,
     pub model: String,
@@ -90,6 +91,18 @@ impl LocalWorktree {
                 The code worktree to edit is bind-mounted at `/home/runner/worktree` from host path `{}`. \
                 Make code changes, commits, and pushes in `/home/runner/worktree`; make only task-state commits in `/home/runner/workspace` when needed. ",
                 host_path.display()
+            )
+        })
+    }
+
+    fn current_container_prompt_block(&self, repo_root: &Path) -> Option<String> {
+        self.target_mount.as_ref().map(|worktree_path| {
+            format!(
+                "The litebrite/task tracking repo is `{}`; run `lb` commands there. \
+                The code worktree to edit is `{}`. \
+                Make code changes, commits, and pushes in the code worktree; make only task-state commits in the tracking repo when needed. ",
+                repo_root.display(),
+                worktree_path.display()
             )
         })
     }
@@ -312,7 +325,15 @@ pub fn execute(
             summary: LifecycleSummary::success("do")
                 .item_id(opts.item_id.clone())
                 .branch(feature_branch)
-                .workspace(local_worktree.summary_workspace())
+                .workspace(if opts.current_container {
+                    local_worktree
+                        .target_mount
+                        .as_ref()
+                        .map(|p| p.display().to_string())
+                        .unwrap_or_else(|| repo_root.display().to_string())
+                } else {
+                    local_worktree.summary_workspace()
+                })
                 .next_action("merge_when_ready"),
         },
     );
@@ -341,11 +362,12 @@ fn execute_task(
     let head_before = git_head(repo_root);
 
     let base_prompt = prompt::load_prompt(repo_root, logger);
-    let prompt = task_prompt(
-        &opts.item_id,
-        &base_prompt,
-        local_worktree.prompt_block().as_deref(),
-    );
+    let worktree_block = if opts.current_container {
+        local_worktree.current_container_prompt_block(repo_root)
+    } else {
+        local_worktree.prompt_block()
+    };
+    let prompt = task_prompt(&opts.item_id, &base_prompt, worktree_block.as_deref());
 
     let run_opts = RunOptions {
         raw: false,
@@ -353,6 +375,7 @@ fn execute_task(
         model: opts.model.clone(),
         timeout: Some(opts.timeout),
         local: opts.local,
+        current_container: opts.current_container,
         local_workspace_path: opts.local.then(|| repo_root.to_path_buf()),
         worktree_path: local_worktree.target_mount.clone(),
         prompt_override: Some(prompt),
@@ -380,7 +403,13 @@ fn execute_task(
         _ => None,
     };
 
-    if commit_range.is_some() {
+    if commit_range.is_some() && opts.current_container {
+        emit(
+            tui_tx,
+            "Reviewer skipped: current-container mode does not start Docker reviewer.",
+        );
+        litebrite::sync(repo_root, logger);
+    } else if commit_range.is_some() {
         emit(tui_tx, "Running reviewer on task changes...");
         emit_event(
             &opts.event_sink,
@@ -435,6 +464,129 @@ fn execute_epic(
     let mut recent_failures: Vec<AttemptSummary> = Vec::new();
 
     let head_before = git_head(repo_root);
+
+    if opts.current_container {
+        let loop_result = (|| -> Result<(), DoError> {
+            loop {
+                if tui.is_some_and(|t| t.is_cancelled()) {
+                    emit(tui_tx, "Epic cancelled by user.");
+                    break;
+                }
+
+                let remaining = count_remaining_tasks(repo_root, &opts.item_id);
+                if remaining == 0 {
+                    emit(tui_tx, &format!("All tasks in {} complete.", opts.item_id));
+                    break;
+                }
+
+                task_num += 1;
+                emit_event(
+                    &opts.event_sink,
+                    MrmouthEvent::RunLabel {
+                        name: "task".to_string(),
+                        value: format!("Task {task_num}"),
+                    },
+                );
+                emit(
+                    tui_tx,
+                    &format!(
+                        "TASK {}  ({} remaining)  {}",
+                        task_num,
+                        remaining,
+                        chrono::Local::now().format("%H:%M:%S")
+                    ),
+                );
+
+                let base_prompt = prompt::load_prompt(repo_root, logger);
+                let worktree_block = local_worktree
+                    .current_container_prompt_block(repo_root)
+                    .unwrap_or_default();
+                let prompt = format!(
+                    "## Scope\n\n\
+                    You are working on epic {}. \
+                    Run `lb list --parent {}` to see tasks. Pick ONE open child task and complete it. \
+                    Do NOT work on tasks outside this epic. \
+                    {}\
+                    Commit your changes, close the item, and push when done.\n\n\
+                    {base_prompt}",
+                    opts.item_id, opts.item_id, worktree_block
+                );
+
+                let run_opts = RunOptions {
+                    raw: false,
+                    json_events: opts.json_events,
+                    model: opts.model.clone(),
+                    timeout: Some(opts.timeout),
+                    local: false,
+                    current_container: true,
+                    local_workspace_path: None,
+                    worktree_path: local_worktree.target_mount.clone(),
+                    prompt_override: Some(prompt),
+                    branch: None,
+                    event_sink: opts.event_sink.clone(),
+                };
+
+                match run::execute(config, repo_root, run_opts, tui) {
+                    Ok(ref run_logger) => {
+                        consecutive_failures = 0;
+                        recent_failures.clear();
+                        emit(tui_tx, &format!("Task {task_num} succeeded, syncing..."));
+                        sync_and_push(repo_root, feature_branch, Some(run_logger));
+                    }
+                    Err(e) => {
+                        consecutive_failures += 1;
+                        emit(tui_tx, &format!("--- Task {task_num} failed: {e}"));
+                        recent_failures.push(attempt_from(&e, consecutive_failures));
+
+                        if consecutive_failures >= opts.max_failures {
+                            emit(
+                                tui_tx,
+                                &format!(
+                                    "ERROR: {} consecutive failures — aborting",
+                                    opts.max_failures
+                                ),
+                            );
+                            emit(tui_tx, "Per-attempt summary:");
+                            for a in &recent_failures {
+                                emit(tui_tx, &format!("  {}", a.render(repo_root)));
+                            }
+                            return Err(DoError::TooManyFailures {
+                                count: opts.max_failures,
+                                attempts: recent_failures,
+                            });
+                        }
+                    }
+                }
+
+                if let Ok(output) = Command::new("lb")
+                    .args(["list", "--parent", &opts.item_id])
+                    .current_dir(repo_root)
+                    .output()
+                {
+                    let stdout = String::from_utf8_lossy(&output.stdout);
+                    for line in stdout.lines() {
+                        emit(tui_tx, line);
+                    }
+                }
+            }
+            Ok(())
+        })();
+
+        loop_result?;
+
+        let head_after = git_head(repo_root);
+        if matches!((&head_before, &head_after), (Ok(before), Ok(after)) if before != after) {
+            emit(
+                tui_tx,
+                "Reviewer skipped: current-container mode does not start Docker reviewer.",
+            );
+            litebrite::sync(repo_root, logger);
+        } else {
+            emit(tui_tx, "Reviewer skipped: no new commits.");
+        }
+
+        return Ok(());
+    }
 
     // Start a long-lived session container, reused across iterations.
     // Setup (clone, lb init, claude.json restore) runs once; each task then
@@ -524,6 +676,7 @@ fn execute_epic(
                 model: opts.model.clone(),
                 timeout: Some(opts.timeout),
                 local: opts.local,
+                current_container: false,
                 local_workspace_path: opts.local.then(|| repo_root.to_path_buf()),
                 worktree_path: local_worktree.target_mount.clone(),
                 prompt_override: Some(prompt),
@@ -991,6 +1144,7 @@ mod tests {
             item_id: "lb-1234".to_string(),
             local: false,
             worktree: Some(dir.path().to_path_buf()),
+            current_container: false,
             timeout: 15,
             max_failures: 3,
             model: "sonnet".to_string(),
