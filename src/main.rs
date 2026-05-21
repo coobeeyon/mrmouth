@@ -66,11 +66,20 @@ enum Commands {
         timeout: Option<u32>,
 
         /// Bind-mount current directory instead of cloning
-        #[arg(long, conflicts_with = "current_container")]
+        #[arg(long, conflicts_with_all = ["current_container", "worktree"])]
         local: bool,
 
+        /// Use a local worktree for code edits
+        #[arg(long, value_name = "PATH", conflicts_with = "local")]
+        worktree: Option<std::path::PathBuf>,
+
         /// Run directly in the current container/workspace without Docker
-        #[arg(long, visible_alias = "no-docker", conflicts_with = "local")]
+        #[arg(
+            long,
+            visible_alias = "no-docker",
+            conflicts_with = "local",
+            requires = "worktree"
+        )]
         current_container: bool,
     },
 
@@ -115,7 +124,8 @@ enum Commands {
             long,
             visible_alias = "no-docker",
             alias = "in-place",
-            conflicts_with = "local"
+            conflicts_with = "local",
+            requires = "worktree"
         )]
         current_container: bool,
 
@@ -264,6 +274,10 @@ fn main() {
             current_container: true,
             ..
         } => Some(repo_root.display().to_string()),
+        Commands::Run {
+            worktree: Some(path),
+            ..
+        } => Some(path.display().to_string()),
         _ => None,
     };
     let tui = if output_modes.start_tui {
@@ -280,6 +294,7 @@ fn main() {
             model,
             timeout,
             local,
+            worktree,
             current_container,
         } => {
             let opts = run::RunOptions {
@@ -290,7 +305,7 @@ fn main() {
                 local,
                 current_container,
                 local_workspace_path: None,
-                worktree_path: None,
+                worktree_path: worktree,
                 prompt_override: None,
                 branch: None,
                 event_sink: lifecycle_events.clone(),
@@ -513,6 +528,7 @@ mod tests {
             model: None,
             timeout: None,
             local: false,
+            worktree: None,
             current_container: false,
         };
 
@@ -592,6 +608,7 @@ mod tests {
             model: None,
             timeout: None,
             local: false,
+            worktree: None,
             current_container: false,
         };
 
@@ -669,34 +686,70 @@ mod tests {
     }
 
     #[test]
-    fn do_current_container_parses() {
-        let cli = Cli::try_parse_from(["mrmouth", "do", "--current-container", "lb-1234"]).unwrap();
+    fn do_current_container_requires_worktree() {
+        let err = match Cli::try_parse_from(["mrmouth", "do", "--current-container", "lb-1234"]) {
+            Ok(_) => panic!("expected --current-container to require --worktree"),
+            Err(err) => err,
+        };
+
+        assert_eq!(err.kind(), clap::error::ErrorKind::MissingRequiredArgument);
+    }
+
+    #[test]
+    fn do_in_place_alias_parses() {
+        let cli = Cli::try_parse_from([
+            "mrmouth",
+            "do",
+            "--in-place",
+            "--worktree",
+            "../service",
+            "lb-1234",
+        ])
+        .unwrap();
 
         match cli.command {
             Commands::Do {
-                item_id,
-                local,
-                worktree,
                 current_container,
+                worktree,
                 ..
             } => {
-                assert_eq!(item_id, "lb-1234");
-                assert!(!local);
-                assert_eq!(worktree, None);
                 assert!(current_container);
+                assert_eq!(worktree, Some(std::path::PathBuf::from("../service")));
             }
             _ => panic!("unexpected command"),
         }
     }
 
     #[test]
-    fn do_in_place_alias_parses() {
-        let cli = Cli::try_parse_from(["mrmouth", "do", "--in-place", "lb-1234"]).unwrap();
+    fn run_current_container_requires_worktree() {
+        let err = match Cli::try_parse_from(["mrmouth", "run", "--current-container"]) {
+            Ok(_) => panic!("expected --current-container to require --worktree"),
+            Err(err) => err,
+        };
+
+        assert_eq!(err.kind(), clap::error::ErrorKind::MissingRequiredArgument);
+    }
+
+    #[test]
+    fn run_current_container_allows_worktree() {
+        let cli = Cli::try_parse_from([
+            "mrmouth",
+            "run",
+            "--current-container",
+            "--worktree",
+            "../service",
+        ])
+        .unwrap();
 
         match cli.command {
-            Commands::Do {
-                current_container, ..
-            } => assert!(current_container),
+            Commands::Run {
+                current_container,
+                worktree,
+                ..
+            } => {
+                assert!(current_container);
+                assert_eq!(worktree, Some(std::path::PathBuf::from("../service")));
+            }
             _ => panic!("unexpected command"),
         }
     }

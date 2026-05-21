@@ -191,6 +191,13 @@ pub fn execute(
     opts: RunOptions,
     tui: Option<&TuiHandle>,
 ) -> Result<Logger, RunError> {
+    if opts.current_container && opts.worktree_path.is_none() {
+        return Err(RunError::Preflight(
+            "current-container mode requires --worktree <path>; use a dedicated worktree for agent edits"
+                .into(),
+        ));
+    }
+
     let reporter = RunReporter::new(opts.event_sink.as_ref(), tui);
     reporter.emit(MrmouthEvent::StageChanged {
         stage: "Agent".to_string(),

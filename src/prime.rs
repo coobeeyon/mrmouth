@@ -24,7 +24,7 @@ fn text(config: &Config, repo_root: &Path) -> String {
     format!(
         r#"# Mr Mouth Agent Context
 
-Mr Mouth (`mrmouth`) runs Claude Code or Codex as autonomous coding agents. Docker remains the default isolated runner; `--current-container` runs the configured agent CLI directly in the current checkout when a supervisor is already inside the right development container.
+Mr Mouth (`mrmouth`) runs Claude Code or Codex as autonomous coding agents. Docker remains the default isolated runner; `--current-container --worktree <path>` runs the configured agent CLI without Docker while directing code edits to an explicit worktree.
 
 ## Current Defaults
 
@@ -53,7 +53,7 @@ Global flags:
 
 - `--claude` uses Claude Code for all AI roles.
 - `--codex` uses Codex for all AI roles.
-- `--current-container` on `run` or `do` skips Docker and uses the current checkout. It requires `git`, the selected agent CLI, and task tools such as `lb`/`trk` on PATH. Docker reviewers are skipped for `do` in this mode. `do --current-container --worktree <path>` keeps task state in the current repo while directing code work to another local checkout.
+- `--current-container --worktree <path>` on `run` or `do` skips Docker, uses the current repo for task tracking, and directs code edits to the explicit worktree. It requires `git`, the selected agent CLI, and task tools such as `lb`/`trk` on PATH. Docker reviewers are skipped for `do` in this mode. Current-container mode is rejected without `--worktree`; use dedicated worktrees for parallel agents.
 
 ## Supervisor Output Contract
 
@@ -67,7 +67,7 @@ Global flags:
 
 1. Use `lb prime` first when litebrite is installed; it provides the task-tracker protocol and ready/claimed state.
 2. Use `lb ready` and `lb show <id>` to choose one executable item when the user has not specified an item.
-3. Prefer `mrmouth do <id> --json-events` for bounded delegation. Add `--current-container` only when Docker is unavailable or the supervisor is already inside the target dev container.
+3. Prefer `mrmouth do <id> --json-events` for bounded delegation. Add `--current-container --worktree <path>` only when Docker is unavailable or the supervisor is already inside the target dev container.
 4. Reserve `mrmouth ready --json-events` and `mrmouth loop --json-events` for explicit user requests to drain or continuously operate.
 5. After a run, inspect the final lifecycle summary, verify the expected commit/task state, and run `lb sync` if litebrite state changed.
 6. If a run fails, use the reported log paths and `next_action` before retrying.

@@ -18,7 +18,7 @@ cargo install --git https://github.com/coobeeyon/mrmouth.git
 
 Optional:
 - **lb** ([litebrite](https://github.com/coobeeyon/litebrite)) — task tracking CLI for the relay pattern
-- **No-Docker/current-container mode** — requires the configured agent CLI, `git`, and task tools such as `lb`/`trk` on the current PATH.
+- **No-Docker/current-container mode** — requires an explicit `--worktree`, the configured agent CLI, `git`, and task tools such as `lb`/`trk` on the current PATH.
 
 ## Quick Start
 
@@ -50,7 +50,7 @@ a repository, but it also works outside a git repo with built-in defaults.
 Run one agent session.
 
 ```bash
-mrmouth run [--claude|--codex] [--raw|--json-events] [--model <model>] [--timeout <minutes>] [--local|--current-container]
+mrmouth run [--claude|--codex] [--raw|--json-events] [--model <model>] [--timeout <minutes>] [--local|--current-container --worktree <path>]
 ```
 
 - `--claude` / `--codex` — override the configured agent for all AI roles
@@ -59,7 +59,8 @@ mrmouth run [--claude|--codex] [--raw|--json-events] [--model <model>] [--timeou
 - `--model` — override the agent model (default: `opus`)
 - `--timeout` — kill the container or current-container agent process after N minutes
 - `--local` — bind-mount current directory instead of cloning
-- `--current-container` / `--no-docker` — run the agent CLI directly in the current checkout without Docker
+- `--current-container` / `--no-docker` — run the agent CLI directly without Docker; requires `--worktree <path>` so agent edits happen in an explicit checkout
+- `--worktree <path>` — use a local code worktree for agent edits
 
 ### `mrmouth loop`
 
@@ -76,13 +77,13 @@ Each iteration starts with an AI **decider** that reads SPEC.md and litebrite st
 Work through a litebrite item — either an epic or a single task.
 
 ```bash
-mrmouth do <item-id> [--claude|--codex] [--timeout <minutes>] [--max-failures <n>] [--model <model>] [--json-events] [--current-container] [--worktree <path>]
+mrmouth do <item-id> [--claude|--codex] [--timeout <minutes>] [--max-failures <n>] [--model <model>] [--json-events] [--current-container --worktree <path>]
 ```
 
 Creates a feature branch and dispatches based on item type. For epics, loops through child tasks one at a time and runs a reviewer on the full diff at the end. For individual tasks, runs a single agent session focused on that task and then runs a reviewer. Aborts after N consecutive failures.
 
 - `--json-events` — output mrmouth lifecycle events as JSONL and disable the TUI
-- `--current-container` / `--no-docker` / `--in-place` — execute runner agents directly in the current container/current checkout. Docker mode remains the default; Docker reviewers are skipped in current-container mode.
+- `--current-container` / `--no-docker` / `--in-place` — execute runner agents directly in the current container. Requires `--worktree <path>` so agent edits happen in an explicit checkout. Docker mode remains the default; Docker reviewers are skipped in current-container mode.
 - `--worktree <path>` — with Docker, bind-mount a separate code worktree; with `--current-container`, pass the local code worktree path in the task prompt and `MRMOUTH_WORKTREE`.
 - `--worktree <path>` — for `do`, keep Litebrite/task state in the current repo while directing code edits and code commits to another local worktree; this can be combined with `--current-container`.
 
@@ -185,7 +186,7 @@ The prompt given to the agent. The built-in default implements the relay pattern
 
 **Local mode:** `mrmouth run --local` bind-mounts the current directory. Works with repos that have no remote, or even directories that aren't git repos yet.
 
-**Current-container mode:** `mrmouth run --current-container` and `mrmouth do <item-id> --current-container` do not build or start Docker. They run the configured agent CLI from the current checkout, keep normal run logs and lifecycle JSON, and require the needed tools (`git`, agent CLI, and `lb`/`trk` when those branches exist) to already be on `PATH`. For split tracking/code repos, use `mrmouth do <item-id> --current-container --worktree <path>`.
+**Current-container mode:** `mrmouth run --current-container --worktree <path>` and `mrmouth do <item-id> --current-container --worktree <path>` do not build or start Docker. They run the configured agent CLI from the current tracking repo, direct code edits to the explicit worktree, keep normal run logs and lifecycle JSON, and require the needed tools (`git`, agent CLI, and `lb`/`trk` when those branches exist) to already be on `PATH`. Mr Mouth refuses current-container runs without `--worktree`; use dedicated worktrees for parallel agents.
 
 ## Roadmap
 

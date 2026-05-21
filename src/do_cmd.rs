@@ -116,6 +116,13 @@ impl LocalWorktree {
 }
 
 fn resolve_local_worktree(opts: &DoOptions) -> Result<LocalWorktree, DoError> {
+    if opts.current_container && opts.worktree.is_none() {
+        return Err(DoError::Command(
+            "current-container mode requires --worktree <path>; use a dedicated worktree for agent edits"
+                .into(),
+        ));
+    }
+
     let target_mount =
         match &opts.worktree {
             Some(path) => {
