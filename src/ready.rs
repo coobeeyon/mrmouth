@@ -9,6 +9,7 @@ use crate::events::{
 };
 use crate::litebrite;
 use crate::prompt;
+use crate::repo_layout::RepoLayout;
 use crate::reviewer;
 use crate::run::{self, RunOptions};
 use crate::tui::{TuiHandle, TuiSender};
@@ -126,6 +127,8 @@ pub fn execute(
     tui: Option<&TuiHandle>,
 ) -> Result<(), ReadyError> {
     let tui_tx = tui.map(|t| t.sender("AGENT SESSION"));
+    let repo_layout = RepoLayout::resolve(config, repo_root, None)
+        .map_err(|e| ReadyError::Command(e.to_string()))?;
     let mut final_status = FinishStatus::Success;
     let final_note: String;
     emit_event(
@@ -225,9 +228,11 @@ pub fn execute(
         let head_before = git_head(repo_root);
 
         let base_prompt = prompt::load_prompt(repo_root, logger.as_ref());
+        let repo_block = repo_layout.prompt_block(false).unwrap_or_default();
         let prompt = format!(
             "## Scope\n\n\
             Work on task {item_id}. Run `lb show {item_id}` to understand the task, then `lb claim {item_id}`. \
+            {repo_block}\
             Implement the changes, commit your code, then `lb close {item_id}`, `lb sync`, and `git push`.\n\n\
             {base_prompt}"
         );
@@ -240,7 +245,8 @@ pub fn execute(
             local: false,
             current_container: false,
             local_workspace_path: None,
-            worktree_path: None,
+            worktree_path: repo_layout.docker_work_mount(),
+            repo_layout: Some(repo_layout.clone()),
             prompt_override: Some(prompt),
             branch: None,
             event_sink: opts.event_sink.clone(),
@@ -414,7 +420,9 @@ pub fn execute(
                 command: "ready".to_string(),
                 item_id: None,
                 branch: Some(branch_name),
-                workspace: None,
+                workspace: repo_layout
+                    .is_split()
+                    .then(|| repo_layout.agent_work_path(false)),
                 commit_range: None,
                 log_path: None,
                 jsonl_path: None,

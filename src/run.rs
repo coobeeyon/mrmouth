@@ -17,6 +17,7 @@ use crate::events::{
 use crate::litebrite;
 use crate::logger::Logger;
 use crate::prompt;
+use crate::repo_layout::RepoLayout;
 use crate::stream_fmt::{self, StreamFormatter};
 use crate::streaming::{self, StreamTarget};
 use crate::tui::TuiHandle;
@@ -40,6 +41,7 @@ pub struct RunOptions {
     pub current_container: bool,
     pub local_workspace_path: Option<PathBuf>,
     pub worktree_path: Option<PathBuf>,
+    pub repo_layout: Option<RepoLayout>,
     pub prompt_override: Option<String>,
     pub branch: Option<String>,
     pub event_sink: Option<EventSinkHandle>,
@@ -193,7 +195,7 @@ pub fn execute(
 ) -> Result<Logger, RunError> {
     if opts.current_container && opts.worktree_path.is_none() {
         return Err(RunError::Preflight(
-            "current-container mode requires --worktree <path>; use a dedicated worktree for agent edits"
+            "current-container mode requires a distinct work repo via --worktree <path> or work_repo in .mrmouth/config.toml"
                 .into(),
         ));
     }
@@ -334,11 +336,15 @@ pub fn execute(
     });
 
     // 4. Write runner entrypoint script
+    let prompt_override = opts
+        .prompt_override
+        .clone()
+        .or_else(|| default_prompt_override(repo_root, &opts, Some(&logger)));
     let runner_script = write_runner_script(
         config.agent,
         repo_root,
         &opts.model,
-        opts.prompt_override.as_deref(),
+        prompt_override.as_deref(),
         &effective_dockerfile,
         &config.dockerfile,
         Some(&logger),
@@ -671,10 +677,7 @@ fn execute_current_container(
         detail: None,
     });
 
-    let prompt_text = match opts.prompt_override.as_deref() {
-        Some(prompt) => prompt.to_string(),
-        None => prompt::load_prompt(repo_root, Some(&logger)),
-    };
+    let prompt_text = prompt_text_for_run(repo_root, opts, Some(&logger));
 
     let jsonl_filename = format!("run-{timestamp}.jsonl");
     let jsonl_path = log_dir.join(&jsonl_filename);
@@ -690,8 +693,12 @@ fn execute_current_container(
     reporter.log(&logger, "Starting current-container agent run...");
     let mut cmd = streaming::agent_runner_stream_cmd(config.agent, repo_root, &opts.model);
     cmd.env("MRMOUTH_TRACKING_REPO", repo_root);
+    cmd.env("MRMOUTH_BOOKKEEPING_REPO", repo_root);
     if let Some(path) = opts.worktree_path.as_ref() {
         cmd.env("MRMOUTH_WORKTREE", path);
+        cmd.env("MRMOUTH_WORK_REPO", path);
+    } else {
+        cmd.env("MRMOUTH_WORK_REPO", repo_root);
     }
     let mut child = cmd
         .spawn()
@@ -1144,6 +1151,14 @@ pub fn execute_in_session(
         Some(p) => p.to_string(),
         None => prompt::load_prompt(repo_root, Some(&logger)),
     };
+    let prompt_text = if opts.prompt_override.is_none() {
+        opts.repo_layout
+            .as_ref()
+            .map(|layout| layout.prepend_prompt_block(prompt_text.clone(), false))
+            .unwrap_or(prompt_text)
+    } else {
+        prompt_text
+    };
     write_task_script(
         config.agent,
         session.scripts_dir.path(),
@@ -1381,6 +1396,29 @@ fn run_workspace_label(local: bool, worktree_path: Option<&Path>) -> String {
         None if local => "/home/runner/workspace".to_string(),
         None => "cloned repository".to_string(),
     }
+}
+
+fn prompt_text_for_run(repo_root: &Path, opts: &RunOptions, logger: Option<&Logger>) -> String {
+    match opts.prompt_override.as_deref() {
+        Some(prompt) => prompt.to_string(),
+        None => default_prompt_override(repo_root, opts, logger)
+            .unwrap_or_else(|| prompt::load_prompt(repo_root, logger)),
+    }
+}
+
+fn default_prompt_override(
+    repo_root: &Path,
+    opts: &RunOptions,
+    logger: Option<&Logger>,
+) -> Option<String> {
+    opts.repo_layout.as_ref().and_then(|layout| {
+        layout.is_split().then(|| {
+            layout.prepend_prompt_block(
+                prompt::load_prompt(repo_root, logger),
+                opts.current_container,
+            )
+        })
+    })
 }
 
 /// Stop and remove the session container. Scripts dir is cleaned up when
@@ -1940,6 +1978,7 @@ _mm_mark versions-done
 repo_url="${{REPO_URL:-}}"
 branch="${{BRANCH:-main}}"
 work_dir="$HOME/workspace"
+work_repo_dir="${{MRMOUTH_WORK_REPO:-$work_dir}}"
 
 # --- Clone repo (skip if workspace already mounted) ---
 if [ ! -d "$work_dir/.git" ]; then
@@ -1955,6 +1994,9 @@ if [ ! -d "$work_dir/.git" ]; then
 fi
 cd "$work_dir"
 git config --global --add safe.directory "$work_dir"
+if [ "$work_repo_dir" != "$work_dir" ] && [ -e "$work_repo_dir" ]; then
+  git config --global --add safe.directory "$work_repo_dir"
+fi
 _mm_mark clone-done
 
 # --- Seed Dockerfile if absent (gives agent a file to read and modify) ---
@@ -2087,6 +2129,7 @@ _mm_mark versions-done
 repo_url="${{REPO_URL:-}}"
 branch="${{BRANCH:-main}}"
 work_dir="$HOME/workspace"
+work_repo_dir="${{MRMOUTH_WORK_REPO:-$work_dir}}"
 
 # --- Clone repo (skip if workspace already mounted) ---
 if [ ! -d "$work_dir/.git" ]; then
@@ -2101,6 +2144,9 @@ if [ ! -d "$work_dir/.git" ]; then
 fi
 cd "$work_dir"
 git config --global --add safe.directory "$work_dir"
+if [ "$work_repo_dir" != "$work_dir" ] && [ -e "$work_repo_dir" ]; then
+  git config --global --add safe.directory "$work_repo_dir"
+fi
 _mm_mark clone-done
 
 # --- Seed Dockerfile if absent ---
@@ -2172,8 +2218,12 @@ _mm_mark() {{ now=$(date +%s%N); echo "::mrmouth::timing phase=$1 elapsed_ms=$((
 _mm_mark task-start
 
 work_dir="$HOME/workspace"
+work_repo_dir="${{MRMOUTH_WORK_REPO:-$work_dir}}"
 branch="${{BRANCH:-main}}"
 cd "$work_dir"
+if [ "$work_repo_dir" != "$work_dir" ] && [ -e "$work_repo_dir" ]; then
+  git config --global --add safe.directory "$work_repo_dir"
+fi
 
 # --- Sync workspace with host ---
 # Stash any leftover uncommitted state from a prior task (shouldn't happen if
@@ -2524,6 +2574,7 @@ mod tests {
             current_container: false,
             local_workspace_path: None,
             worktree_path: None,
+            repo_layout: None,
             prompt_override: None,
             branch: None,
             event_sink: Some(EventSinkHandle::new(sink)),
@@ -2543,6 +2594,7 @@ mod tests {
             current_container: false,
             local_workspace_path: None,
             worktree_path: None,
+            repo_layout: None,
             prompt_override: None,
             branch: None,
             event_sink: None,
@@ -2563,6 +2615,7 @@ mod tests {
             current_container: false,
             local_workspace_path: None,
             worktree_path: Some(worktree.clone()),
+            repo_layout: None,
             prompt_override: None,
             branch: None,
             event_sink: None,

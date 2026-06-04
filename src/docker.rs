@@ -6,6 +6,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::Arc;
 
+use crate::repo_layout::{BOOKKEEPING_CONTAINER_PATH, WORK_CONTAINER_PATH};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CopyFromContainerOutcome {
     Updated,
@@ -216,6 +218,16 @@ impl DockerBuilder {
         // Env vars
         cmd.args(["-e", &format!("REPO_URL={}", args.repo_url)]);
         cmd.args(["-e", &format!("BRANCH={}", args.branch)]);
+        cmd.args([
+            "-e",
+            &format!("MRMOUTH_BOOKKEEPING_REPO={BOOKKEEPING_CONTAINER_PATH}"),
+        ]);
+        let work_repo = if args.worktree_path.is_some() {
+            WORK_CONTAINER_PATH
+        } else {
+            BOOKKEEPING_CONTAINER_PATH
+        };
+        cmd.args(["-e", &format!("MRMOUTH_WORK_REPO={work_repo}")]);
         for var in [
             "ANTHROPIC_API_KEY",
             "CLAUDE_CODE_OAUTH_TOKEN",
@@ -254,16 +266,16 @@ impl DockerBuilder {
             };
             cmd.args([
                 "-v",
-                &format!("{}:/home/runner/workspace", cwd.to_string_lossy()),
+                &format!("{}:{BOOKKEEPING_CONTAINER_PATH}", cwd.to_string_lossy()),
             ]);
         }
 
         if let Some(ref path) = args.worktree_path {
             cmd.args([
                 "-v",
-                &format!("{}:/home/runner/worktree", path.to_string_lossy()),
+                &format!("{}:{WORK_CONTAINER_PATH}", path.to_string_lossy()),
             ]);
-            cmd.args(["-e", "MRMOUTH_WORKTREE=/home/runner/worktree"]);
+            cmd.args(["-e", &format!("MRMOUTH_WORKTREE={WORK_CONTAINER_PATH}")]);
         }
 
         // File-remote mode: mount host repo as a git remote the container can clone from and push to
@@ -396,6 +408,16 @@ impl DockerBuilder {
 
         // Env vars that don't change per task — set once at session start.
         cmd.args(["-e", &format!("REPO_URL={}", args.repo_url)]);
+        cmd.args([
+            "-e",
+            &format!("MRMOUTH_BOOKKEEPING_REPO={BOOKKEEPING_CONTAINER_PATH}"),
+        ]);
+        let work_repo = if args.worktree_path.is_some() {
+            WORK_CONTAINER_PATH
+        } else {
+            BOOKKEEPING_CONTAINER_PATH
+        };
+        cmd.args(["-e", &format!("MRMOUTH_WORK_REPO={work_repo}")]);
         for var in [
             "ANTHROPIC_API_KEY",
             "CLAUDE_CODE_OAUTH_TOKEN",
@@ -434,16 +456,16 @@ impl DockerBuilder {
             };
             cmd.args([
                 "-v",
-                &format!("{}:/home/runner/workspace", cwd.to_string_lossy()),
+                &format!("{}:{BOOKKEEPING_CONTAINER_PATH}", cwd.to_string_lossy()),
             ]);
         }
 
         if let Some(ref path) = args.worktree_path {
             cmd.args([
                 "-v",
-                &format!("{}:/home/runner/worktree", path.to_string_lossy()),
+                &format!("{}:{WORK_CONTAINER_PATH}", path.to_string_lossy()),
             ]);
-            cmd.args(["-e", "MRMOUTH_WORKTREE=/home/runner/worktree"]);
+            cmd.args(["-e", &format!("MRMOUTH_WORKTREE={WORK_CONTAINER_PATH}")]);
         }
 
         // File-remote mode

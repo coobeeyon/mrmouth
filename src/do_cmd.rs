@@ -8,6 +8,7 @@ use crate::events::{
 };
 use crate::litebrite;
 use crate::prompt;
+use crate::repo_layout::RepoLayout;
 use crate::reviewer;
 use crate::run::{self, RunError, RunOptions};
 use crate::tui::{TuiHandle, TuiSender};
@@ -71,6 +72,7 @@ pub struct DoOptions {
     pub item_id: String,
     pub local: bool,
     pub worktree: Option<PathBuf>,
+    pub repo_layout: Option<RepoLayout>,
     pub current_container: bool,
     pub timeout: u32,
     pub max_failures: u32,
@@ -118,12 +120,14 @@ impl LocalWorktree {
 fn resolve_local_worktree(opts: &DoOptions) -> Result<LocalWorktree, DoError> {
     if opts.current_container && opts.worktree.is_none() {
         return Err(DoError::Command(
-            "current-container mode requires --worktree <path>; use a dedicated worktree for agent edits"
+            "current-container mode requires a distinct work repo via --worktree <path> or work_repo in .mrmouth/config.toml"
                 .into(),
         ));
     }
 
-    let target_mount =
+    let target_mount = if let Some(layout) = opts.repo_layout.as_ref() {
+        layout.docker_work_mount()
+    } else {
         match &opts.worktree {
             Some(path) => {
                 let absolute = if path.is_absolute() {
@@ -144,7 +148,8 @@ fn resolve_local_worktree(opts: &DoOptions) -> Result<LocalWorktree, DoError> {
                 })?)
             }
             None => None,
-        };
+        }
+    };
 
     Ok(LocalWorktree { target_mount })
 }
@@ -385,6 +390,7 @@ fn execute_task(
         current_container: opts.current_container,
         local_workspace_path: opts.local.then(|| repo_root.to_path_buf()),
         worktree_path: local_worktree.target_mount.clone(),
+        repo_layout: opts.repo_layout.clone(),
         prompt_override: Some(prompt),
         branch: None,
         event_sink: opts.event_sink.clone(),
@@ -528,6 +534,7 @@ fn execute_epic(
                     current_container: true,
                     local_workspace_path: None,
                     worktree_path: local_worktree.target_mount.clone(),
+                    repo_layout: opts.repo_layout.clone(),
                     prompt_override: Some(prompt),
                     branch: None,
                     event_sink: opts.event_sink.clone(),
@@ -686,6 +693,7 @@ fn execute_epic(
                 current_container: false,
                 local_workspace_path: opts.local.then(|| repo_root.to_path_buf()),
                 worktree_path: local_worktree.target_mount.clone(),
+                repo_layout: opts.repo_layout.clone(),
                 prompt_override: Some(prompt),
                 branch: None,
                 event_sink: opts.event_sink.clone(),
@@ -1151,6 +1159,7 @@ mod tests {
             item_id: "lb-1234".to_string(),
             local: false,
             worktree: Some(dir.path().to_path_buf()),
+            repo_layout: None,
             current_container: false,
             timeout: 15,
             max_failures: 3,

@@ -13,6 +13,7 @@ pub struct Config {
     pub model: String,
     pub image: String,
     pub dockerfile: String,
+    pub work_repo: Option<PathBuf>,
     pub volume: Option<String>,
     pub log_dir: String,
     pub branch: Option<String>,
@@ -47,6 +48,7 @@ impl Default for Config {
             model: "opus".into(),
             image: "mrmouth-runner".into(),
             dockerfile: ".mrmouth/Dockerfile".into(),
+            work_repo: None,
             volume: None,
             log_dir: "logs".into(),
             branch: None,
@@ -220,6 +222,7 @@ mod tests {
         assert_eq!(config.agent, AgentKind::Codex);
         assert_eq!(config.model, "opus");
         assert_eq!(config.image, "mrmouth-runner");
+        assert_eq!(config.work_repo, None);
         assert_eq!(config.loop_config.decider_model, "sonnet");
         assert_eq!(config.do_config.timeout, 15);
     }
@@ -249,6 +252,7 @@ agent = "codex"
 model = "haiku"
 image = "my-image"
 dockerfile = "custom/Dockerfile"
+work_repo = "service"
 volume = "my-vol"
 log_dir = "my-logs"
 branch = "dev"
@@ -273,6 +277,7 @@ max_failures = 5
         assert_eq!(config.model, "haiku");
         assert_eq!(config.image, "my-image");
         assert_eq!(config.dockerfile, "custom/Dockerfile");
+        assert_eq!(config.work_repo, Some(PathBuf::from("service")));
         assert_eq!(config.volume.as_deref(), Some("my-vol"));
         assert_eq!(config.log_dir, "my-logs");
         assert_eq!(config.branch.as_deref(), Some("dev"));

@@ -11,6 +11,7 @@ mod loop_cmd;
 mod prime;
 mod prompt;
 mod ready;
+mod repo_layout;
 mod reviewer;
 mod run;
 mod setup_codex;
@@ -74,12 +75,7 @@ enum Commands {
         worktree: Option<std::path::PathBuf>,
 
         /// Run directly in the current container/workspace without Docker
-        #[arg(
-            long,
-            visible_alias = "no-docker",
-            conflicts_with = "local",
-            requires = "worktree"
-        )]
+        #[arg(long, visible_alias = "no-docker", conflicts_with = "local")]
         current_container: bool,
     },
 
@@ -124,8 +120,7 @@ enum Commands {
             long,
             visible_alias = "no-docker",
             alias = "in-place",
-            conflicts_with = "local",
-            requires = "worktree"
+            conflicts_with = "local"
         )]
         current_container: bool,
 
@@ -261,23 +256,29 @@ fn main() {
     };
     let lifecycle_workspace = match &cli.command {
         Commands::Do {
-            local: true,
-            worktree: None,
-            current_container: false,
+            local,
+            current_container,
+            worktree,
             ..
-        } => Some("/home/runner/workspace".to_string()),
-        Commands::Do {
-            worktree: Some(path),
-            ..
-        } => Some(path.display().to_string()),
-        Commands::Do {
-            current_container: true,
-            ..
-        } => Some(repo_root.display().to_string()),
+        } => lifecycle_workspace_from_layout(
+            &config,
+            &repo_root,
+            worktree.as_deref(),
+            *local,
+            *current_container,
+        ),
         Commands::Run {
-            worktree: Some(path),
+            local,
+            current_container,
+            worktree,
             ..
-        } => Some(path.display().to_string()),
+        } => lifecycle_workspace_from_layout(
+            &config,
+            &repo_root,
+            worktree.as_deref(),
+            *local,
+            *current_container,
+        ),
         _ => None,
     };
     let tui = if output_modes.start_tui {
@@ -297,6 +298,7 @@ fn main() {
             worktree,
             current_container,
         } => {
+            let layout = resolve_repo_layout_or_exit(&config, &repo_root, worktree.as_deref());
             let opts = run::RunOptions {
                 raw,
                 json_events,
@@ -305,7 +307,8 @@ fn main() {
                 local,
                 current_container,
                 local_workspace_path: None,
-                worktree_path: worktree,
+                worktree_path: layout.docker_work_mount(),
+                repo_layout: Some(layout),
                 prompt_override: None,
                 branch: None,
                 event_sink: lifecycle_events.clone(),
@@ -345,10 +348,12 @@ fn main() {
             model,
             json_events,
         } => {
+            let layout = resolve_repo_layout_or_exit(&config, &repo_root, worktree.as_deref());
             let opts = do_cmd::DoOptions {
                 item_id,
                 local,
-                worktree,
+                worktree: layout.docker_work_mount(),
+                repo_layout: Some(layout),
                 current_container,
                 timeout: timeout.unwrap_or(config.do_config.timeout),
                 max_failures: max_failures.unwrap_or(config.do_config.max_failures),
@@ -404,6 +409,40 @@ fn main() {
         d.print();
         std::process::exit(1);
     }
+}
+
+fn resolve_repo_layout_or_exit(
+    config: &Config,
+    repo_root: &std::path::Path,
+    cli_work_repo: Option<&std::path::Path>,
+) -> repo_layout::RepoLayout {
+    match repo_layout::RepoLayout::resolve(config, repo_root, cli_work_repo) {
+        Ok(layout) => layout,
+        Err(e) => {
+            eprintln!("error: {e}");
+            std::process::exit(1);
+        }
+    }
+}
+
+fn lifecycle_workspace_from_layout(
+    config: &Config,
+    repo_root: &std::path::Path,
+    cli_work_repo: Option<&std::path::Path>,
+    local: bool,
+    current_container: bool,
+) -> Option<String> {
+    repo_layout::RepoLayout::resolve(config, repo_root, cli_work_repo)
+        .ok()
+        .and_then(|layout| {
+            if layout.is_split() || current_container {
+                Some(layout.agent_work_path(current_container))
+            } else if local {
+                Some("/home/runner/workspace".to_string())
+            } else {
+                None
+            }
+        })
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -687,12 +726,16 @@ mod tests {
 
     #[test]
     fn do_current_container_requires_worktree() {
-        let err = match Cli::try_parse_from(["mrmouth", "do", "--current-container", "lb-1234"]) {
-            Ok(_) => panic!("expected --current-container to require --worktree"),
-            Err(err) => err,
-        };
+        let cli = Cli::try_parse_from(["mrmouth", "do", "--current-container", "lb-1234"]).unwrap();
 
-        assert_eq!(err.kind(), clap::error::ErrorKind::MissingRequiredArgument);
+        assert!(matches!(
+            cli.command,
+            Commands::Do {
+                current_container: true,
+                worktree: None,
+                ..
+            }
+        ));
     }
 
     #[test]
@@ -722,12 +765,16 @@ mod tests {
 
     #[test]
     fn run_current_container_requires_worktree() {
-        let err = match Cli::try_parse_from(["mrmouth", "run", "--current-container"]) {
-            Ok(_) => panic!("expected --current-container to require --worktree"),
-            Err(err) => err,
-        };
+        let cli = Cli::try_parse_from(["mrmouth", "run", "--current-container"]).unwrap();
 
-        assert_eq!(err.kind(), clap::error::ErrorKind::MissingRequiredArgument);
+        assert!(matches!(
+            cli.command,
+            Commands::Run {
+                current_container: true,
+                worktree: None,
+                ..
+            }
+        ));
     }
 
     #[test]

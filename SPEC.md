@@ -92,7 +92,8 @@ Work through a litebrite item — either an epic or a single task.
 - `--model <model>` — override the Claude model
 - `--json-events` — output mrmouth lifecycle events as JSONL and disable the TUI
 - `--current-container` / `--no-docker` / `--in-place` — run task agents directly in the current checkout without Docker; skips Docker reviewers
-- `--worktree <path>` — use a local code worktree while keeping task state in the current repo; compatible with `--current-container`
+- `work_repo = "path"` in `.mrmouth/config.toml` — use a local code repo while keeping task state in the current bookkeeping repo; relative paths resolve from the bookkeeping repo
+- `--worktree <path>` — override configured `work_repo` for one invocation; compatible with `--current-container`
 
 ### `mrmouth ready`
 
@@ -264,16 +265,30 @@ This also works for adopting mrmouth in an existing repo that doesn't have `.mrm
 - Preflight must skip the dirty-tree check when `--local` is set.
 - The runner entrypoint script already handles this: it checks `[ ! -d "$work_dir/.git" ]` before cloning.
 
+## Split Bookkeeping/Work Repos
+
+Mr Mouth always resolves two repo paths:
+
+- **bookkeeping repo** — the repo where `.mrmouth/`, Litebrite (`lb`), and Trapperkeeper (`trk`) state live
+- **work repo** — the repo where product code edits, code commits, and code pushes should happen
+
+When no split is configured, both paths resolve to the same repo. When `work_repo`
+or `--worktree` resolves to a different path, Docker keeps the bookkeeping repo
+at `/home/runner/workspace` and bind-mounts the work repo at
+`/home/runner/worktree`. Containers receive `MRMOUTH_BOOKKEEPING_REPO` and
+`MRMOUTH_WORK_REPO`; split runs also keep the legacy `MRMOUTH_WORKTREE`. Agent
+prompts tell runners to execute task commands in bookkeeping and code commands
+in the work repo.
+
 ### Current-Container Mode
 
 `mrmouth run --current-container` and `mrmouth do <item-id> --current-container`
 skip Docker preflight, image build, container startup, and repository clone. The
-configured agent CLI runs directly in the current checkout. This mode requires
-the current environment to already have `git`, the selected agent CLI, and task
-tools such as `lb`/`trk` when the corresponding branches exist. `mrmouth do`
-can combine `--current-container` with `--worktree <path>` when task state and
-code live in separate local checkouts. For `do`, Docker reviewers are skipped so
-the full run remains Docker-free.
+configured agent CLI runs directly from the current bookkeeping repo. This mode
+requires a distinct configured `work_repo` or explicit `--worktree <path>`, plus
+`git`, the selected agent CLI, and task tools such as `lb`/`trk` when the
+corresponding branches exist. For `do`, Docker reviewers are skipped so the full
+run remains Docker-free.
 
 ## Stream Formatter
 

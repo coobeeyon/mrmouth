@@ -10,6 +10,7 @@ use crate::events::{
 };
 use crate::litebrite;
 use crate::logger::Logger;
+use crate::repo_layout::RepoLayout;
 use crate::reviewer;
 use crate::run::{self, RunOptions};
 use crate::shipper;
@@ -45,6 +46,8 @@ pub fn execute(
     // in one place — the user watches "AGENT SESSION" during runs and should
     // see post-run activity (reviewer, decider, etc.) on the same pane.
     let tui_tx = tui.map(|t| t.sender("AGENT SESSION"));
+    let repo_layout = RepoLayout::resolve(config, repo_root, None)
+        .map_err(|e| LoopError::Bootstrap(e.to_string()))?;
     emit_event(
         &opts.event_sink,
         MrmouthEvent::StageChanged {
@@ -255,7 +258,7 @@ pub fn execute(
         &current_branch,
         false,
         None,
-        None,
+        repo_layout.docker_work_mount(),
         tui,
         session_logger,
         &session_log_path,
@@ -454,7 +457,8 @@ pub fn execute(
                 local: false,
                 current_container: false,
                 local_workspace_path: None,
-                worktree_path: None,
+                worktree_path: repo_layout.docker_work_mount(),
+                repo_layout: Some(repo_layout.clone()),
                 prompt_override: None,
                 branch: Some(current_branch.clone()),
                 event_sink: opts.event_sink.clone(),
@@ -613,6 +617,7 @@ pub fn execute(
                 config,
                 repo_root,
                 &current_branch,
+                &repo_layout,
                 &mut session,
                 tui,
                 &tui_tx,
@@ -682,6 +687,7 @@ fn maybe_restart_session_on_dockerfile_change(
     config: &Config,
     repo_root: &Path,
     current_branch: &str,
+    repo_layout: &RepoLayout,
     session: &mut crate::run::Session,
     tui: Option<&TuiHandle>,
     tui_tx: &Option<TuiSender>,
@@ -707,7 +713,7 @@ fn maybe_restart_session_on_dockerfile_change(
         current_branch,
         false,
         None,
-        None,
+        repo_layout.docker_work_mount(),
         tui,
         session_logger,
         &session_log_path,

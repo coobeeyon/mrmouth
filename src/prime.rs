@@ -1,6 +1,7 @@
 use std::path::Path;
 
 use crate::config::Config;
+use crate::repo_layout::RepoLayout;
 
 pub fn execute(config: &Config, repo_root: &Path) {
     print!("{}", text(config, repo_root));
@@ -20,15 +21,31 @@ fn text(config: &Config, repo_root: &Path) -> String {
     };
     let volume = config.effective_volume(repo_root);
     let branch = config.branch.as_deref().unwrap_or("current branch");
+    let layout = RepoLayout::resolve(config, repo_root, None).ok();
+    let bookkeeping_repo = layout
+        .as_ref()
+        .map(|layout| layout.bookkeeping_repo.display().to_string())
+        .unwrap_or_else(|| repo_root.display().to_string());
+    let work_repo = layout
+        .as_ref()
+        .map(|layout| layout.work_repo.display().to_string())
+        .unwrap_or_else(|| repo_root.display().to_string());
+    let repo_layout = layout
+        .as_ref()
+        .map(|layout| if layout.is_split() { "split" } else { "same" })
+        .unwrap_or("unresolved");
 
     format!(
         r#"# Mr Mouth Agent Context
 
-Mr Mouth (`mrmouth`) runs Claude Code or Codex as autonomous coding agents. Docker remains the default isolated runner; `--current-container --worktree <path>` runs the configured agent CLI without Docker while directing code edits to an explicit worktree.
+Mr Mouth (`mrmouth`) runs Claude Code or Codex as autonomous coding agents. Docker remains the default isolated runner; split bookkeeping/work repos can be configured with `work_repo` or overridden per run with `--worktree <path>`.
 
 ## Current Defaults
 
 - repository: {repo}
+- bookkeeping repo: {bookkeeping_repo}
+- work repo: {work_repo}
+- repo layout: {repo_layout}
 - agent: {agent}
 - model: {model}
 - docker image: {image}
@@ -53,7 +70,9 @@ Global flags:
 
 - `--claude` uses Claude Code for all AI roles.
 - `--codex` uses Codex for all AI roles.
-- `--current-container --worktree <path>` on `run` or `do` skips Docker, uses the current repo for task tracking, and directs code edits to the explicit worktree. It requires `git`, the selected agent CLI, and task tools such as `lb`/`trk` on PATH. Docker reviewers are skipped for `do` in this mode. Current-container mode is rejected without `--worktree`; use dedicated worktrees for parallel agents.
+- `.mrmouth/config.toml` can set `work_repo = "path/to/code"` when Litebrite/Trapperkeeper bookkeeping lives in the current repo and code lives in a separate inner repo. Relative paths are resolved from the bookkeeping repo.
+- `--worktree <path>` on `run` or `do` overrides configured `work_repo` for one invocation.
+- `--current-container` on `run` or `do` skips Docker, uses the current repo for task tracking, and directs code edits to the resolved work repo. It requires a distinct `work_repo` or `--worktree <path>`, plus `git`, the selected agent CLI, and task tools such as `lb`/`trk` on PATH. Docker reviewers are skipped for `do` in this mode.
 
 ## Supervisor Output Contract
 
@@ -67,7 +86,7 @@ Global flags:
 
 1. Use `lb prime` first when litebrite is installed; it provides the task-tracker protocol and ready/claimed state.
 2. Use `lb ready` and `lb show <id>` to choose one executable item when the user has not specified an item.
-3. Prefer `mrmouth do <id> --json-events` for bounded delegation. Add `--current-container --worktree <path>` only when Docker is unavailable or the supervisor is already inside the target dev container.
+3. Prefer `mrmouth do <id> --json-events` for bounded delegation. Configure `work_repo` or add `--worktree <path>` when bookkeeping and code repos differ. Add `--current-container` only when Docker is unavailable or the supervisor is already inside the target dev container.
 4. Reserve `mrmouth ready --json-events` and `mrmouth loop --json-events` for explicit user requests to drain or continuously operate.
 5. After a run, inspect the final lifecycle summary, verify the expected commit/task state, and run `lb sync` if litebrite state changed.
 6. If a run fails, use the reported log paths and `next_action` before retrying.
@@ -80,6 +99,9 @@ Global flags:
 - Keep delegation bounded unless the user explicitly asks for queue-draining or autonomous loop behavior.
 "#,
         image = config.image,
+        bookkeeping_repo = bookkeeping_repo,
+        work_repo = work_repo,
+        repo_layout = repo_layout,
         dockerfile = config.dockerfile,
         log_dir = config.log_dir,
         timeout = config.do_config.timeout,
@@ -104,6 +126,8 @@ mod tests {
         assert!(output.contains("# Mr Mouth Agent Context"));
         assert!(output.contains("- agent: codex"));
         assert!(output.contains("- model: agent default"));
+        assert!(output.contains("- bookkeeping repo: /tmp/project"));
+        assert!(output.contains("- work repo: /tmp/project"));
         assert!(output.contains("mrmouth do <id> --json-events"));
         assert!(output.contains("--current-container"));
         assert!(output.contains("mrmouth setup codex"));
