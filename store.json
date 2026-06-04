@@ -150,6 +150,16 @@
       "created_at": "2026-03-25T19:15:20.733364361Z",
       "updated_at": "2026-03-25T19:15:47.808798521Z"
     },
+    "lb-2pdf": {
+      "id": "lb-2pdf",
+      "title": "Support split bookkeeping and work repos",
+      "description": "Model mrmouth execution with explicit bookkeeping and work repo paths so fake-monorepo setups can mount/check out the right repo and tell agents where to run tracking commands vs code edits.",
+      "item_type": "task",
+      "status": "open",
+      "priority": 1,
+      "created_at": "2026-06-04T18:37:09.038981751Z",
+      "updated_at": "2026-06-04T18:37:09.038981751Z"
+    },
     "lb-2rj3": {
       "id": "lb-2rj3",
       "title": "Reorder loop: Decider → Runner → Reviewer",
