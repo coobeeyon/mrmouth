@@ -53,3 +53,6 @@ Recorded that Codex is now the built-in default agent in both `Config::default()
 
 ## [2026-05-18] implemented | mrmouth do local worktree mode
 Recorded `mrmouth do --worktree <path>` semantics: the tracking repo still lives at `/home/runner/workspace`, the resolved host worktree is mounted at `/home/runner/worktree`, and `MRMOUTH_WORKTREE` points there. The implementation spans `src/do_cmd.rs`, `src/run.rs`, and `src/docker.rs`; coverage now includes prompt text, path resolution, argument propagation, and Docker mount construction.
+## [2026-06-04] added | Split bookkeeping/work repo model for fake monorepos
+
+Recorded the `work_repo`/`--worktree` layout model: mrmouth now resolves bookkeeping and work repos for runs, mounts distinct work repos at `/home/runner/worktree`, exposes `MRMOUTH_BOOKKEEPING_REPO` and `MRMOUTH_WORK_REPO`, and prompts agents to separate task-state commands from code edits.

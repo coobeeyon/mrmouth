@@ -1,0 +1,47 @@
+# Split Bookkeeping/Work Repos
+
+Concepts: fake monorepo, bookkeeping repo, work repo, split repo layout, `work_repo`, `--worktree`, `/home/runner/worktree`
+Key files: `src/repo_layout.rs`, `src/config.rs`, `src/main.rs`, `src/run.rs`, `src/do_cmd.rs`, `src/ready.rs`, `src/loop_cmd.rs`, `src/docker.rs`, `src/prime.rs`
+Useful when: changing how mrmouth mounts repositories into Docker, explaining fake-monorepo support, adjusting agent prompts for task state vs code edits, or debugging `work_repo`/`--worktree` behavior.
+
+Mr Mouth models every run with two paths:
+
+- **bookkeeping repo**: the repo mrmouth was launched from, containing `.mrmouth/`, Litebrite (`lb`) state, and Trapperkeeper (`trk`) state
+- **work repo**: the repo where product code edits, code commits, and code pushes should happen
+
+By default both paths are the same. `.mrmouth/config.toml` can set
+`work_repo = "relative/or/absolute/path"`; relative config paths resolve from
+the bookkeeping repo. The CLI `--worktree <path>` remains as a per-invocation
+override and is resolved relative to the caller's current directory for backward
+compatibility.
+
+`src/repo_layout.rs` owns canonicalization and split detection. It returns a
+`RepoLayout` with canonical bookkeeping and work paths. If the canonical paths
+are equal, no split mount is used. If they differ, Docker receives the work repo
+as the `/home/runner/worktree` bind mount.
+
+Container conventions:
+
+- bookkeeping repo is always `/home/runner/workspace`
+- split work repo is `/home/runner/worktree`
+- `MRMOUTH_BOOKKEEPING_REPO` is always set
+- `MRMOUTH_WORK_REPO` points to `/home/runner/workspace` for same-repo runs and `/home/runner/worktree` for split runs
+- `MRMOUTH_WORKTREE` is still set for split runs as a compatibility alias
+
+Prompt conventions:
+
+- Plain `run`, `ready`, and `loop` use the shared `RepoLayout` so default runner prompts get a repository-layout block when split.
+- `do` builds item-specific prompts and includes equivalent split guidance there.
+- Current-container mode uses host paths in the prompt and environment instead of container paths.
+
+Command flow:
+
+- `src/main.rs` resolves `RepoLayout` for `run` and `do`, passes only distinct work repos as `worktree_path`, and removes the old Clap requirement that `--current-container` must have a literal `--worktree` flag. Runtime preflight still rejects current-container mode unless the resolved layout is split.
+- `src/ready.rs` and `src/loop_cmd.rs` resolve `RepoLayout` from config and pass it into runner options/session setup.
+- `src/docker.rs` mounts the bookkeeping repo at `/home/runner/workspace` in local/file-remote modes and mounts the distinct work repo at `/home/runner/worktree`.
+- `src/run.rs` injects default prompt guidance only when using the default prompt, avoiding duplicate layout blocks for `do`/`ready` prompt overrides.
+
+Important limitation: reviewer and host branch accounting still operate on the
+bookkeeping repo. Split-repo agents are instructed to commit and push code in
+the work repo themselves; mrmouth does not yet calculate reviewer commit ranges
+from the inner work repo.
