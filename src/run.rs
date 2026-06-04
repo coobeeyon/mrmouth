@@ -542,8 +542,11 @@ pub fn execute(
         pull_code_changes(repo_root, &logger, Some(&reporter));
     }
 
-    // 13. Extract updated Dockerfile from container (agent may have modified it)
-    if !local {
+    // 13. Extract updated Dockerfile from container (agent may have modified it).
+    // Only extract after successful runs; failed runs may leave half-finished
+    // Dockerfile edits that would dirty the host checkout and poison follow-up
+    // orchestration.
+    if !local && exit_code == 0 {
         reporter.emit(MrmouthEvent::RunLifecycle {
             action: RunAction::ExtractingDockerfile,
             run_id: Some(log_filename.clone()),
@@ -555,6 +558,11 @@ pub fn execute(
             &container_name,
             &logger,
             Some(&reporter),
+        );
+    } else if !local {
+        reporter.log(
+            &logger,
+            "Skipping Dockerfile extraction because the agent run failed.",
         );
     }
 
@@ -1164,6 +1172,7 @@ pub fn execute_in_session(
         session.scripts_dir.path(),
         &opts.model,
         &prompt_text,
+        &config.dockerfile,
     )?;
 
     // 2. Exec task.sh
@@ -1312,8 +1321,10 @@ pub fn execute_in_session(
     }
 
     // Extract updated Dockerfile (agent may have edited it). Enables the caller
-    // to detect Dockerfile changes and rebuild the session if needed.
-    if !session.local {
+    // to detect Dockerfile changes and rebuild the session if needed. Failed
+    // runs can leave partial Dockerfile edits, so avoid copying those to the
+    // host checkout.
+    if !session.local && exit_code == 0 {
         emit_event(
             &opts.event_sink,
             MrmouthEvent::RunLifecycle {
@@ -1329,6 +1340,8 @@ pub fn execute_in_session(
             &logger,
             None,
         );
+    } else if !session.local {
+        logger.log("Skipping Dockerfile extraction because the agent run failed.");
     }
 
     emit_event(
@@ -1964,6 +1977,17 @@ _mm_tool_init() {{
   return 1
 }}
 
+_mm_commit_dockerfile_if_changed() {{
+  if [ -n "$(git status --porcelain -- "$dockerfile_rel")" ]; then
+    echo "::mrmouth::warning committing uncommitted Dockerfile self-update"
+    git add -- "$dockerfile_rel" || return 0
+    if git diff --cached --quiet -- "$dockerfile_rel"; then
+      return 0
+    fi
+    git commit -m "Update mrmouth Dockerfile" -- "$dockerfile_rel" || true
+  fi
+}}
+
 _mm_mark script-start
 
 # --- Tool versions (cheap, always-on diagnostic) ---
@@ -1979,6 +2003,7 @@ repo_url="${{REPO_URL:-}}"
 branch="${{BRANCH:-main}}"
 work_dir="$HOME/workspace"
 work_repo_dir="${{MRMOUTH_WORK_REPO:-$work_dir}}"
+dockerfile_rel="__DOCKERFILE_REL_PATH__"
 
 # --- Clone repo (skip if workspace already mounted) ---
 if [ ! -d "$work_dir/.git" ]; then
@@ -2000,7 +2025,7 @@ fi
 _mm_mark clone-done
 
 # --- Seed Dockerfile if absent (gives agent a file to read and modify) ---
-dockerfile_path="$work_dir/__DOCKERFILE_REL_PATH__"
+dockerfile_path="$work_dir/$dockerfile_rel"
 if [ ! -f "$dockerfile_path" ]; then
   mkdir -p "$(dirname "$dockerfile_path")"
   cat > "$dockerfile_path" << 'MRMOUTH_DOCKERFILE_EOF'
@@ -2044,6 +2069,7 @@ if [ -d "$work_dir/.git" ]; then
   echo "Post-agent cleanup: forcing sync and push..."
   lb sync 2>/dev/null || true
   trk sync 2>/dev/null || true
+  _mm_commit_dockerfile_if_changed
   git push 2>/dev/null || true
 fi
 _mm_mark script-end
@@ -2203,6 +2229,7 @@ pub(crate) fn write_task_script(
     scripts_dir: &Path,
     model: &str,
     prompt: &str,
+    dockerfile_path: &str,
 ) -> Result<(), RunError> {
     let escaped_prompt = prompt.replace('\'', "'\\''");
     let agent_command = agent.shell_command_with_disallowed_tools(model, &escaped_prompt);
@@ -2220,10 +2247,22 @@ _mm_mark task-start
 work_dir="$HOME/workspace"
 work_repo_dir="${{MRMOUTH_WORK_REPO:-$work_dir}}"
 branch="${{BRANCH:-main}}"
+dockerfile_rel="__DOCKERFILE_REL_PATH__"
 cd "$work_dir"
 if [ "$work_repo_dir" != "$work_dir" ] && [ -e "$work_repo_dir" ]; then
   git config --global --add safe.directory "$work_repo_dir"
 fi
+
+_mm_commit_dockerfile_if_changed() {{
+  if [ -n "$(git status --porcelain -- "$dockerfile_rel")" ]; then
+    echo "::mrmouth::warning committing uncommitted Dockerfile self-update"
+    git add -- "$dockerfile_rel" || return 0
+    if git diff --cached --quiet -- "$dockerfile_rel"; then
+      return 0
+    fi
+    git commit -m "Update mrmouth Dockerfile" -- "$dockerfile_rel" || true
+  fi
+}}
 
 # --- Sync workspace with host ---
 # Stash any leftover uncommitted state from a prior task (shouldn't happen if
@@ -2265,11 +2304,14 @@ if [ -d "$work_dir/.git" ]; then
   echo "Post-agent cleanup: forcing sync and push..."
   lb sync 2>/dev/null || true
   trk sync 2>/dev/null || true
+  _mm_commit_dockerfile_if_changed
   git push 2>/dev/null || true
 fi
 _mm_mark task-end
 "#
     );
+
+    let script = script.replace("__DOCKERFILE_REL_PATH__", dockerfile_path);
 
     write_script_file(scripts_dir, "task.sh", &script)
 }
@@ -2838,6 +2880,30 @@ mod tests {
         assert!(content.contains("$LINENO"));
         assert!(content.contains("$BASH_COMMAND"));
         assert!(content.contains("' ERR"));
+    }
+
+    #[test]
+    fn runner_script_auto_commits_dockerfile_self_updates() {
+        let dir = tempfile::tempdir().unwrap();
+        let tmp = write_runner_script(
+            crate::agent::AgentKind::Claude,
+            dir.path(),
+            "opus",
+            None,
+            TEST_DOCKERFILE,
+            TEST_DOCKERFILE_PATH,
+            None,
+        )
+        .unwrap();
+        let mut content = String::new();
+        File::open(&tmp)
+            .unwrap()
+            .read_to_string(&mut content)
+            .unwrap();
+        assert!(content.contains("_mm_commit_dockerfile_if_changed"));
+        assert!(content.contains(r#"git status --porcelain -- "$dockerfile_rel""#));
+        assert!(content.contains("Update mrmouth Dockerfile"));
+        assert!(content.contains("git push 2>/dev/null || true"));
     }
 
     #[test]
@@ -3598,6 +3664,7 @@ mod tests {
             dir.path(),
             "opus",
             "do the thing",
+            TEST_DOCKERFILE_PATH,
         )
         .unwrap();
         let content = std::fs::read_to_string(dir.path().join("task.sh")).unwrap();
@@ -3613,6 +3680,7 @@ mod tests {
             dir.path(),
             "gpt-5.2",
             "do the thing",
+            TEST_DOCKERFILE_PATH,
         )
         .unwrap();
         let content = std::fs::read_to_string(dir.path().join("task.sh")).unwrap();
@@ -3628,6 +3696,7 @@ mod tests {
             dir.path(),
             "opus",
             "don't break",
+            TEST_DOCKERFILE_PATH,
         )
         .unwrap();
         let content = std::fs::read_to_string(dir.path().join("task.sh")).unwrap();
@@ -3642,6 +3711,7 @@ mod tests {
             dir.path(),
             "opus",
             "prompt",
+            TEST_DOCKERFILE_PATH,
         )
         .unwrap();
         let content = std::fs::read_to_string(dir.path().join("task.sh")).unwrap();
@@ -3657,11 +3727,32 @@ mod tests {
             dir.path(),
             "opus",
             "prompt",
+            TEST_DOCKERFILE_PATH,
         )
         .unwrap();
         let content = std::fs::read_to_string(dir.path().join("task.sh")).unwrap();
         assert!(content.contains("git stash push"));
         assert!(content.contains("::mrmouth::warning uncommitted changes"));
+    }
+
+    #[test]
+    fn task_script_auto_commits_dockerfile_self_updates() {
+        let dir = tempfile::tempdir().unwrap();
+        write_task_script(
+            crate::agent::AgentKind::Claude,
+            dir.path(),
+            "opus",
+            "prompt",
+            TEST_DOCKERFILE_PATH,
+        )
+        .unwrap();
+        let content = std::fs::read_to_string(dir.path().join("task.sh")).unwrap();
+        assert!(content.contains(r#"dockerfile_rel=".mrmouth/Dockerfile""#));
+        assert!(content.contains("_mm_commit_dockerfile_if_changed"));
+        assert!(
+            content.contains(r#"git commit -m "Update mrmouth Dockerfile" -- "$dockerfile_rel""#)
+        );
+        assert!(content.contains("git push 2>/dev/null || true"));
     }
 
     #[test]
@@ -3672,6 +3763,7 @@ mod tests {
             dir.path(),
             "opus",
             "first prompt",
+            TEST_DOCKERFILE_PATH,
         )
         .unwrap();
         write_task_script(
@@ -3679,6 +3771,7 @@ mod tests {
             dir.path(),
             "sonnet",
             "second prompt",
+            TEST_DOCKERFILE_PATH,
         )
         .unwrap();
         let content = std::fs::read_to_string(dir.path().join("task.sh")).unwrap();

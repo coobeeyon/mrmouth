@@ -123,9 +123,21 @@ _mm_tool_init() {{
   return 1
 }}
 
+_mm_commit_dockerfile_if_changed() {{
+  if [ -n "$(git status --porcelain -- "$dockerfile_rel")" ]; then
+    echo "::mrmouth::warning committing uncommitted Dockerfile self-update"
+    git add -- "$dockerfile_rel" || return 0
+    if git diff --cached --quiet -- "$dockerfile_rel"; then
+      return 0
+    fi
+    git commit -m "Update mrmouth Dockerfile" -- "$dockerfile_rel" || true
+  fi
+}}
+
 repo_url="${{REPO_URL:-}}"
 branch="${{BRANCH:-main}}"
 work_dir="$HOME/workspace"
+dockerfile_rel="__DOCKERFILE_REL_PATH__"
 
 # Clone repo
 if [ ! -d "$work_dir/.git" ]; then
@@ -139,7 +151,7 @@ cd "$work_dir"
 git config --global --add safe.directory "$work_dir"
 
 # Seed Dockerfile if absent (gives reviewer a file to read and modify)
-dockerfile_path="$work_dir/__DOCKERFILE_REL_PATH__"
+dockerfile_path="$work_dir/$dockerfile_rel"
 if [ ! -f "$dockerfile_path" ]; then
   mkdir -p "$(dirname "$dockerfile_path")"
   cat > "$dockerfile_path" << 'MRMOUTH_DOCKERFILE_EOF'
@@ -176,6 +188,7 @@ echo "Code review complete."
 if [ -d "$work_dir/.git" ]; then
   lb sync 2>/dev/null || true
   trk sync 2>/dev/null || true
+  _mm_commit_dockerfile_if_changed
   git push 2>/dev/null || true
 fi
 "#
@@ -305,27 +318,36 @@ fi
         pull_code_changes(repo_root, logger);
     }
 
-    // Extract updated Dockerfile from container (reviewer may have modified it)
-    let dockerfile_dest = repo_root.join(&config.dockerfile);
-    let container_path = format!("/home/runner/workspace/{}", config.dockerfile);
-    match DockerBuilder::copy_from_container_if_changed(
-        &container_name,
-        &container_path,
-        &dockerfile_dest,
-    ) {
-        Ok(CopyFromContainerOutcome::Updated) => crate::logger::log(
+    // Extract updated Dockerfile from container (reviewer may have modified it).
+    // Failed reviewer runs can leave partial Dockerfile edits; do not copy those
+    // back into the host checkout.
+    if exit_code == 0 {
+        let dockerfile_dest = repo_root.join(&config.dockerfile);
+        let container_path = format!("/home/runner/workspace/{}", config.dockerfile);
+        match DockerBuilder::copy_from_container_if_changed(
+            &container_name,
+            &container_path,
+            &dockerfile_dest,
+        ) {
+            Ok(CopyFromContainerOutcome::Updated) => crate::logger::log(
+                logger,
+                "Extracted updated Dockerfile from reviewer container.",
+            ),
+            Ok(CopyFromContainerOutcome::Unchanged) => crate::logger::log(
+                logger,
+                "Reviewer Dockerfile matches host; leaving worktree unchanged.",
+            ),
+            Ok(CopyFromContainerOutcome::Missing) => {}
+            Err(e) => crate::logger::log(
+                logger,
+                &format!("Warning: reviewer Dockerfile extraction failed: {e}"),
+            ),
+        }
+    } else {
+        crate::logger::log(
             logger,
-            "Extracted updated Dockerfile from reviewer container.",
-        ),
-        Ok(CopyFromContainerOutcome::Unchanged) => crate::logger::log(
-            logger,
-            "Reviewer Dockerfile matches host; leaving worktree unchanged.",
-        ),
-        Ok(CopyFromContainerOutcome::Missing) => {}
-        Err(e) => crate::logger::log(
-            logger,
-            &format!("Warning: reviewer Dockerfile extraction failed: {e}"),
-        ),
+            "Skipping reviewer Dockerfile extraction because the reviewer run failed.",
+        );
     }
 
     DockerBuilder::remove_container(&container_name);
