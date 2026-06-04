@@ -11,6 +11,7 @@ Codex auth volume — [Agent Credential Preflight](pages/agent-credential-prefli
 Codex default agent — [Codex Role Model Defaults](pages/codex-role-model-defaults.md)
 Codex role models — [Codex Role Model Defaults](pages/codex-role-model-defaults.md)
 container Dockerfile extraction — [Dockerfile Extraction Lifecycle](pages/dockerfile-extraction-lifecycle.md)
+Dockerfile auto-commit — [Dockerfile Extraction Lifecycle](pages/dockerfile-extraction-lifecycle.md), src/run.rs, src/reviewer.rs
 Dockerfile self-modification — [Dockerfile Extraction Lifecycle](pages/dockerfile-extraction-lifecycle.md)
 do --worktree — [Mr Mouth Prime](pages/mrmouth-prime.md), src/do_cmd.rs, src/run.rs, src/docker.rs
 event rendering architecture — [Event Rendering Architecture](pages/event-rendering-architecture.md)
@@ -38,6 +39,7 @@ sibling dependencies — [Litebrite Agent Contract](pages/litebrite-agent-contra
 split bookkeeping work repos — [Split Bookkeeping/Work Repos](pages/split-bookkeeping-work-repos.md), src/repo_layout.rs
 supervisor output contract — [Mr Mouth Prime](pages/mrmouth-prime.md)
 tui separation — [Event Rendering Architecture](pages/event-rendering-architecture.md)
+uncommitted Dockerfile poisoning — [Dockerfile Extraction Lifecycle](pages/dockerfile-extraction-lifecycle.md), src/run.rs, src/reviewer.rs
 work graph authoring — [Litebrite Agent Contract](pages/litebrite-agent-contract.md)
 work repo — [Split Bookkeeping/Work Repos](pages/split-bookkeeping-work-repos.md), src/repo_layout.rs
 work_repo config — [Split Bookkeeping/Work Repos](pages/split-bookkeeping-work-repos.md), src/config.rs, README.md

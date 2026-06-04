@@ -56,3 +56,7 @@ Recorded `mrmouth do --worktree <path>` semantics: the tracking repo still lives
 ## [2026-06-04] added | Split bookkeeping/work repo model for fake monorepos
 
 Recorded the `work_repo`/`--worktree` layout model: mrmouth now resolves bookkeeping and work repos for runs, mounts distinct work repos at `/home/runner/worktree`, exposes `MRMOUTH_BOOKKEEPING_REPO` and `MRMOUTH_WORK_REPO`, and prompts agents to separate task-state commands from code edits.
+
+## [2026-06-04] fixed | Dockerfile self-update poisoning
+
+Recorded the Dockerfile self-update guard: runner, session-task, and reviewer wrappers auto-commit a dirty `.mrmouth/Dockerfile` after successful runs, while host extraction is skipped after failed runs so partial container edits do not dirty the host checkout.
