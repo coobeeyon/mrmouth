@@ -359,6 +359,7 @@ fn emit_event(sink: &Option<EventSinkHandle>, event: MrmouthEvent) {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn execute_task(
     config: &Config,
     repo_root: &Path,
@@ -462,6 +463,7 @@ fn task_prompt(item_id: &str, base_prompt: &str, worktree_block: Option<&str>) -
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 fn execute_epic(
     config: &Config,
     repo_root: &Path,
@@ -870,6 +872,7 @@ fn item_info_label(repo_root: &Path, item_id: &str) -> String {
 /// fresh one. This is how we pick up Dockerfile edits the agent made during
 /// a task. A build failure is non-fatal — we keep the existing session and
 /// let the next iteration retry.
+#[allow(clippy::too_many_arguments)]
 fn maybe_restart_session_on_dockerfile_change(
     config: &Config,
     repo_root: &Path,

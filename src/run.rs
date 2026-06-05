@@ -863,6 +863,7 @@ fn emit_event(sink: &Option<EventSinkHandle>, event: MrmouthEvent) {
 /// Boot a long-lived session container: preflight, build image, start detached,
 /// run setup.sh once. Output is streamed into `logger` (typically the epic
 /// logger). Call `stop_session` when done.
+#[allow(clippy::too_many_arguments)]
 pub fn start_session(
     config: &Config,
     repo_root: &Path,
@@ -1035,6 +1036,7 @@ pub fn start_session(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 fn container_args_from_run_options(
     name: String,
     repo_url: String,

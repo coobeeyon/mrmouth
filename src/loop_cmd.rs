@@ -683,6 +683,7 @@ fn emit_event(sink: &Option<EventSinkHandle>, event: MrmouthEvent) {
 /// Rebuild the Docker image (cheap if cached) and, if the new image ID
 /// differs from the session's, tear down `*session` and replace it with a
 /// fresh one. A build failure is non-fatal — we keep the existing session.
+#[allow(clippy::too_many_arguments)]
 fn maybe_restart_session_on_dockerfile_change(
     config: &Config,
     repo_root: &Path,
