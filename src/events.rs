@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 /// This is intentionally separate from inner-agent stream JSON. These events
 /// describe mrmouth's own lifecycle so later renderers can drive the TUI,
 /// human logs, and machine-readable JSONL from one stable surface.
+#[allow(clippy::large_enum_variant)]
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum MrmouthEvent {
