@@ -6,7 +6,10 @@ agent task protocol — [Litebrite Agent Contract](pages/litebrite-agent-contrac
 bookkeeping repo — [Split Bookkeeping/Work Repos](pages/split-bookkeeping-work-repos.md), src/repo_layout.rs, src/config.rs
 brite authoring — [Litebrite Agent Contract](pages/litebrite-agent-contract.md)
 brite hierarchy — [Litebrite Agent Contract](pages/litebrite-agent-contract.md)
+cargo clippy CI gate — [CI Check Commands](pages/ci-check-commands.md), Cargo.toml
+CI checks — [CI Check Commands](pages/ci-check-commands.md)
 claim semantics — [Litebrite Agent Contract](pages/litebrite-agent-contract.md)
+clippy too_many_arguments suppressions — [CI Check Commands](pages/ci-check-commands.md), src/do_cmd.rs, src/loop_cmd.rs, src/run.rs
 Codex auth volume — [Agent Credential Preflight](pages/agent-credential-preflight.md)
 Codex default agent — [Codex Role Model Defaults](pages/codex-role-model-defaults.md)
 Codex role models — [Codex Role Model Defaults](pages/codex-role-model-defaults.md)
@@ -19,6 +22,7 @@ event sink handle — [Event Rendering Architecture](pages/event-rendering-archi
 fake monorepo — [Split Bookkeeping/Work Repos](pages/split-bookkeeping-work-repos.md), src/repo_layout.rs
 host post-run sync — [Dockerfile Extraction Lifecycle](pages/dockerfile-extraction-lifecycle.md)
 json lifecycle output — [Event Rendering Architecture](pages/event-rendering-architecture.md)
+large_enum_variant lifecycle event surface — [CI Check Commands](pages/ci-check-commands.md), src/events.rs
 lb prime — [Litebrite Agent Contract](pages/litebrite-agent-contract.md)
 lb ready — [Litebrite Agent Contract](pages/litebrite-agent-contract.md)
 litebrite — [Litebrite Agent Contract](pages/litebrite-agent-contract.md)

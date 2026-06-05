@@ -60,3 +60,7 @@ Recorded the `work_repo`/`--worktree` layout model: mrmouth now resolves bookkee
 ## [2026-06-04] fixed | Dockerfile self-update poisoning
 
 Recorded the Dockerfile self-update guard: runner, session-task, and reviewer wrappers auto-commit a dirty `.mrmouth/Dockerfile` after successful runs, while host extraction is skipped after failed runs so partial container edits do not dirty the host checkout.
+
+## [2026-06-05] documented | CI check commands and Clippy exceptions
+
+Recorded the local Rust CI-equivalent gates and the rationale for narrow Clippy lint exceptions on orchestration boundary helpers and the lifecycle event enum.

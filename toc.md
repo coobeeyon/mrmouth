@@ -3,6 +3,7 @@
 
 ## Concepts
 - [Agent Credential Preflight](pages/agent-credential-preflight.md) — Agent-aware host credential checks for Claude and Codex modes.
+- [CI Check Commands](pages/ci-check-commands.md) — Local Rust gates and narrow Clippy exceptions used to reproduce CI failures.
 - [Codex Role Model Defaults](pages/codex-role-model-defaults.md) — Normalizing Claude role-model aliases before launching Codex reviewers and loop roles.
 - [Dockerfile Extraction Lifecycle](pages/dockerfile-extraction-lifecycle.md) — Host sync, auto-commit, and success-only extraction for container-edited Dockerfiles.
 - [Event Rendering Architecture](pages/event-rendering-architecture.md) — Separation of core lifecycle events from TUI, human, and JSON renderers, plus review notes on output-mode coupling.
