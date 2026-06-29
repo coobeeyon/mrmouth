@@ -97,6 +97,20 @@ mrmouth ready [--claude|--codex] [--timeout <minutes>] [--max-failures <n>] [--m
 
 Creates a timestamped feature branch, then loops: picks the highest-priority unblocked and unclaimed item from `lb ready`, runs a runner agent, runs a reviewer on the diff, and repeats until no ready items remain or max failures is reached.
 
+### `mrmouth eval`
+
+Run a command and write a JSON report with lifecycle and timing data.
+
+```bash
+mrmouth eval [--cwd <path>] [--output <path>] -- mrmouth run --json-events
+```
+
+The eval wrapper captures the child command's stdout/stderr sizes, wall-clock
+runtime, parsed lifecycle event counts, final `lifecycle_summary`, and any
+`::mrmouth::timing` markers found in the summary's log file. It writes the
+report even when the child command fails, then exits nonzero so scripts still
+see the failure.
+
 ### `mrmouth summary [log-file]`
 
 Generate an AI summary of a run log.

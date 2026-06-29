@@ -4,6 +4,7 @@ mod config;
 mod debrief;
 mod do_cmd;
 mod docker;
+mod eval_cmd;
 pub mod events;
 mod litebrite;
 mod logger;
@@ -160,6 +161,21 @@ enum Commands {
         json_events: bool,
     },
 
+    /// Run a command and write a lifecycle/timing eval report
+    Eval {
+        /// Directory where the command should run (default: current repository)
+        #[arg(long, value_name = "PATH")]
+        cwd: Option<std::path::PathBuf>,
+
+        /// JSON report path (relative paths are resolved from the current repository)
+        #[arg(long, value_name = "PATH", default_value = "logs/eval-result.json")]
+        output: std::path::PathBuf,
+
+        /// Command to evaluate; pass it after `--`
+        #[arg(required = true, trailing_var_arg = true, allow_hyphen_values = true)]
+        command: Vec<String>,
+    },
+
     /// Print agent-facing operating context for supervising mrmouth
     Prime,
 
@@ -196,6 +212,7 @@ fn main() {
                 ..
             }
             | Commands::Loop { .. }
+            | Commands::Eval { .. }
             | Commands::Summary { .. }
             | Commands::CodexLogin
             | Commands::Setup { .. }
@@ -243,6 +260,7 @@ fn main() {
         Commands::Do { .. } => "do",
         Commands::Loop { .. } => "loop",
         Commands::Ready { .. } => "ready",
+        Commands::Eval { .. } => "eval",
         Commands::Prime => "prime",
         Commands::Setup {
             command: SetupCommands::Codex,
@@ -378,6 +396,18 @@ fn main() {
             };
             ready::execute(&config, &repo_root, opts, tui.as_ref()).map_err(|e| e.debrief())
         }
+        Commands::Eval {
+            cwd,
+            output,
+            command,
+        } => {
+            let opts = eval_cmd::EvalOptions {
+                cwd,
+                output,
+                command,
+            };
+            eval_cmd::execute(&repo_root, opts).map_err(|e| e.debrief())
+        }
         Commands::Summary { log_file } => {
             let log_file = log_file.unwrap_or_else(|| format!("{}/latest.jsonl", config.log_dir));
             summary::execute(&config, &repo_root, &log_file, None).map_err(|e| e.debrief())
@@ -454,7 +484,10 @@ struct OutputModes {
 fn output_modes(command: &Commands) -> OutputModes {
     let raw = matches!(
         command,
-        Commands::Run { raw: true, .. } | Commands::Summary { .. } | Commands::Prime
+        Commands::Run { raw: true, .. }
+            | Commands::Eval { .. }
+            | Commands::Summary { .. }
+            | Commands::Prime
     );
     let json_events = matches!(
         command,
@@ -637,6 +670,52 @@ mod tests {
                 start_tui: false,
             }
         );
+    }
+
+    #[test]
+    fn eval_disables_tui_without_lifecycle_json() {
+        let command = Commands::Eval {
+            cwd: None,
+            output: PathBuf::from("logs/eval-result.json"),
+            command: vec![
+                "mrmouth".to_string(),
+                "run".to_string(),
+                "--json-events".to_string(),
+            ],
+        };
+
+        assert_eq!(
+            output_modes(&command),
+            OutputModes {
+                json_events: false,
+                start_tui: false,
+            }
+        );
+    }
+
+    #[test]
+    fn eval_parses_trailing_command() {
+        let cli = Cli::try_parse_from([
+            "mrmouth",
+            "eval",
+            "--output",
+            "logs/eval.json",
+            "--",
+            "mrmouth",
+            "run",
+            "--json-events",
+        ])
+        .unwrap();
+
+        match cli.command {
+            Commands::Eval {
+                output, command, ..
+            } => {
+                assert_eq!(output, PathBuf::from("logs/eval.json"));
+                assert_eq!(command, vec!["mrmouth", "run", "--json-events"]);
+            }
+            _ => panic!("unexpected command"),
+        }
     }
 
     #[test]
