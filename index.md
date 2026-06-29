@@ -10,8 +10,11 @@ cargo clippy CI gate — [CI Check Commands](pages/ci-check-commands.md), Cargo.
 CI checks — [CI Check Commands](pages/ci-check-commands.md)
 claim semantics — [Litebrite Agent Contract](pages/litebrite-agent-contract.md)
 clippy too_many_arguments suppressions — [CI Check Commands](pages/ci-check-commands.md), src/do_cmd.rs, src/loop_cmd.rs, src/run.rs
+Codex app-server — [Mr Mouth Speed And Evals](pages/mrmouth-speed-and-evals.md)
 Codex auth volume — [Agent Credential Preflight](pages/agent-credential-preflight.md)
 Codex default agent — [Codex Role Model Defaults](pages/codex-role-model-defaults.md)
+Codex exec resume — [Mr Mouth Speed And Evals](pages/mrmouth-speed-and-evals.md), src/agent.rs, src/streaming.rs
+Codex exec startup cost — [Mr Mouth Speed And Evals](pages/mrmouth-speed-and-evals.md), src/agent.rs, src/streaming.rs
 Codex role models — [Codex Role Model Defaults](pages/codex-role-model-defaults.md)
 container Dockerfile extraction — [Dockerfile Extraction Lifecycle](pages/dockerfile-extraction-lifecycle.md)
 Dockerfile auto-commit — [Dockerfile Extraction Lifecycle](pages/dockerfile-extraction-lifecycle.md), src/run.rs, src/reviewer.rs
@@ -29,6 +32,7 @@ litebrite — [Litebrite Agent Contract](pages/litebrite-agent-contract.md)
 local worktree support — [Mr Mouth Prime](pages/mrmouth-prime.md), src/do_cmd.rs, src/run.rs, src/docker.rs
 mrmouth prime — [Mr Mouth Prime](pages/mrmouth-prime.md)
 mrmouth setup codex — [Mr Mouth Prime](pages/mrmouth-prime.md)
+mrmouth speed evals — [Mr Mouth Speed And Evals](pages/mrmouth-speed-and-evals.md)
 mrmouth task delegation — [Litebrite Agent Contract](pages/litebrite-agent-contract.md)
 MRMOUTH_BOOKKEEPING_REPO — [Split Bookkeeping/Work Repos](pages/split-bookkeeping-work-repos.md), src/docker.rs, src/run.rs
 MRMOUTH_WORK_REPO — [Split Bookkeeping/Work Repos](pages/split-bookkeeping-work-repos.md), src/docker.rs, src/run.rs
@@ -39,6 +43,8 @@ post-run pull ordering — [Dockerfile Extraction Lifecycle](pages/dockerfile-ex
 review fitness for purpose — [Reviewer Fitness For Purpose](pages/reviewer-fitness-for-purpose.md)
 review target — [Reviewer Fitness For Purpose](pages/reviewer-fitness-for-purpose.md)
 reviewer model normalization — [Codex Role Model Defaults](pages/codex-role-model-defaults.md)
+runtime benchmarks — [Mr Mouth Speed And Evals](pages/mrmouth-speed-and-evals.md)
+session reuse — [Mr Mouth Speed And Evals](pages/mrmouth-speed-and-evals.md), src/run.rs, src/do_cmd.rs, src/loop_cmd.rs
 sibling dependencies — [Litebrite Agent Contract](pages/litebrite-agent-contract.md)
 split bookkeeping work repos — [Split Bookkeeping/Work Repos](pages/split-bookkeeping-work-repos.md), src/repo_layout.rs
 supervisor output contract — [Mr Mouth Prime](pages/mrmouth-prime.md)

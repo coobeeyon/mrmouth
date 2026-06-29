@@ -64,3 +64,7 @@ Recorded the Dockerfile self-update guard: runner, session-task, and reviewer wr
 ## [2026-06-05] documented | CI check commands and Clippy exceptions
 
 Recorded the local Rust CI-equivalent gates and the rationale for narrow Clippy lint exceptions on orchestration boundary helpers and the lifecycle event enum.
+
+## [2026-06-29] documented | Mr Mouth speed and eval direction
+
+Recorded the current Codex invocation model, the distinction between Docker session reuse and Codex thread reuse, relevant Codex `exec resume`/`app-server` options, and a proposed eval split between deterministic correctness checks and speed benchmarks.
