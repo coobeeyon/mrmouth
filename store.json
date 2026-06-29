@@ -787,8 +787,9 @@
       "item_type": "task",
       "status": "open",
       "priority": 1,
+      "claimed_by": "Codex",
       "created_at": "2026-06-29T17:32:49.451699055Z",
-      "updated_at": "2026-06-29T17:32:49.451699055Z"
+      "updated_at": "2026-06-29T17:32:55.633321282Z"
     },
     "lb-ebpt": {
       "id": "lb-ebpt",
