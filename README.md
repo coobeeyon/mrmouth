@@ -109,7 +109,7 @@ The eval wrapper captures the child command's stdout/stderr sizes, wall-clock
 runtime, parsed lifecycle event counts, final `lifecycle_summary`, and any
 `::mrmouth::timing` markers found in the summary's log file. It writes the
 report even when the child command fails, then exits nonzero so scripts still
-see the failure.
+see the failure. Fixture-backed eval conventions live in `evals/README.md`.
 
 ### `mrmouth summary [log-file]`
 
