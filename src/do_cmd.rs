@@ -331,26 +331,44 @@ pub fn execute(
         &opts.event_sink,
         MrmouthEvent::finished(FinishStatus::Success, None::<String>),
     );
-    emit_event(
-        &opts.event_sink,
-        MrmouthEvent::LifecycleSummary {
-            summary: LifecycleSummary::success("do")
-                .item_id(opts.item_id.clone())
-                .branch(feature_branch)
-                .workspace(if opts.current_container {
-                    local_worktree
-                        .target_mount
-                        .as_ref()
-                        .map(|p| p.display().to_string())
-                        .unwrap_or_else(|| repo_root.display().to_string())
-                } else {
-                    local_worktree.summary_workspace()
-                })
-                .next_action("merge_when_ready"),
-        },
+    let summary = attach_latest_log_paths(
+        repo_root,
+        &config.log_dir,
+        LifecycleSummary::success("do")
+            .item_id(opts.item_id.clone())
+            .branch(feature_branch)
+            .workspace(if opts.current_container {
+                local_worktree
+                    .target_mount
+                    .as_ref()
+                    .map(|p| p.display().to_string())
+                    .unwrap_or_else(|| repo_root.display().to_string())
+            } else {
+                local_worktree.summary_workspace()
+            })
+            .next_action("merge_when_ready"),
     );
+    emit_event(&opts.event_sink, MrmouthEvent::LifecycleSummary { summary });
 
     Ok(())
+}
+
+fn attach_latest_log_paths(
+    repo_root: &Path,
+    log_dir: &str,
+    mut summary: LifecycleSummary,
+) -> LifecycleSummary {
+    let log_path = repo_root.join(log_dir).join("latest.log");
+    if log_path.exists() {
+        summary = summary.log_path(log_path.display().to_string());
+    }
+
+    let jsonl_path = repo_root.join(log_dir).join("latest.jsonl");
+    if jsonl_path.exists() {
+        summary = summary.jsonl_path(jsonl_path.display().to_string());
+    }
+
+    summary
 }
 
 fn emit_event(sink: &Option<EventSinkHandle>, event: MrmouthEvent) {
@@ -1345,5 +1363,24 @@ mod tests {
         assert!(d.log_path.is_none());
         assert!(d.exit_code.is_none());
         assert!(d.attempt_lines.is_empty());
+    }
+
+    #[test]
+    fn attach_latest_log_paths_adds_existing_latest_files() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("logs")).unwrap();
+        std::fs::write(dir.path().join("logs/latest.log"), "log\n").unwrap();
+        std::fs::write(dir.path().join("logs/latest.jsonl"), "{}\n").unwrap();
+
+        let summary = attach_latest_log_paths(dir.path(), "logs", LifecycleSummary::success("do"));
+
+        assert_eq!(
+            summary.log_path.as_deref(),
+            Some(dir.path().join("logs/latest.log").display().to_string()).as_deref()
+        );
+        assert_eq!(
+            summary.jsonl_path.as_deref(),
+            Some(dir.path().join("logs/latest.jsonl").display().to_string()).as_deref()
+        );
     }
 }

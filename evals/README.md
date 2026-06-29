@@ -9,8 +9,10 @@ run under `mrmouth eval`, then checked with deterministic assertions.
 Each fixture should live under `evals/fixtures/<name>/` and include:
 
 - `README.md` explaining the behavior being evaluated.
-- `repo/` containing the input repository state, including any `.mrmouth/`,
-  Litebrite, or Trapperkeeper setup the case requires.
+- `repo/` containing the generated input repository state, including any
+  `.mrmouth/`, Litebrite, or Trapperkeeper setup the case requires.
+- `seed/` when the generated `repo/` should be rebuilt for each run instead of
+  committed directly.
 - `run.sh` as the single entrypoint for the measured command.
 - `assert.sh` for deterministic checks after the run.
 
