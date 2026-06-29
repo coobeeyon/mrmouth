@@ -3,6 +3,7 @@ use std::io::{BufRead, BufReader, BufWriter, IsTerminal, Write};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
+use std::time::Duration;
 
 type SharedWriter = Arc<Mutex<BufWriter<File>>>;
 
@@ -160,6 +161,16 @@ pub fn log(logger: Option<&Logger>, msg: &str) {
     }
 }
 
+pub fn log_timing(logger: Option<&Logger>, phase: &str, elapsed: Duration) {
+    log(
+        logger,
+        &format!(
+            "::mrmouth::timing phase={phase} elapsed_ms={}",
+            elapsed.as_millis()
+        ),
+    );
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -204,5 +215,20 @@ mod tests {
 
         assert_eq!(lines.lock().unwrap().as_slice(), ["visible"]);
         assert_eq!(std::fs::read_to_string(path).unwrap(), "");
+    }
+
+    #[test]
+    fn log_timing_uses_eval_marker_format() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("agent.log");
+        let logger = Logger::new(&path).unwrap();
+
+        log_timing(Some(&logger), "reviewer-wall", Duration::from_millis(42));
+        logger.flush();
+
+        assert_eq!(
+            std::fs::read_to_string(path).unwrap(),
+            "::mrmouth::timing phase=reviewer-wall elapsed_ms=42\n"
+        );
     }
 }

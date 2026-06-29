@@ -335,7 +335,11 @@ pub fn execute(
                 }),
                 event_sink: opts.event_sink.clone(),
             };
-            if let Err(e) = reviewer::execute(config, repo_root, &reviewer_opts, logger.as_ref()) {
+            let role_start = std::time::Instant::now();
+            let reviewer_result =
+                reviewer::execute(config, repo_root, &reviewer_opts, logger.as_ref());
+            crate::logger::log_timing(logger.as_ref(), "reviewer-wall", role_start.elapsed());
+            if let Err(e) = reviewer_result {
                 emit(&tui_tx, &format!("Reviewer failed (non-fatal): {e}"));
                 emit_event(
                     &opts.event_sink,

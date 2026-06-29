@@ -327,6 +327,7 @@ pub fn execute(
                 },
             );
             let decider_model = config.effective_model_for_agent(&config.loop_config.decider_model);
+            let role_start = std::time::Instant::now();
             let decision = should_continue(
                 config,
                 repo_root,
@@ -334,6 +335,7 @@ pub fn execute(
                 loop_logger.as_ref(),
                 &log_dir,
             );
+            crate::logger::log_timing(loop_logger.as_ref(), "decider-wall", role_start.elapsed());
 
             match decision {
                 Ok(Decision::Continue(reason)) => {
@@ -358,7 +360,16 @@ pub fn execute(
                         event_sink: opts.event_sink.clone(),
                     };
 
-                    match shipper::execute(config, repo_root, &ship_opts, loop_logger.as_ref()) {
+                    let role_start = std::time::Instant::now();
+                    let ship_result =
+                        shipper::execute(config, repo_root, &ship_opts, loop_logger.as_ref());
+                    crate::logger::log_timing(
+                        loop_logger.as_ref(),
+                        "shipper-wall",
+                        role_start.elapsed(),
+                    );
+
+                    match ship_result {
                         Ok(()) => {
                             crate::logger::log(
                                 loop_logger.as_ref(),
@@ -562,7 +573,11 @@ pub fn execute(
                     review_target: None,
                     event_sink: opts.event_sink.clone(),
                 };
-                if let Err(e) = reviewer::execute(config, repo_root, &reviewer_opts, logger_opt) {
+                let role_start = std::time::Instant::now();
+                let reviewer_result =
+                    reviewer::execute(config, repo_root, &reviewer_opts, logger_opt);
+                crate::logger::log_timing(logger_opt, "reviewer-wall", role_start.elapsed());
+                if let Err(e) = reviewer_result {
                     crate::logger::log(logger_opt, &format!("Reviewer failed (non-fatal): {e}"));
                     emit_event(
                         &opts.event_sink,
@@ -605,7 +620,10 @@ pub fn execute(
             // --- Summary (runs after reviewer) ---
             if !opts.no_summary {
                 let log_file = format!("{}/latest.jsonl", config.log_dir);
-                if let Err(e) = summary::execute(config, repo_root, &log_file, logger_opt) {
+                let role_start = std::time::Instant::now();
+                let summary_result = summary::execute(config, repo_root, &log_file, logger_opt);
+                crate::logger::log_timing(logger_opt, "summary-wall", role_start.elapsed());
+                if let Err(e) = summary_result {
                     crate::logger::log(logger_opt, &format!("Summary generation failed: {e}"));
                 }
             }

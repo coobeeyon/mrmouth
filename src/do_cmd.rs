@@ -441,7 +441,10 @@ fn execute_task(
             }),
             event_sink: opts.event_sink.clone(),
         };
-        if let Err(e) = reviewer::execute(config, repo_root, &reviewer_opts, logger) {
+        let role_start = std::time::Instant::now();
+        let reviewer_result = reviewer::execute(config, repo_root, &reviewer_opts, logger);
+        crate::logger::log_timing(logger, "reviewer-wall", role_start.elapsed());
+        if let Err(e) = reviewer_result {
             emit(tui_tx, &format!("Reviewer failed (non-fatal): {e}"));
         }
         litebrite::sync(repo_root, logger);
@@ -799,7 +802,10 @@ fn execute_epic(
             }),
             event_sink: opts.event_sink.clone(),
         };
-        if let Err(e) = reviewer::execute(config, repo_root, &reviewer_opts, logger) {
+        let role_start = std::time::Instant::now();
+        let reviewer_result = reviewer::execute(config, repo_root, &reviewer_opts, logger);
+        crate::logger::log_timing(logger, "reviewer-wall", role_start.elapsed());
+        if let Err(e) = reviewer_result {
             emit(tui_tx, &format!("Reviewer failed (non-fatal): {e}"));
         }
         litebrite::sync(repo_root, logger);
