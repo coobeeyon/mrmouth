@@ -72,3 +72,7 @@ Recorded the current Codex invocation model, the distinction between Docker sess
 ## [2026-06-29] implemented | Initial mrmouth eval harness
 
 Recorded `mrmouth eval -- <command>` as the first eval harness: it wraps a child command, parses lifecycle JSON from stdout, extracts timing markers from the final summary log, writes a JSON report even on child failure, and exits nonzero when the child fails.
+
+## [2026-06-29] implemented | Role-level eval timing markers
+
+Recorded the role timing markers now emitted to orchestration logs: `decider-wall`, `shipper-wall`, `reviewer-wall`, and `summary-wall`, all using the existing `::mrmouth::timing phase=<name> elapsed_ms=<n>` format consumed by `mrmouth eval`.

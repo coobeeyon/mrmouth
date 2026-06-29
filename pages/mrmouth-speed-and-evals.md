@@ -63,10 +63,23 @@ lifecycle event counts parsed from child stdout, the final
 The harness writes the report even when the child fails, then exits nonzero so
 scripts still observe the failed run.
 
+Role-level wall-clock markers are now emitted to orchestration logs for the
+main non-runner AI roles:
+
+- `decider-wall` around loop decider work, including the open-task
+  short-circuit path
+- `shipper-wall` around loop shipper execution
+- `reviewer-wall` around reviewer execution in `do`, `ready`, and `loop`
+- `summary-wall` around loop summary generation
+
+These appear beside existing runner/container markers such as `docker-build`,
+`session-setup`, `container-wall`, and `current-container-wall`, and use the
+same `::mrmouth::timing phase=<name> elapsed_ms=<n>` format parsed by
+`mrmouth eval`.
+
 The likely implementation sequence is:
 
-1. Add missing timing events around Codex startup/first-event and role-level
-   reviewer/summary/decider spans.
+1. Add missing timing events around Codex startup/first-event spans.
 2. Create frozen fixture repos with seeded Litebrite graphs and deterministic
    expected outcomes.
 3. Run baseline evals across cold, warm, and current-container paths.
