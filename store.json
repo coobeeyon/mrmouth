@@ -1605,11 +1605,10 @@
       "title": "Define minimal eval fixture contract",
       "description": "Document the first fixture-backed eval contract: fixture layout, run/assert scripts, expected use with mrmouth eval, and the deterministic checks needed before adding a larger harness.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 1,
-      "claimed_by": "Codex",
       "created_at": "2026-06-29T17:37:34.567412203Z",
-      "updated_at": "2026-06-29T17:37:45.311961399Z"
+      "updated_at": "2026-06-29T17:39:16.134957075Z"
     },
     "lb-wil9": {
       "id": "lb-wil9",
