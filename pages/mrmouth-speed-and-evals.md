@@ -1,7 +1,7 @@
 # Mr Mouth Speed And Evals
 
 Concepts: Codex exec startup cost, session reuse, app-server, eval harness, lifecycle metrics
-Key files: `src/agent.rs`, `src/streaming.rs`, `src/run.rs`, `src/do_cmd.rs`, `src/loop_cmd.rs`, `src/reviewer.rs`
+Key files: `src/agent.rs`, `src/streaming.rs`, `src/run.rs`, `src/do_cmd.rs`, `src/loop_cmd.rs`, `src/reviewer.rs`, `evals/README.md`
 Commands/config: `mrmouth eval -- <command>`, `mrmouth do --json-events`, `mrmouth run --json-events`, `mrmouth loop --json-events`, `codex exec`, `codex exec resume`, `codex app-server`
 Useful when: comparing Mr Mouth to Codex `/goal`, designing evals, profiling agent latency, or changing Codex invocation strategy
 
@@ -77,11 +77,17 @@ These appear beside existing runner/container markers such as `docker-build`,
 same `::mrmouth::timing phase=<name> elapsed_ms=<n>` format parsed by
 `mrmouth eval`.
 
+`evals/README.md` defines the first fixture-backed eval contract. Fixtures live
+under `evals/fixtures/<name>/`, keep input state in `repo/`, run through a
+single `run.sh`, and verify deterministic outcomes through `assert.sh`.
+Assertions should inspect the eval report, tests, changed files, commits,
+Litebrite state, and required timing phases before any LLM judge is used.
+
 The likely implementation sequence is:
 
 1. Add missing timing events around Codex startup/first-event spans.
-2. Create frozen fixture repos with seeded Litebrite graphs and deterministic
-   expected outcomes.
+2. Create the first frozen fixture repo with seeded Litebrite state and
+   deterministic assertions following `evals/README.md`.
 3. Run baseline evals across cold, warm, and current-container paths.
 4. Prototype `codex exec resume` for bounded multi-turn flows.
 5. Consider `codex app-server` only if resume cannot provide the needed speed

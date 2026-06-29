@@ -21,9 +21,11 @@ Dockerfile auto-commit — [Dockerfile Extraction Lifecycle](pages/dockerfile-ex
 Dockerfile self-modification — [Dockerfile Extraction Lifecycle](pages/dockerfile-extraction-lifecycle.md)
 do --worktree — [Mr Mouth Prime](pages/mrmouth-prime.md), src/do_cmd.rs, src/run.rs, src/docker.rs
 eval report — [Mr Mouth Speed And Evals](pages/mrmouth-speed-and-evals.md), src/eval_cmd.rs
+evals/README.md — [Mr Mouth Speed And Evals](pages/mrmouth-speed-and-evals.md), evals/README.md
 event rendering architecture — [Event Rendering Architecture](pages/event-rendering-architecture.md)
 event sink handle — [Event Rendering Architecture](pages/event-rendering-architecture.md)
 fake monorepo — [Split Bookkeeping/Work Repos](pages/split-bookkeeping-work-repos.md), src/repo_layout.rs
+fixture-backed evals — [Mr Mouth Speed And Evals](pages/mrmouth-speed-and-evals.md), evals/README.md
 host post-run sync — [Dockerfile Extraction Lifecycle](pages/dockerfile-extraction-lifecycle.md)
 json lifecycle output — [Event Rendering Architecture](pages/event-rendering-architecture.md)
 large_enum_variant lifecycle event surface — [CI Check Commands](pages/ci-check-commands.md), src/events.rs

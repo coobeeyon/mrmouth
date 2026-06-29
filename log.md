@@ -76,3 +76,7 @@ Recorded `mrmouth eval -- <command>` as the first eval harness: it wraps a child
 ## [2026-06-29] implemented | Role-level eval timing markers
 
 Recorded the role timing markers now emitted to orchestration logs: `decider-wall`, `shipper-wall`, `reviewer-wall`, and `summary-wall`, all using the existing `::mrmouth::timing phase=<name> elapsed_ms=<n>` format consumed by `mrmouth eval`.
+
+## [2026-06-29] documented | Minimal eval fixture contract
+
+Recorded `evals/README.md` as the fixture-backed eval contract: fixture directories contain `repo/`, `run.sh`, and `assert.sh`; assertions should verify eval reports, tests, changed files, commits, Litebrite state, and timing phases before optional LLM judging.
