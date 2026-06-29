@@ -535,11 +535,10 @@
       "title": "Add initial mrmouth eval harness",
       "description": "Create a first eval command that can run an mrmouth command, capture lifecycle JSON, parse timing markers from produced logs, and write a machine-readable result for speed/correctness experiments.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 1,
-      "claimed_by": "Codex",
       "created_at": "2026-06-29T17:23:12.417277929Z",
-      "updated_at": "2026-06-29T17:23:15.494174540Z"
+      "updated_at": "2026-06-29T17:28:54.303570275Z"
     },
     "lb-8ngb": {
       "id": "lb-8ngb",
