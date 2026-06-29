@@ -20,6 +20,7 @@ container Dockerfile extraction — [Dockerfile Extraction Lifecycle](pages/dock
 Dockerfile auto-commit — [Dockerfile Extraction Lifecycle](pages/dockerfile-extraction-lifecycle.md), src/run.rs, src/reviewer.rs
 Dockerfile self-modification — [Dockerfile Extraction Lifecycle](pages/dockerfile-extraction-lifecycle.md)
 do --worktree — [Mr Mouth Prime](pages/mrmouth-prime.md), src/do_cmd.rs, src/run.rs, src/docker.rs
+eval report — [Mr Mouth Speed And Evals](pages/mrmouth-speed-and-evals.md), src/eval_cmd.rs
 event rendering architecture — [Event Rendering Architecture](pages/event-rendering-architecture.md)
 event sink handle — [Event Rendering Architecture](pages/event-rendering-architecture.md)
 fake monorepo — [Split Bookkeeping/Work Repos](pages/split-bookkeeping-work-repos.md), src/repo_layout.rs
@@ -30,6 +31,7 @@ lb prime — [Litebrite Agent Contract](pages/litebrite-agent-contract.md)
 lb ready — [Litebrite Agent Contract](pages/litebrite-agent-contract.md)
 litebrite — [Litebrite Agent Contract](pages/litebrite-agent-contract.md)
 local worktree support — [Mr Mouth Prime](pages/mrmouth-prime.md), src/do_cmd.rs, src/run.rs, src/docker.rs
+mrmouth eval — [Mr Mouth Speed And Evals](pages/mrmouth-speed-and-evals.md), src/eval_cmd.rs
 mrmouth prime — [Mr Mouth Prime](pages/mrmouth-prime.md)
 mrmouth setup codex — [Mr Mouth Prime](pages/mrmouth-prime.md)
 mrmouth speed evals — [Mr Mouth Speed And Evals](pages/mrmouth-speed-and-evals.md)

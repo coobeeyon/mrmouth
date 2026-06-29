@@ -2,7 +2,7 @@
 
 Concepts: Codex exec startup cost, session reuse, app-server, eval harness, lifecycle metrics
 Key files: `src/agent.rs`, `src/streaming.rs`, `src/run.rs`, `src/do_cmd.rs`, `src/loop_cmd.rs`, `src/reviewer.rs`
-Commands/config: `mrmouth do --json-events`, `mrmouth run --json-events`, `mrmouth loop --json-events`, `codex exec`, `codex exec resume`, `codex app-server`
+Commands/config: `mrmouth eval -- <command>`, `mrmouth do --json-events`, `mrmouth run --json-events`, `mrmouth loop --json-events`, `codex exec`, `codex exec resume`, `codex app-server`
 Useful when: comparing Mr Mouth to Codex `/goal`, designing evals, profiling agent latency, or changing Codex invocation strategy
 
 Mr Mouth currently pays a fresh Codex batch invocation for each agent role that uses
@@ -47,12 +47,28 @@ The eval design should separate correctness and latency:
   phases; missing high-value markers include Codex process spawn to first JSON
   event and per-role timing in reviewer/decider/summary/shipper paths.
 
+`mrmouth eval` is the first thin harness for speed/correctness experiments. It
+wraps any child command, usually another Mr Mouth invocation with
+`--json-events`, and writes a JSON report:
+
+```sh
+mrmouth eval --output logs/eval-result.json -- mrmouth run --json-events
+```
+
+Relative `--output` paths resolve from the current repository; `--cwd <path>`
+sets the child command's working directory. The report captures command argv,
+cwd, child success/exit code, wrapper wall time, stdout/stderr byte counts,
+lifecycle event counts parsed from child stdout, the final
+`lifecycle_summary`, and timing markers parsed from the summary's `log_path`.
+The harness writes the report even when the child fails, then exits nonzero so
+scripts still observe the failed run.
+
 The likely implementation sequence is:
 
-1. Add a small eval/bench harness that consumes lifecycle JSON and logs existing
-   timing markers, before changing the launcher.
-2. Add missing timing events around Codex startup/first-event and role-level
+1. Add missing timing events around Codex startup/first-event and role-level
    reviewer/summary/decider spans.
+2. Create frozen fixture repos with seeded Litebrite graphs and deterministic
+   expected outcomes.
 3. Run baseline evals across cold, warm, and current-container paths.
 4. Prototype `codex exec resume` for bounded multi-turn flows.
 5. Consider `codex app-server` only if resume cannot provide the needed speed

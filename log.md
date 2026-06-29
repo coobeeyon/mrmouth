@@ -68,3 +68,7 @@ Recorded the local Rust CI-equivalent gates and the rationale for narrow Clippy 
 ## [2026-06-29] documented | Mr Mouth speed and eval direction
 
 Recorded the current Codex invocation model, the distinction between Docker session reuse and Codex thread reuse, relevant Codex `exec resume`/`app-server` options, and a proposed eval split between deterministic correctness checks and speed benchmarks.
+
+## [2026-06-29] implemented | Initial mrmouth eval harness
+
+Recorded `mrmouth eval -- <command>` as the first eval harness: it wraps a child command, parses lifecycle JSON from stdout, extracts timing markers from the final summary log, writes a JSON report even on child failure, and exits nonzero when the child fails.
