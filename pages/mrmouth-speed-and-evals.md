@@ -43,9 +43,9 @@ The eval design should separate correctness and latency:
   judgment input.
 - Speed evals should record cold Docker, warm Docker/session, current-container,
   agent first-event latency, agent wall time, reviewer time, summary time, and
-  total wall clock. Existing `::mrmouth::timing` markers already cover several
-  phases; missing high-value markers include Codex process spawn to first JSON
-  event and per-role timing in reviewer/decider/summary/shipper paths.
+  total wall clock. Existing `::mrmouth::timing` markers cover runner/container
+  and role-level wall time. A remaining high-value marker is Codex process spawn
+  to first JSON event.
 
 `mrmouth eval` is the first thin harness for speed/correctness experiments. It
 wraps any child command, usually another Mr Mouth invocation with
@@ -78,17 +78,32 @@ same `::mrmouth::timing phase=<name> elapsed_ms=<n>` format parsed by
 `mrmouth eval`.
 
 `evals/README.md` defines the first fixture-backed eval contract. Fixtures live
-under `evals/fixtures/<name>/`, keep input state in `repo/`, run through a
-single `run.sh`, and verify deterministic outcomes through `assert.sh`.
-Assertions should inspect the eval report, tests, changed files, commits,
-Litebrite state, and required timing phases before any LLM judge is used.
+under `evals/fixtures/<name>/`, prepare generated input state in `repo/`, run
+through a single `run.sh`, and verify deterministic outcomes through
+`assert.sh`. Assertions should inspect the eval report, tests, changed files,
+commits, Litebrite state, and required timing phases before any LLM judge is
+used.
+
+`evals/fixtures/smol-current-container/` is the first real fixture. It rebuilds
+generated `repo/`, `reports/`, and `remotes/` directories from committed
+`seed/` inputs, initializes local bare remotes, creates one Litebrite task, and
+runs `mrmouth do --json-events --current-container --worktree repo/worktree`
+through `mrmouth eval`. The task changes one line in `message.txt`, runs
+`./check.sh`, commits the worktree, and closes the task. In the sandboxed
+2026-06-29 run, the fixture completed successfully in about 59 seconds and
+recorded a `current-container-wall` marker around 58.7 seconds. The fixture
+runner sets a writable ignored `CODEX_HOME` under the generated bookkeeping repo
+because nested Codex can fail when its default home or helper path is read-only.
+
+Successful `mrmouth do` lifecycle summaries now attach `logs/latest.log` and
+`logs/latest.jsonl` when present. This is what lets `mrmouth eval` parse timing
+markers from successful `do` runs; before that change, only failed `do` runs
+carried log paths in the terminal summary.
 
 The likely implementation sequence is:
 
 1. Add missing timing events around Codex startup/first-event spans.
-2. Create the first frozen fixture repo with seeded Litebrite state and
-   deterministic assertions following `evals/README.md`.
-3. Run baseline evals across cold, warm, and current-container paths.
-4. Prototype `codex exec resume` for bounded multi-turn flows.
-5. Consider `codex app-server` only if resume cannot provide the needed speed
+2. Run baseline evals across cold, warm, and current-container paths.
+3. Prototype `codex exec resume` for bounded multi-turn flows.
+4. Consider `codex app-server` only if resume cannot provide the needed speed
    or control.

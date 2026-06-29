@@ -80,3 +80,7 @@ Recorded the role timing markers now emitted to orchestration logs: `decider-wal
 ## [2026-06-29] documented | Minimal eval fixture contract
 
 Recorded `evals/README.md` as the fixture-backed eval contract: fixture directories contain `repo/`, `run.sh`, and `assert.sh`; assertions should verify eval reports, tests, changed files, commits, Litebrite state, and timing phases before optional LLM judging.
+
+## [2026-06-29] implemented | Smol current-container eval fixture
+
+Recorded `evals/fixtures/smol-current-container/` as the first real fixture-backed eval. It rebuilds generated repo/report/remote directories from committed seeds, runs `mrmouth do --json-events --current-container --worktree` through `mrmouth eval`, asserts the report/task/file/commit/timing outcomes, and completed successfully in about 59 seconds for a one-line change. Successful `do` summaries now include latest log/jsonl paths so eval timing extraction works on success.

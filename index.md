@@ -49,6 +49,7 @@ review target — [Reviewer Fitness For Purpose](pages/reviewer-fitness-for-purp
 reviewer model normalization — [Codex Role Model Defaults](pages/codex-role-model-defaults.md)
 runtime benchmarks — [Mr Mouth Speed And Evals](pages/mrmouth-speed-and-evals.md)
 session reuse — [Mr Mouth Speed And Evals](pages/mrmouth-speed-and-evals.md), src/run.rs, src/do_cmd.rs, src/loop_cmd.rs
+smol current-container eval — [Mr Mouth Speed And Evals](pages/mrmouth-speed-and-evals.md), evals/fixtures/smol-current-container
 sibling dependencies — [Litebrite Agent Contract](pages/litebrite-agent-contract.md)
 split bookkeeping work repos — [Split Bookkeeping/Work Repos](pages/split-bookkeeping-work-repos.md), src/repo_layout.rs
 supervisor output contract — [Mr Mouth Prime](pages/mrmouth-prime.md)
