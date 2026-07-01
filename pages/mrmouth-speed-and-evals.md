@@ -105,6 +105,11 @@ to automate TUI keystrokes for `/goal`. This gives us a stable machine-readable
 baseline for time and quality comparison while still exercising Codex's
 persistent goal machinery: the report records wall clock, app-server event
 counts, thread/turn ids, final goal object, and optional raw JSONL events.
+Because the goal status is self-reported by Codex, fixture assertions should
+also check same-turn evidence from the app-server event stream. The smol goal
+assertion now requires command/diff evidence that the turn saw the original
+`message.txt`, produced the target diff, ran `check.sh`, committed the worktree,
+closed the Litebrite item, and observed the closed item state.
 
 Successful `mrmouth do` lifecycle summaries now attach `logs/latest.log` and
 `logs/latest.jsonl` when present. This is what lets `mrmouth eval` parse timing
