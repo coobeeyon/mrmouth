@@ -975,11 +975,10 @@
       "title": "Add Codex goal eval harness",
       "description": "Add a Codex-side eval harness for the existing fixture flow. It should run the same seeded task/worktree through Codex goal-style instructions, emit a comparable JSON report, and reuse deterministic assertions where possible.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 1,
-      "claimed_by": "Codex",
       "created_at": "2026-07-01T16:04:51.835822009Z",
-      "updated_at": "2026-07-01T16:04:57.780715110Z"
+      "updated_at": "2026-07-01T16:19:37.020334653Z"
     },
     "lb-iyie": {
       "id": "lb-iyie",
