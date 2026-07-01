@@ -13,6 +13,7 @@ const prompt = args.promptFile
   : "Work on the active goal until it is complete. When done, mark the goal complete.";
 const rawEventsPath = args.rawEvents ? resolve(args.rawEvents) : null;
 const timeoutMs = Number(args.timeoutMs || 900000);
+const excerptLimit = Number(args.excerptLimit || 2000);
 
 const started = Date.now();
 const events = [];
@@ -222,6 +223,7 @@ async function writeReport(success, failure) {
       event_counts: eventCounts,
       raw_events_path: rawEventsPath,
     },
+    evidence: buildEvidence(),
   };
 
   await mkdir(dirname(output), { recursive: true });
@@ -256,4 +258,54 @@ function required(value, name) {
     throw new Error(`missing ${name}`);
   }
   return value;
+}
+
+function buildEvidence() {
+  const commandExecutions = [];
+  const diffs = [];
+  const finalAnswers = [];
+
+  for (const event of events) {
+    const payload = event.payload ?? {};
+    const item = payload.item;
+    if (event.type === "item/completed" && item?.type === "commandExecution") {
+      commandExecutions.push({
+        id: item.id ?? null,
+        cwd: relativePath(item.cwd),
+        command: item.command ?? null,
+        exit_code: item.exitCode ?? null,
+        duration_ms: item.durationMs ?? null,
+        output_excerpt: excerpt(item.aggregatedOutput),
+      });
+    } else if (event.type === "turn/diff/updated" && typeof payload.diff === "string") {
+      diffs.push(excerpt(payload.diff));
+    } else if (
+      event.type === "item/completed" &&
+      item?.type === "agentMessage" &&
+      item.phase === "final_answer"
+    ) {
+      finalAnswers.push(excerpt(item.text));
+    }
+  }
+
+  return {
+    command_executions: commandExecutions,
+    diffs,
+    final_answers: finalAnswers,
+  };
+}
+
+function relativePath(path) {
+  if (!path) return null;
+  const absolute = resolve(path);
+  if (absolute === cwd) return ".";
+  if (absolute.startsWith(`${cwd}/`)) return absolute.slice(cwd.length + 1);
+  return absolute;
+}
+
+function excerpt(value) {
+  if (value == null) return null;
+  const text = String(value);
+  if (text.length <= excerptLimit) return text;
+  return `${text.slice(0, excerptLimit)}\n...[truncated ${text.length - excerptLimit} chars]`;
 }

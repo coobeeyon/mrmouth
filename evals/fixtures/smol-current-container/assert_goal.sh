@@ -26,6 +26,36 @@ assert item_id in goal["objective"], goal
 assert report["thread_id"], report
 assert report["turn_id"], report
 assert report["wall_ms"] > 0, report
+
+evidence = report["evidence"]
+commands = evidence["command_executions"]
+diffs = "\n".join(evidence["diffs"])
+
+def completed(command_fragment, output_fragment=None, cwd_suffix=None):
+    for command in commands:
+        if command["exit_code"] != 0:
+            continue
+        if command_fragment not in command["command"]:
+            continue
+        if cwd_suffix and not command["cwd"].endswith(cwd_suffix):
+            continue
+        if output_fragment is not None and output_fragment not in (command["output_excerpt"] or ""):
+            continue
+        return True
+    return False
+
+assert any(
+    command["exit_code"] == 0
+    and command["cwd"].endswith("worktree")
+    and "message.txt" in command["command"]
+    and (command["output_excerpt"] or "").startswith("before")
+    for command in commands
+), commands
+assert "-before\n+hello from smol eval" in diffs, diffs
+assert completed("./check.sh", None, "worktree"), commands
+assert completed("git commit", "1 file changed", "worktree"), commands
+assert completed("lb close", f"closed {item_id}", "."), commands
+assert completed("lb show", "Status: closed", "."), commands
 PY
 
 grep -qx "hello from smol eval" "$worktree/message.txt"
