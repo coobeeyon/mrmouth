@@ -87,18 +87,23 @@ used.
 `evals/fixtures/smol-current-container/` is the first real fixture. It rebuilds
 generated `repo/`, `reports/`, and `remotes/` directories from committed
 `seed/` inputs, initializes local bare remotes, creates one Litebrite task, and
-runs both Mr Mouth and Codex Goal mode against the same seeded task. `run.sh`
-uses `mrmouth do --json-events --current-container --worktree repo/worktree`
-through `mrmouth eval`; `run_goal.sh` uses `evals/codex_goal_harness.mjs` to
-start `codex app-server --stdio --enable goals`, create a thread, set a goal
-with `thread/goal/set`, run one turn with `turn/start`, and assert the final
-goal status is `complete`. The task changes one line in `message.txt`, runs
+runs both Mr Mouth and Codex Goal mode against the same seeded task. The
+bookkeeping repo setup includes `lb init`, `trk init`, `lb setup codex`, and
+`trk setup codex`; the generated `CODEX_HOME` trusts the fixture project and the
+two project-local SessionStart hooks (`lb prime` and `trk prime`). `run.sh` uses
+`mrmouth do --json-events --current-container --worktree repo/worktree` through
+`mrmouth eval`; `run_goal.sh` uses `evals/codex_goal_harness.mjs` to start
+`codex app-server --stdio --enable goals`, create a thread, set a goal with
+`thread/goal/set`, run one turn with `turn/start`, and assert the final goal
+status is `complete`. The task changes one line in `message.txt`, runs
 `./check.sh`, commits the worktree, and closes the task. In sandboxed fixture
-runs, the Mr Mouth path completed successfully in about 57-59 seconds with a
-`current-container-wall` marker, and the Codex Goal app-server path completed
-successfully in about 97-139 seconds with `tokensUsed` around 44-54k. The fixture
-runner sets a writable ignored `CODEX_HOME` under the generated bookkeeping repo
-because nested Codex can fail when its default home or helper path is read-only.
+runs after hook/trust setup, the Mr Mouth path completed successfully in about
+47 seconds with a `current-container-wall` marker, and the Codex Goal app-server
+path completed successfully in about 87-127 seconds with both project hooks
+firing and `tokensUsed` around 49-64k. The fixture runner sets a writable ignored
+`CODEX_HOME` under the generated bookkeeping repo because nested Codex can fail
+when its default home or helper path is read-only. Goal prompt files are ignored
+eval artifacts so they do not create cleanup work inside the measured task.
 
 The Goal-mode harness intentionally uses app-server goal APIs instead of trying
 to automate TUI keystrokes for `/goal`. This gives us a stable machine-readable

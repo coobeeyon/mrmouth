@@ -88,3 +88,7 @@ Recorded `evals/fixtures/smol-current-container/` as the first real fixture-back
 ## [2026-07-01] implemented | Codex Goal eval harness
 
 Recorded `evals/codex_goal_harness.mjs` and the smol fixture `run_goal.sh`/`assert_goal.sh` path. The harness drives `codex app-server --stdio --enable goals`, sets a persistent goal with `thread/goal/set`, starts one turn, writes a JSON report with wall time, thread/turn ids, final goal state, and app-server event counts, and asserts deterministic fixture outcomes. Successful smol runs completed in about 97-139 seconds with final goal status `complete`; the shared fixture setup also kept the Mr Mouth path passing at about 57 seconds.
+
+## [2026-07-01] corrected | Codex Goal fixture setup parity
+
+Recorded the missing setup discovered in the smol Goal harness: the generated repo must include `trk init`, `lb setup codex`, `trk setup codex`, project trust, and trusted hook state for the `lb prime` and `trk prime` SessionStart hooks. The fixture now commits the Codex hook/rule files, pushes Litebrite and Trapperkeeper branches, trusts the generated project in `CODEX_HOME`, and ignores goal prompt files as eval artifacts. Trusted-hook Goal runs showed both hooks firing and completed in about 87-127 seconds; the Mr Mouth path remained passing at about 47 seconds.
