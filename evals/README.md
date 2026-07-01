@@ -14,7 +14,9 @@ Each fixture should live under `evals/fixtures/<name>/` and include:
 - `seed/` when the generated `repo/` should be rebuilt for each run instead of
   committed directly.
 - `run.sh` as the single entrypoint for the measured command.
+- `run_goal.sh` when the fixture supports the Codex Goal-mode harness.
 - `assert.sh` for deterministic checks after the run.
+- `assert_goal.sh` for deterministic checks after `run_goal.sh`.
 
 `run.sh` should write its report under `reports/` inside the fixture or under a
 caller-provided path. Keep it explicit and scriptable:
