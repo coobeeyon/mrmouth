@@ -1,7 +1,7 @@
 # Mr Mouth Speed And Evals
 
 Concepts: Codex exec startup cost, session reuse, app-server, eval harness, lifecycle metrics
-Key files: `src/agent.rs`, `src/streaming.rs`, `src/run.rs`, `src/do_cmd.rs`, `src/loop_cmd.rs`, `src/reviewer.rs`, `evals/README.md`
+Key files: `src/agent.rs`, `src/streaming.rs`, `src/run.rs`, `src/do_cmd.rs`, `src/loop_cmd.rs`, `src/reviewer.rs`, `evals/README.md`, `evals/codex_goal_harness.mjs`
 Commands/config: `mrmouth eval -- <command>`, `mrmouth do --json-events`, `mrmouth run --json-events`, `mrmouth loop --json-events`, `codex exec`, `codex exec resume`, `codex app-server`
 Useful when: comparing Mr Mouth to Codex `/goal`, designing evals, profiling agent latency, or changing Codex invocation strategy
 
@@ -87,13 +87,24 @@ used.
 `evals/fixtures/smol-current-container/` is the first real fixture. It rebuilds
 generated `repo/`, `reports/`, and `remotes/` directories from committed
 `seed/` inputs, initializes local bare remotes, creates one Litebrite task, and
-runs `mrmouth do --json-events --current-container --worktree repo/worktree`
-through `mrmouth eval`. The task changes one line in `message.txt`, runs
-`./check.sh`, commits the worktree, and closes the task. In the sandboxed
-2026-06-29 run, the fixture completed successfully in about 59 seconds and
-recorded a `current-container-wall` marker around 58.7 seconds. The fixture
+runs both Mr Mouth and Codex Goal mode against the same seeded task. `run.sh`
+uses `mrmouth do --json-events --current-container --worktree repo/worktree`
+through `mrmouth eval`; `run_goal.sh` uses `evals/codex_goal_harness.mjs` to
+start `codex app-server --stdio --enable goals`, create a thread, set a goal
+with `thread/goal/set`, run one turn with `turn/start`, and assert the final
+goal status is `complete`. The task changes one line in `message.txt`, runs
+`./check.sh`, commits the worktree, and closes the task. In sandboxed fixture
+runs, the Mr Mouth path completed successfully in about 57-59 seconds with a
+`current-container-wall` marker, and the Codex Goal app-server path completed
+successfully in about 97-139 seconds with `tokensUsed` around 44-54k. The fixture
 runner sets a writable ignored `CODEX_HOME` under the generated bookkeeping repo
 because nested Codex can fail when its default home or helper path is read-only.
+
+The Goal-mode harness intentionally uses app-server goal APIs instead of trying
+to automate TUI keystrokes for `/goal`. This gives us a stable machine-readable
+baseline for time and quality comparison while still exercising Codex's
+persistent goal machinery: the report records wall clock, app-server event
+counts, thread/turn ids, final goal object, and optional raw JSONL events.
 
 Successful `mrmouth do` lifecycle summaries now attach `logs/latest.log` and
 `logs/latest.jsonl` when present. This is what lets `mrmouth eval` parse timing

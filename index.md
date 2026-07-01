@@ -15,6 +15,7 @@ Codex auth volume — [Agent Credential Preflight](pages/agent-credential-prefli
 Codex default agent — [Codex Role Model Defaults](pages/codex-role-model-defaults.md)
 Codex exec resume — [Mr Mouth Speed And Evals](pages/mrmouth-speed-and-evals.md), src/agent.rs, src/streaming.rs
 Codex exec startup cost — [Mr Mouth Speed And Evals](pages/mrmouth-speed-and-evals.md), src/agent.rs, src/streaming.rs
+Codex goal eval — [Mr Mouth Speed And Evals](pages/mrmouth-speed-and-evals.md), evals/codex_goal_harness.mjs, evals/fixtures/smol-current-container
 Codex role models — [Codex Role Model Defaults](pages/codex-role-model-defaults.md)
 container Dockerfile extraction — [Dockerfile Extraction Lifecycle](pages/dockerfile-extraction-lifecycle.md)
 Dockerfile auto-commit — [Dockerfile Extraction Lifecycle](pages/dockerfile-extraction-lifecycle.md), src/run.rs, src/reviewer.rs

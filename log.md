@@ -84,3 +84,7 @@ Recorded `evals/README.md` as the fixture-backed eval contract: fixture director
 ## [2026-06-29] implemented | Smol current-container eval fixture
 
 Recorded `evals/fixtures/smol-current-container/` as the first real fixture-backed eval. It rebuilds generated repo/report/remote directories from committed seeds, runs `mrmouth do --json-events --current-container --worktree` through `mrmouth eval`, asserts the report/task/file/commit/timing outcomes, and completed successfully in about 59 seconds for a one-line change. Successful `do` summaries now include latest log/jsonl paths so eval timing extraction works on success.
+
+## [2026-07-01] implemented | Codex Goal eval harness
+
+Recorded `evals/codex_goal_harness.mjs` and the smol fixture `run_goal.sh`/`assert_goal.sh` path. The harness drives `codex app-server --stdio --enable goals`, sets a persistent goal with `thread/goal/set`, starts one turn, writes a JSON report with wall time, thread/turn ids, final goal state, and app-server event counts, and asserts deterministic fixture outcomes. Successful smol runs completed in about 97-139 seconds with final goal status `complete`; the shared fixture setup also kept the Mr Mouth path passing at about 57 seconds.
