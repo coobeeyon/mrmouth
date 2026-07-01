@@ -1555,11 +1555,10 @@
       "title": "Prepare goal fixture with Codex hooks",
       "description": "Make the smol eval fixture initialize Trapperkeeper and Codex hook/rule setup for the Codex goal harness, including project and hook trust in the generated CODEX_HOME, so /goal runs are not disadvantaged versus Mr Mouth runner setup.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 1,
-      "claimed_by": "Codex",
       "created_at": "2026-07-01T16:58:09.295267455Z",
-      "updated_at": "2026-07-01T16:58:14.564844927Z"
+      "updated_at": "2026-07-01T17:03:42.059305958Z"
     },
     "lb-v1qa": {
       "id": "lb-v1qa",
