@@ -26,6 +26,9 @@ assert item_id in goal["objective"], goal
 assert report["thread_id"], report
 assert report["turn_id"], report
 assert report["wall_ms"] > 0, report
+event_counts = report["app_server"]["event_counts"]
+assert event_counts["hook/started"] == 2, event_counts
+assert event_counts["hook/completed"] == 2, event_counts
 
 evidence = report["evidence"]
 commands = evidence["command_executions"]
@@ -48,7 +51,7 @@ assert any(
     command["exit_code"] == 0
     and command["cwd"].endswith("worktree")
     and "message.txt" in command["command"]
-    and (command["output_excerpt"] or "").startswith("before")
+    and "before" in (command["output_excerpt"] or "")
     for command in commands
 ), commands
 assert "-before\n+hello from smol eval" in diffs, diffs

@@ -3,3 +3,4 @@ worktree/
 .claude/
 .codex-home/
 .eval-item-id
+.goal-*.txt

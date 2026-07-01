@@ -17,7 +17,11 @@ Run from this directory:
 
 `prepare.sh` rebuilds generated `repo/`, `remotes/`, and `reports/`
 directories from `seed/` on each invocation. It initializes a bookkeeping git
-repo with Litebrite state and a separate code worktree repo.
+repo with Litebrite and Trapperkeeper state, commits Codex hook/rule setup from
+`lb setup codex` and `trk setup codex`, trusts the generated project and those
+two hooks in the generated `CODEX_HOME`, and creates a separate code worktree
+repo. The Goal-mode prompt files are generated as ignored eval artifacts so
+they do not create cleanup work inside the measured task.
 
 `run.sh` measures Mr Mouth:
 
@@ -36,4 +40,5 @@ node ../../codex_goal_harness.mjs \
   --output reports/goal-result.json
 ```
 
-The fixture requires `lb`, `git`, and the configured agent CLI on `PATH`.
+The fixture requires `lb`, `trk`, `git`, and the configured agent CLI on
+`PATH`.

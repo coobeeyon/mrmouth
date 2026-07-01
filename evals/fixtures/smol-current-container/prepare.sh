@@ -6,6 +6,7 @@ source_codex_home="${CODEX_HOME:-$HOME/.codex}"
 
 command -v git >/dev/null
 command -v lb >/dev/null
+command -v trk >/dev/null
 
 rm -rf "$fixture_dir/repo" "$fixture_dir/remotes" "$fixture_dir/reports"
 mkdir -p "$fixture_dir/repo" "$fixture_dir/remotes" "$fixture_dir/reports"
@@ -37,16 +38,50 @@ for file in auth.json config.toml; do
     cp -a "$source_codex_home/$file" "$codex_home/$file"
   fi
 done
+touch "$codex_home/config.toml"
+
+append_codex_config_table() {
+  local header="$1"
+  shift
+  if ! grep -Fqx "$header" "$codex_home/config.toml"; then
+    {
+      printf '\n%s\n' "$header"
+      printf '%s\n' "$@"
+    } >> "$codex_home/config.toml"
+  fi
+}
+
+codex_hooks_path="$bookkeeping_repo/.codex/hooks.json"
+append_codex_config_table "[projects.\"$bookkeeping_repo\"]" 'trust_level = "trusted"'
+append_codex_config_table \
+  "[hooks.state.\"$codex_hooks_path:session_start:0:0\"]" \
+  'enabled = true' \
+  'trusted_hash = "sha256:563f0ab4b9c866e904189c224dee1510951b34d7dcacfbbe77894451afcbb07e"'
+append_codex_config_table \
+  "[hooks.state.\"$codex_hooks_path:session_start:1:0\"]" \
+  'enabled = true' \
+  'trusted_hash = "sha256:36f49bcf89ea734587b7c4ab75849ee900d13d57259a982f80fbc54c7ae2d28c"'
 
 (
   cd "$bookkeeping_repo"
   lb init >/dev/null
+  trk init >/dev/null
+  lb setup codex >/dev/null
+  trk setup codex >/dev/null
   item_output="$(lb create "Make the smol message explicit" \
     -t task \
     -p 1 \
     -d "In the code worktree, change message.txt to exactly 'hello from smol eval'. Run ./check.sh, commit the code change, and close this task.")"
   item_id="${item_output##* }"
   printf '%s\n' "$item_id" > .eval-item-id
+  lb sync >/dev/null
+  git push -q origin litebrite
+  git push -q origin trapperkeeper
+  git add .codex .gitattributes .gitignore .trapperkeeper.json
+  if ! git diff --cached --quiet; then
+    git commit -q -m "Initialize eval agent integrations"
+    git push -q origin main
+  fi
 )
 
 mkdir -p "$fixture_dir/repo/worktree"
