@@ -1550,6 +1550,16 @@
       "created_at": "2026-05-12T15:49:00.128131952Z",
       "updated_at": "2026-05-12T17:14:29.814884372Z"
     },
+    "lb-uzyc": {
+      "id": "lb-uzyc",
+      "title": "Prepare goal fixture with Codex hooks",
+      "description": "Make the smol eval fixture initialize Trapperkeeper and Codex hook/rule setup for the Codex goal harness, including project and hook trust in the generated CODEX_HOME, so /goal runs are not disadvantaged versus Mr Mouth runner setup.",
+      "item_type": "task",
+      "status": "open",
+      "priority": 1,
+      "created_at": "2026-07-01T16:58:09.295267455Z",
+      "updated_at": "2026-07-01T16:58:09.295267455Z"
+    },
     "lb-v1qa": {
       "id": "lb-v1qa",
       "title": "Epic should pass feature branch to RunOptions explicitly",
