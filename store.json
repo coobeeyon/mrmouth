@@ -977,8 +977,9 @@
       "item_type": "task",
       "status": "open",
       "priority": 1,
+      "claimed_by": "Codex",
       "created_at": "2026-07-01T16:04:51.835822009Z",
-      "updated_at": "2026-07-01T16:04:51.835822009Z"
+      "updated_at": "2026-07-01T16:04:57.780715110Z"
     },
     "lb-iyie": {
       "id": "lb-iyie",
