@@ -1530,6 +1530,16 @@
       "created_at": "2026-03-25T19:22:48.136683178Z",
       "updated_at": "2026-03-25T19:25:12.682386510Z"
     },
+    "lb-uqwo": {
+      "id": "lb-uqwo",
+      "title": "Harden Codex goal eval evidence checks",
+      "description": "Add same-turn evidence capture to the Codex goal eval report and make the smol goal assertion require command/diff evidence that the app-server turn performed the work.",
+      "item_type": "task",
+      "status": "open",
+      "priority": 1,
+      "created_at": "2026-07-01T16:26:33.152944429Z",
+      "updated_at": "2026-07-01T16:26:33.152944429Z"
+    },
     "lb-usb5": {
       "id": "lb-usb5",
       "title": "Add tests for lifecycle JSON mode",
