@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+fixture_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+report="$fixture_dir/reports/goal-result.json"
+bookkeeping_repo="$fixture_dir/repo"
+worktree="$bookkeeping_repo/worktree"
+item_id="$(cat "$bookkeeping_repo/.eval-item-id")"
+
+test -f "$report"
+test -f "$worktree/sales_report.py"
+
+python3 - "$report" "$item_id" <<'PY'
+import json
+import sys
+
+report_path, item_id = sys.argv[1], sys.argv[2]
+with open(report_path, encoding="utf-8") as f:
+    report = json.load(f)
+
+assert report["harness"] == "codex-goal-app-server", report
+assert report["success"] is True, report
+goal = report["goal"]["final"]
+assert goal["status"] == "complete", goal
+assert item_id in goal["objective"], goal
+assert report["thread_id"], report
+assert report["turn_id"], report
+assert report["wall_ms"] > 0, report
+event_counts = report["app_server"]["event_counts"]
+assert event_counts["hook/started"] == 2, event_counts
+assert event_counts["hook/completed"] == 2, event_counts
+
+evidence = report["evidence"]
+commands = evidence["command_executions"]
+diffs = "\n".join(evidence["diffs"])
+
+def completed(command_fragment, output_fragment=None, cwd_suffix=None):
+    for command in commands:
+        if command["exit_code"] != 0:
+            continue
+        if command_fragment not in command["command"]:
+            continue
+        if cwd_suffix and not command["cwd"].endswith(cwd_suffix):
+            continue
+        if output_fragment is not None and output_fragment not in (command["output_excerpt"] or ""):
+            continue
+        return True
+    return False
+
+assert "sales_report.py" in diffs, diffs
+assert completed("./check.sh", None, "worktree"), commands
+assert completed("git commit", "1 file changed", "worktree") or completed("git commit", "files changed", "worktree"), commands
+assert completed("lb close", f"closed {item_id}", "."), commands
+assert completed("lb show", "Status: closed", "."), commands
+PY
+
+(cd "$worktree" && ./check.sh)
+python3 - "$worktree" <<'PY'
+import json
+import subprocess
+import sys
+
+worktree = sys.argv[1]
+completed = subprocess.run(
+    ["python3", "sales_report.py", "data/orders.csv"],
+    cwd=worktree,
+    text=True,
+    check=True,
+    stdout=subprocess.PIPE,
+)
+summary = json.loads(completed.stdout)
+assert summary["net_revenue"] == 109.0, summary
+assert summary["refund_count"] == 1, summary
+assert summary["top_category"] == "Books", summary
+assert summary["regions"]["North"]["net_revenue"] == 83.0, summary
+assert summary["categories"]["Kitchen"]["units"] == 6, summary
+PY
+
+test "$(git -C "$worktree" rev-list --count HEAD)" -ge 2
+test -z "$(git -C "$worktree" status --short)"
+
+lb_show="$(cd "$bookkeeping_repo" && lb show "$item_id")"
+printf '%s\n' "$lb_show" | grep -q "Status: closed"

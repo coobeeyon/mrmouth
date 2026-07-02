@@ -56,3 +56,11 @@ Compare report fields first: `wall_ms`, lifecycle event counts, final summary,
 and timing phases such as `docker-build`, `session-setup`, `container-wall`,
 `current-container-wall`, `reviewer-wall`, `decider-wall`, `summary-wall`, and
 `shipper-wall`.
+
+## Fixtures
+
+- `fixtures/smol-current-container/` is a one-line text edit used to validate
+  harness parity and setup costs.
+- `fixtures/medium-python-cli/` is a small Python CLI implementation task. It
+  exercises CSV parsing, JSON shape changes, tests, a worktree commit, and
+  Litebrite closure while still fitting in a single turn for both harnesses.

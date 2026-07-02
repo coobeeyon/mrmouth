@@ -1,0 +1,8 @@
+order_id,date,region,category,item,quantity,unit_price,discount_pct,status
+A100,2026-01-05,North,Books,Notebook,3,12.00,0,paid
+A101,2026-01-05,North,Books,Planner,2,15.00,10,paid
+A102,2026-01-06,South,Games,Puzzle,1,20.00,0,cancelled
+A103,2026-01-07,South,Games,Dice,5,4.00,0,paid
+A104,2026-01-08,West,Books,Novel,1,18.00,0,refunded
+A105,2026-01-09,West,Kitchen,Mug,4,8.00,25,paid
+A106,2026-01-10,North,Kitchen,Bottle,2,10.00,0,paid
