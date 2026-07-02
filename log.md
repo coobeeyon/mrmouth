@@ -92,3 +92,7 @@ Recorded `evals/codex_goal_harness.mjs` and the smol fixture `run_goal.sh`/`asse
 ## [2026-07-01] corrected | Codex Goal fixture setup parity
 
 Recorded the missing setup discovered in the smol Goal harness: the generated repo must include `trk init`, `lb setup codex`, `trk setup codex`, project trust, and trusted hook state for the `lb prime` and `trk prime` SessionStart hooks. The fixture now commits the Codex hook/rule files, pushes Litebrite and Trapperkeeper branches, trusts the generated project in `CODEX_HOME`, and ignores goal prompt files as eval artifacts. Trusted-hook Goal runs showed both hooks firing and completed in about 87-127 seconds; the Mr Mouth path remained passing at about 47 seconds.
+
+## [2026-07-02] implemented | Medium Python CLI eval fixture
+
+Recorded `evals/fixtures/medium-python-cli/` as the next deterministic fixture for comparing Mr Mouth and Codex Goal mode. The fixture rebuilds seeded bookkeeping/worktree repos, initializes the same Litebrite/Trapperkeeper/Codex hook trust setup as the smol fixture, and asks the agent to implement a Python sales summary CLI from `SPEC.md`. Clean runs passed deterministic assertions: Mr Mouth completed in 170,520 ms, and Codex Goal completed in 157,463 ms with final goal status `complete`, both producing a single-file worktree implementation commit and closing the Litebrite item. Seed worktrees now ignore Python bytecode so local compile/test checks cannot contaminate generated initial commits.

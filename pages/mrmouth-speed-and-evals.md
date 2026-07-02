@@ -116,6 +116,26 @@ assertion now requires command/diff evidence that the turn saw the original
 `message.txt`, produced the target diff, ran `check.sh`, committed the worktree,
 closed the Litebrite item, and observed the closed item state.
 
+`evals/fixtures/medium-python-cli/` is the first larger deterministic fixture.
+It rebuilds generated bookkeeping/worktree repos from seed state, initializes
+the same Litebrite, Trapperkeeper, Codex hook/rule, project trust, and trusted
+hook setup as the smol fixture, then asks the agent to implement a Python sales
+summary CLI. The task requires reading `SPEC.md`, fixing CSV discount/refund
+semantics, producing the expected JSON shape, running `./check.sh`, committing
+the worktree, and closing the Litebrite item. Fixture seed worktrees should
+ignore Python bytecode (`__pycache__/`, `*.pyc`) so syntax checks or test runs do
+not poison the generated initial commits.
+
+The first clean medium runs both passed deterministic assertions. Mr Mouth
+`run.sh` completed in 170,520 ms with a `current-container-wall` marker and one
+worktree commit touching `sales_report.py`. Codex Goal `run_goal.sh` completed
+in 157,463 ms, used one turn, recorded final goal status `complete`, reported
+54,958 tokens used, fired both SessionStart hooks, ran 42 captured commands, and
+committed the same single-file implementation shape. This is a more plausible
+comparison point than the smol fixture because the task work is large enough to
+start absorbing fixed harness/setup overhead, though it still fits within one
+context and one turn.
+
 Successful `mrmouth do` lifecycle summaries now attach `logs/latest.log` and
 `logs/latest.jsonl` when present. This is what lets `mrmouth eval` parse timing
 markers from successful `do` runs; before that change, only failed `do` runs
