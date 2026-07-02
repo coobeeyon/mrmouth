@@ -965,11 +965,10 @@
       "title": "Add medium eval fixture",
       "description": "Add a medium-sized deterministic eval fixture that both Mr Mouth and Codex Goal can run. The fixture should be larger than smol, include multiple files/tests, and use the same setup parity for Litebrite, Trapperkeeper, and Codex hooks.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 1,
-      "claimed_by": "Codex",
       "created_at": "2026-07-02T21:24:34.331792445Z",
-      "updated_at": "2026-07-02T21:24:38.356710959Z"
+      "updated_at": "2026-07-02T21:40:24.803766196Z"
     },
     "lb-imrg": {
       "id": "lb-imrg",
