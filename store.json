@@ -960,6 +960,16 @@
       "created_at": "2026-06-29T17:49:49.900993144Z",
       "updated_at": "2026-06-29T18:02:02.295235811Z"
     },
+    "lb-i0zt": {
+      "id": "lb-i0zt",
+      "title": "Add medium eval fixture",
+      "description": "Add a medium-sized deterministic eval fixture that both Mr Mouth and Codex Goal can run. The fixture should be larger than smol, include multiple files/tests, and use the same setup parity for Litebrite, Trapperkeeper, and Codex hooks.",
+      "item_type": "task",
+      "status": "open",
+      "priority": 1,
+      "created_at": "2026-07-02T21:24:34.331792445Z",
+      "updated_at": "2026-07-02T21:24:34.331792445Z"
+    },
     "lb-imrg": {
       "id": "lb-imrg",
       "title": "Atomic symlink can leave dangling tmp file on rename failure",
