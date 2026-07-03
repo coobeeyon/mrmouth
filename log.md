@@ -112,3 +112,7 @@ Recorded `mrmouth batch` as an experimental current-container path for completin
 ## [2026-07-03] implemented | Hard support operations eval fixture
 
 Recorded `evals/fixtures/hard-epic-python/` as a six-leaf support operations fixture for pushing batch and Goal beyond the four-leaf inventory case. Clean runs passed deterministic assertions and produced six focused commits in both harnesses. Batch completed in 335,010 ms with 122,006 uncached input plus output tokens; Goal completed in 254,391 ms with 97,801 uncached input plus output tokens. Quality looked tied on deterministic checks, clean worktrees, closed tasks, and commit shape, while Goal retained a time/token edge.
+
+## [2026-07-03] implemented | Long fulfillment eval fixture
+
+Recorded `evals/fixtures/long-epic-python/` as a ten-leaf fulfillment operations fixture for a harder batch-vs-Goal comparison. Clean runs passed deterministic assertions in both harnesses. Batch completed in 529,397 ms with 179,688 uncached input plus output tokens and ten focused implementation commits; Goal completed in 247,101 ms with 84,566 comparable uncached tokens and one combined implementation commit. The quality distinction is now visible in commit/task audit shape, while Goal has a much larger time/token edge.

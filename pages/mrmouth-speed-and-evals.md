@@ -196,6 +196,17 @@ run also passed, produced six focused commits, and completed in 254,391 ms with
 deterministic checks and commit shape; Goal still had a meaningful time/token
 edge, but the gap was much smaller than repeated `mrmouth do`.
 
+`evals/fixtures/long-epic-python/` pushes the same comparison to a ten-leaf
+fulfillment operations epic: loading, catalog enrichment, stock allocation,
+shipments, carrier quotes, invoices, backorders, risk scoring, metrics, and CLI
+reporting. The first clean batch run passed deterministic assertions, closed all
+ten children plus the parent epic, and produced ten focused implementation
+commits in 529,397 ms with 179,688 uncached input plus output tokens. The matched
+Goal run also passed and completed in 247,101 ms with 84,566 comparable
+uncached tokens, but produced one combined implementation commit rather than
+preserving the leaf commit shape. On this larger fixture, Goal regained a large
+time/token edge while batch preserved a materially better audit trail.
+
 Successful `mrmouth do` lifecycle summaries now attach `logs/latest.log` and
 `logs/latest.jsonl` when present. This is what lets `mrmouth eval` parse timing
 markers from successful `do` runs; before that change, only failed `do` runs
