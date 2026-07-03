@@ -104,3 +104,7 @@ Recorded the cache-aware interpretation of medium fixture token usage. Mr Mouth 
 ## [2026-07-03] implemented | Multi-do epic eval fixture
 
 Recorded `evals/fixtures/multi-do-epic-python/` as the first multi-leaf eval fixture. The fixture generates a parent epic with four ordered child tasks for an inventory package and compares repeated `mrmouth do` leaf execution against one Codex Goal objective over the whole epic. Clean runs passed deterministic assertions: Mr Mouth multi-do completed in 550,945 ms with 261,521 uncached input plus output tokens across four Codex turns, while Codex Goal completed in 225,378 ms with 86,095 uncached input plus output tokens in one app-server turn. Both produced four focused implementation commits and closed the expected Litebrite items.
+
+## [2026-07-03] implemented | Experimental mrmouth batch command
+
+Recorded `mrmouth batch` as an experimental current-container path for completing multiple ready children of a parent Litebrite item in one Codex runner execution. The first `multi-do-epic-python` batch run passed deterministic assertions, closed four children plus the parent epic, produced four focused implementation commits, and completed in 242,558 ms with 111,557 uncached input plus output tokens. This is still behind the Goal baseline, but it removes most of the repeated `mrmouth do` overhead while preserving external task boundaries.

@@ -173,6 +173,18 @@ tokens. This is the first fixture where the repeated `codex exec`/task-boundary
 cost becomes obvious while still avoiding `mrmouth loop`, reviewer, shipper, or
 decider roles.
 
+`mrmouth batch` is the first experimental response to the multi-do result. It
+keeps the Litebrite epic/child structure and per-child commits, but runs one
+Codex runner execution over a parent item with instructions to complete ready
+children in dependency order up to a configured item/context ceiling. The first
+batch run on `multi-do-epic-python` passed deterministic assertions, closed all
+four children and the parent epic, and produced four focused implementation
+commits. It completed in 242,558 ms with 111,557 uncached input plus output
+tokens in one Codex turn. That is still slower and more token-heavy than the
+Goal baseline, but it removes most of the repeated `mrmouth do` penalty:
+compared with multi-do it used about 45% of the wall time and 43% of the
+uncached tokens while preserving external Litebrite task boundaries.
+
 Successful `mrmouth do` lifecycle summaries now attach `logs/latest.log` and
 `logs/latest.jsonl` when present. This is what lets `mrmouth eval` parse timing
 markers from successful `do` runs; before that change, only failed `do` runs
