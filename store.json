@@ -450,6 +450,16 @@
       "created_at": "2026-03-10T13:15:15.779001414Z",
       "updated_at": "2026-03-12T21:39:40.990759353Z"
     },
+    "lb-6a0c": {
+      "id": "lb-6a0c",
+      "title": "Add multi-do epic eval fixture",
+      "description": "Goal: Add a deterministic eval fixture that compares repeated mrmouth do leaf execution against one Codex Goal objective over an epic with multiple children. Context: Existing smol and medium fixtures validate single-leaf harness parity and token accounting. Requirements: Create a new fixture under evals/fixtures with seeded bookkeeping/worktree repos, an epic plus ordered leaf tasks, a mrmouth harness that runs do for each leaf and aggregates reports/tokens, a Goal harness for the whole epic, deterministic assertions, and docs. Acceptance: Fixture scripts pass syntax checks; at least one mrmouth multi-do run and one Goal run pass assertions; reports expose comparable wall/token totals; docs record the fixture and observed result. Out of scope: mrmouth loop/reviewer integration.",
+      "item_type": "task",
+      "status": "open",
+      "priority": 1,
+      "created_at": "2026-07-03T19:48:16.587371176Z",
+      "updated_at": "2026-07-03T19:48:16.587371176Z"
+    },
     "lb-6fha": {
       "id": "lb-6fha",
       "title": "Fix relative path construction in loop_cmd.rs log_file",
