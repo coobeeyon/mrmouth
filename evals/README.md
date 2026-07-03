@@ -83,3 +83,6 @@ available aggregate.
   its batch path runs one experimental `mrmouth batch` execution over the
   parent epic. Its Goal path asks one persistent goal turn to complete the
   parent epic and all children.
+- `fixtures/hard-epic-python/` is a six-leaf support operations fixture for
+  pushing batch and Goal harder on a larger package while preserving focused
+  per-child commits and deterministic checks.

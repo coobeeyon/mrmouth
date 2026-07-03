@@ -1,0 +1,9 @@
+ticket_id,opened_at,customer,plan,region,category,priority,status,response_minutes,resolution_minutes
+T100,2026-02-01T09:00:00,Acme,enterprise,NA,security,urgent,open,45,
+T101,2026-02-01T10:00:00,Acme,enterprise,NA,billing,high,closed,300,1500
+T102,2026-02-02T08:30:00,Beta,pro,EU,technical,normal,closed,420,2500
+T103,2026-02-02T11:15:00,Contoso,free,NA,billing,normal,closed,600,3100
+T104,2026-02-03T07:45:00,Delta,enterprise,APAC,security,high,closed,200,1600
+T105,2026-02-03T13:20:00,Acme,enterprise,EU,technical,high,open,500,
+T106,2026-02-04T12:00:00,Beta,pro,NA,technical,urgent,closed,55,470
+T107,2026-02-05T16:40:00,Echo,free,APAC,billing,normal,open,700,
