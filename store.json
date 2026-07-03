@@ -685,11 +685,10 @@
       "title": "Add long epic eval fixture",
       "description": "Goal: Add and run a larger deterministic eval fixture that pushes mrmouth batch and Codex Goal beyond the six-leaf hard fixture. Context: Existing fixtures live under evals/fixtures and hard-epic-python is the closest template. Requirements: create a new long Python epic fixture with about ten ordered child tasks, batch and Goal harnesses, deterministic assertions, docs, and observed run results. Acceptance: fixture scripts pass static checks; both batch and Goal harnesses complete successfully; assertions pass; reports expose wall/token totals; eval docs and Trapperkeeper notes record the comparison. Out of scope: changing mrmouth batch behavior, reviewer integration, and intentionally flaky evals.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 1,
-      "claimed_by": "Codex",
       "created_at": "2026-07-03T21:17:00.072855645Z",
-      "updated_at": "2026-07-03T21:17:03.725116162Z"
+      "updated_at": "2026-07-03T21:40:17.359656347Z"
     },
     "lb-anmx": {
       "id": "lb-anmx",
