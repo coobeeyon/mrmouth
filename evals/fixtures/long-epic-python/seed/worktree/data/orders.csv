@@ -1,0 +1,9 @@
+order_id,customer,region,service_level,sku,quantity,paid
+O-100,Acme,east,express,SKU-1,2,yes
+O-100,Acme,east,express,SKU-2,4,yes
+O-101,Beta,west,standard,SKU-3,10,yes
+O-102,Core,north,express,SKU-4,1,no
+O-103,Acme,east,standard,SKU-5,6,yes
+O-104,Delta,west,express,SKU-2,1,yes
+O-105,Echo,south,standard,SKU-3,4,yes
+O-106,Beta,west,express,SKU-4,2,yes

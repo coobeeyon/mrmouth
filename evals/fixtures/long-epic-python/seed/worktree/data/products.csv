@@ -1,0 +1,6 @@
+sku,name,category,stock,unit_price,weight_oz,hazmat
+SKU-1,Desk Lamp,home,12,24.50,48,no
+SKU-2,Battery Pack,electronics,3,39.00,18,yes
+SKU-3,Notebook,office,20,4.25,8,no
+SKU-4,Router,electronics,2,89.99,22,no
+SKU-5,Cleaning Kit,supplies,5,12.00,16,yes

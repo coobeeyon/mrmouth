@@ -86,3 +86,5 @@ available aggregate.
 - `fixtures/hard-epic-python/` is a six-leaf support operations fixture for
   pushing batch and Goal harder on a larger package while preserving focused
   per-child commits and deterministic checks.
+- `fixtures/long-epic-python/` is a ten-leaf fulfillment operations fixture
+  that pushes the batch and Goal harnesses through a longer ordered epic.

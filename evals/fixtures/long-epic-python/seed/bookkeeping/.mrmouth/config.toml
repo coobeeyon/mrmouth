@@ -1,0 +1,5 @@
+agent = "codex"
+
+[do]
+timeout = 60
+max_failures = 1
