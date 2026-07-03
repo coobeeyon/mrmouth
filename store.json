@@ -457,8 +457,9 @@
       "item_type": "task",
       "status": "open",
       "priority": 1,
+      "claimed_by": "Codex",
       "created_at": "2026-07-03T19:48:16.587371176Z",
-      "updated_at": "2026-07-03T19:48:16.587371176Z"
+      "updated_at": "2026-07-03T19:48:22.730198139Z"
     },
     "lb-6fha": {
       "id": "lb-6fha",
