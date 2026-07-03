@@ -152,6 +152,27 @@ reports now add normalized token fields: Mr Mouth parses
 Goal harness preserves final goal tokens, `thread/tokenUsage/updated` samples,
 normalized nested app-server usage, and comparable aggregate fields.
 
+`evals/fixtures/multi-do-epic-python/` is the first multi-leaf fixture. It
+generates a parent Litebrite epic with four ordered child tasks for a small
+Python inventory package: catalog loading, stock movement application, reorder
+planning, and CLI reporting. The Mr Mouth harness intentionally stays on
+`mrmouth do`: it runs one `mrmouth eval -- mrmouth do <leaf>` per child in
+dependency order, then writes an aggregate `reports/result.json` with summed
+child wall time and token usage. The Goal harness gives one persistent app-server
+goal the parent epic and all child ids, then asserts that all children and the
+epic are closed. Both assertions protect against test/data edits and require the
+final `./check.sh` suite to pass.
+
+The first clean multi-leaf runs both passed deterministic assertions and each
+produced four focused implementation commits in the code worktree. Mr Mouth
+multi-do completed in 550,945 ms, with summed child wall 550,896 ms and
+261,521 uncached input plus output tokens across four Codex turns. Child
+uncached totals were about 76k, 75k, 56k, and 54k. Codex Goal completed the same
+epic in 225,378 ms with one app-server turn and 86,095 uncached input plus output
+tokens. This is the first fixture where the repeated `codex exec`/task-boundary
+cost becomes obvious while still avoiding `mrmouth loop`, reviewer, shipper, or
+decider roles.
+
 Successful `mrmouth do` lifecycle summaries now attach `logs/latest.log` and
 `logs/latest.jsonl` when present. This is what lets `mrmouth eval` parse timing
 markers from successful `do` runs; before that change, only failed `do` runs

@@ -100,3 +100,7 @@ Recorded `evals/fixtures/medium-python-cli/` as the next deterministic fixture f
 ## [2026-07-03] normalized | Eval token accounting
 
 Recorded the cache-aware interpretation of medium fixture token usage. Mr Mouth and Codex Goal both showed 300k-400k raw token totals because repeated internal tool-loop context is counted each model step, but most repeated input was cached. Matched medium reruns showed 71,942 uncached input plus output tokens for Mr Mouth and 69,887 for Goal. Eval reports now expose normalized token summaries: Mr Mouth parses `lifecycle.token_usage` from inner Codex JSONL `turn.completed.usage`, and the Codex Goal harness records final goal tokens, `thread/tokenUsage/updated` samples, normalized nested app-server usage, and comparable aggregate fields.
+
+## [2026-07-03] implemented | Multi-do epic eval fixture
+
+Recorded `evals/fixtures/multi-do-epic-python/` as the first multi-leaf eval fixture. The fixture generates a parent epic with four ordered child tasks for an inventory package and compares repeated `mrmouth do` leaf execution against one Codex Goal objective over the whole epic. Clean runs passed deterministic assertions: Mr Mouth multi-do completed in 550,945 ms with 261,521 uncached input plus output tokens across four Codex turns, while Codex Goal completed in 225,378 ms with 86,095 uncached input plus output tokens in one app-server turn. Both produced four focused implementation commits and closed the expected Litebrite items.
