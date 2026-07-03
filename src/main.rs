@@ -1,4 +1,5 @@
 mod agent;
+mod batch_cmd;
 mod codex_login;
 mod config;
 mod debrief;
@@ -142,6 +143,40 @@ enum Commands {
         json_events: bool,
     },
 
+    /// Experimental: complete multiple ready child tasks in one runner execution
+    Batch {
+        /// Parent Litebrite item whose ready children should be completed
+        item_id: String,
+
+        /// Use a local worktree for code edits
+        #[arg(long, value_name = "PATH")]
+        worktree: Option<std::path::PathBuf>,
+
+        /// Run directly in the current container/workspace without Docker
+        #[arg(long, visible_alias = "no-docker", alias = "in-place")]
+        current_container: bool,
+
+        /// Maximum child tasks to complete in this batch
+        #[arg(long, default_value_t = 4)]
+        max_items: u32,
+
+        /// Stop guideline as a percent of model context, passed to the runner prompt
+        #[arg(long, default_value_t = 50)]
+        context_ceiling_percent: u32,
+
+        /// Batch timeout in minutes (default: from config or 15)
+        #[arg(long)]
+        timeout: Option<u32>,
+
+        /// Override the agent model (default: from config)
+        #[arg(long)]
+        model: Option<String>,
+
+        /// Output mrmouth lifecycle events as JSONL; disables the TUI
+        #[arg(long)]
+        json_events: bool,
+    },
+
     /// Pick up ready items from litebrite and work through them
     Ready {
         /// Per-task timeout in minutes (default: from config or 15)
@@ -258,6 +293,7 @@ fn main() {
     let lifecycle_command = match &cli.command {
         Commands::Run { .. } => "run",
         Commands::Do { .. } => "do",
+        Commands::Batch { .. } => "batch",
         Commands::Loop { .. } => "loop",
         Commands::Ready { .. } => "ready",
         Commands::Eval { .. } => "eval",
@@ -270,6 +306,7 @@ fn main() {
     };
     let lifecycle_item_id = match &cli.command {
         Commands::Do { item_id, .. } => Some(item_id.clone()),
+        Commands::Batch { item_id, .. } => Some(item_id.clone()),
         _ => None,
     };
     let lifecycle_workspace = match &cli.command {
@@ -283,6 +320,17 @@ fn main() {
             &repo_root,
             worktree.as_deref(),
             *local,
+            *current_container,
+        ),
+        Commands::Batch {
+            current_container,
+            worktree,
+            ..
+        } => lifecycle_workspace_from_layout(
+            &config,
+            &repo_root,
+            worktree.as_deref(),
+            false,
             *current_container,
         ),
         Commands::Run {
@@ -380,6 +428,31 @@ fn main() {
                 event_sink: lifecycle_events.clone(),
             };
             do_cmd::execute(&config, &repo_root, opts, tui.as_ref()).map_err(|e| e.debrief())
+        }
+        Commands::Batch {
+            item_id,
+            worktree,
+            current_container,
+            max_items,
+            context_ceiling_percent,
+            timeout,
+            model,
+            json_events,
+        } => {
+            let layout = resolve_repo_layout_or_exit(&config, &repo_root, worktree.as_deref());
+            let opts = batch_cmd::BatchOptions {
+                item_id,
+                worktree: layout.docker_work_mount(),
+                repo_layout: Some(layout),
+                current_container,
+                max_items,
+                context_ceiling_percent,
+                timeout: timeout.unwrap_or(config.do_config.timeout),
+                model: resolve_model(&config, model),
+                json_events,
+                event_sink: lifecycle_events.clone(),
+            };
+            batch_cmd::execute(&config, &repo_root, opts, tui.as_ref()).map_err(|e| e.debrief())
         }
         Commands::Ready {
             timeout,
@@ -495,6 +568,9 @@ fn output_modes(command: &Commands) -> OutputModes {
             json_events: true,
             ..
         } | Commands::Do {
+            json_events: true,
+            ..
+        } | Commands::Batch {
             json_events: true,
             ..
         } | Commands::Loop {
@@ -936,6 +1012,63 @@ mod tests {
             }
             _ => panic!("unexpected command"),
         }
+    }
+
+    #[test]
+    fn batch_current_container_parses() {
+        let cli = Cli::try_parse_from([
+            "mrmouth",
+            "batch",
+            "--current-container",
+            "--worktree",
+            "../service",
+            "--max-items",
+            "6",
+            "--context-ceiling-percent",
+            "55",
+            "lb-epic",
+        ])
+        .unwrap();
+
+        match cli.command {
+            Commands::Batch {
+                item_id,
+                current_container,
+                worktree,
+                max_items,
+                context_ceiling_percent,
+                ..
+            } => {
+                assert_eq!(item_id, "lb-epic");
+                assert!(current_container);
+                assert_eq!(worktree, Some(std::path::PathBuf::from("../service")));
+                assert_eq!(max_items, 6);
+                assert_eq!(context_ceiling_percent, 55);
+            }
+            _ => panic!("unexpected command"),
+        }
+    }
+
+    #[test]
+    fn json_events_mode_disables_tui_for_batch() {
+        let command = Commands::Batch {
+            item_id: "lb-1234".to_string(),
+            worktree: Some(PathBuf::from("../service")),
+            current_container: true,
+            max_items: 4,
+            context_ceiling_percent: 50,
+            timeout: None,
+            model: None,
+            json_events: true,
+        };
+
+        assert_eq!(
+            output_modes(&command),
+            OutputModes {
+                json_events: true,
+                start_tui: false,
+            }
+        );
     }
 
     #[test]

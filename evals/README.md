@@ -80,5 +80,6 @@ available aggregate.
   Litebrite closure while still fitting in a single turn for both harnesses.
 - `fixtures/multi-do-epic-python/` is a four-leaf epic fixture. Its Mr Mouth
   path runs `mrmouth do` once per child and aggregates per-child reports, while
-  its Goal path asks one persistent goal turn to complete the parent epic and
-  all children.
+  its batch path runs one experimental `mrmouth batch` execution over the
+  parent epic. Its Goal path asks one persistent goal turn to complete the
+  parent epic and all children.

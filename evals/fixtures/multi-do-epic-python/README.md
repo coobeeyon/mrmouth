@@ -15,14 +15,17 @@ Run from this directory:
 ```sh
 ./run.sh
 ./assert.sh
+./run_batch.sh
+./assert_batch.sh
 ./run_goal.sh
 ./assert_goal.sh
 ```
 
 `run.sh` rebuilds the fixture, runs `mrmouth do` once for each leaf task, and
 writes per-leaf reports plus `reports/result.json` with summed wall and token
-totals. `run_goal.sh` gives Codex Goal one objective to complete the epic and
-all children.
+totals. `run_batch.sh` rebuilds the fixture and runs one experimental
+`mrmouth batch` execution over the parent epic. `run_goal.sh` gives Codex Goal
+one objective to complete the epic and all children.
 
 The fixture requires `lb`, `trk`, `git`, `python3`, `node`, and the configured
 agent CLI on `PATH`.
