@@ -1695,10 +1695,10 @@
       "title": "Add batched ready-leaf runner",
       "description": "Goal: Add an experimental mrmouth path that can complete multiple ready Litebrite leaves in one Codex runner execution, then measure it on the multi-do epic fixture. Context: repeated mrmouth do per leaf lost badly to Codex Goal because each leaf paid a fresh codex exec/context setup. Requirements: add a scoped command or option for batching ready leaves without replacing do/loop; keep per-leaf claims, commits, closures, and lifecycle/report visibility; add a multi-do fixture batch harness and assertions. Acceptance: implementation tests pass; fixture batch run passes deterministic assertions; docs record the result. Out of scope: reviewer/shipper/decider integration and full mrmouth loop replacement.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 1,
       "created_at": "2026-07-03T20:19:35.103344426Z",
-      "updated_at": "2026-07-03T20:19:35.103344426Z"
+      "updated_at": "2026-07-03T20:29:48.671196818Z"
     },
     "lb-x5un": {
       "id": "lb-x5un",
