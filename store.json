@@ -57,8 +57,9 @@
       "item_type": "task",
       "status": "open",
       "priority": 1,
+      "claimed_by": "Codex",
       "created_at": "2026-07-03T16:53:19.668353620Z",
-      "updated_at": "2026-07-03T16:53:19.668353620Z"
+      "updated_at": "2026-07-03T16:53:24.265258861Z"
     },
     "lb-1ebq": {
       "id": "lb-1ebq",
