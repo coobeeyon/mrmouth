@@ -108,3 +108,7 @@ Recorded `evals/fixtures/multi-do-epic-python/` as the first multi-leaf eval fix
 ## [2026-07-03] implemented | Experimental mrmouth batch command
 
 Recorded `mrmouth batch` as an experimental current-container path for completing multiple ready children of a parent Litebrite item in one Codex runner execution. The first `multi-do-epic-python` batch run passed deterministic assertions, closed four children plus the parent epic, produced four focused implementation commits, and completed in 242,558 ms with 111,557 uncached input plus output tokens. This is still behind the Goal baseline, but it removes most of the repeated `mrmouth do` overhead while preserving external task boundaries.
+
+## [2026-07-03] implemented | Hard support operations eval fixture
+
+Recorded `evals/fixtures/hard-epic-python/` as a six-leaf support operations fixture for pushing batch and Goal beyond the four-leaf inventory case. Clean runs passed deterministic assertions and produced six focused commits in both harnesses. Batch completed in 335,010 ms with 122,006 uncached input plus output tokens; Goal completed in 254,391 ms with 97,801 uncached input plus output tokens. Quality looked tied on deterministic checks, clean worktrees, closed tasks, and commit shape, while Goal retained a time/token edge.

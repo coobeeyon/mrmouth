@@ -185,6 +185,17 @@ Goal baseline, but it removes most of the repeated `mrmouth do` penalty:
 compared with multi-do it used about 45% of the wall time and 43% of the
 uncached tokens while preserving external Litebrite task boundaries.
 
+`evals/fixtures/hard-epic-python/` is the next harder batch-vs-Goal fixture. It
+generates a six-child support operations epic over a larger Python package:
+ticket loading, SLA classification, routing, queue metrics, customer risk, and
+CLI reporting. The first clean batch run passed deterministic assertions,
+closed all six children plus the parent epic, and produced six focused commits
+in 335,010 ms with 122,006 uncached input plus output tokens. The matched Goal
+run also passed, produced six focused commits, and completed in 254,391 ms with
+97,801 uncached input plus output tokens. The quality looked tied on the
+deterministic checks and commit shape; Goal still had a meaningful time/token
+edge, but the gap was much smaller than repeated `mrmouth do`.
+
 Successful `mrmouth do` lifecycle summaries now attach `logs/latest.log` and
 `logs/latest.jsonl` when present. This is what lets `mrmouth eval` parse timing
 markers from successful `do` runs; before that change, only failed `do` runs
