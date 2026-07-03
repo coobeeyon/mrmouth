@@ -455,11 +455,10 @@
       "title": "Add multi-do epic eval fixture",
       "description": "Goal: Add a deterministic eval fixture that compares repeated mrmouth do leaf execution against one Codex Goal objective over an epic with multiple children. Context: Existing smol and medium fixtures validate single-leaf harness parity and token accounting. Requirements: Create a new fixture under evals/fixtures with seeded bookkeeping/worktree repos, an epic plus ordered leaf tasks, a mrmouth harness that runs do for each leaf and aggregates reports/tokens, a Goal harness for the whole epic, deterministic assertions, and docs. Acceptance: Fixture scripts pass syntax checks; at least one mrmouth multi-do run and one Goal run pass assertions; reports expose comparable wall/token totals; docs record the fixture and observed result. Out of scope: mrmouth loop/reviewer integration.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 1,
-      "claimed_by": "Codex",
       "created_at": "2026-07-03T19:48:16.587371176Z",
-      "updated_at": "2026-07-03T19:48:22.730198139Z"
+      "updated_at": "2026-07-03T20:08:57.438909897Z"
     },
     "lb-6fha": {
       "id": "lb-6fha",
