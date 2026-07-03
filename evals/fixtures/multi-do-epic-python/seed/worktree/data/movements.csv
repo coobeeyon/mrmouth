@@ -1,0 +1,7 @@
+sku,movement_type,quantity
+A100,sale,3
+A200,receipt,4
+B100,sale,1
+C100,adjustment,-8
+A100,receipt,6
+C100,sale,2

@@ -1,0 +1,5 @@
+sku,name,category,on_hand,reorder_point,reorder_qty,unit_cost
+A100,Black Tea,Beverages,8,10,24,2.50
+A200,Coffee Beans,Beverages,15,8,12,5.00
+B100,Notebook,Stationery,3,5,20,1.25
+C100,USB-C Cable,Electronics,12,6,10,4.75

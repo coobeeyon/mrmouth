@@ -1,0 +1,7 @@
+logs/
+worktree/
+.claude/
+.codex-home/
+.eval-epic-id
+.eval-leaf-ids
+.goal-*.txt
