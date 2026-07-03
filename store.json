@@ -55,11 +55,10 @@
       "title": "Normalize eval token accounting",
       "description": "Add apples-to-apples token accounting to the mrmouth eval and Codex Goal harness reports. Parse available Codex usage fields, preserve cached/non-cached breakdowns when available, and document the comparison semantics.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 1,
-      "claimed_by": "Codex",
       "created_at": "2026-07-03T16:53:19.668353620Z",
-      "updated_at": "2026-07-03T16:53:24.265258861Z"
+      "updated_at": "2026-07-03T17:06:44.228084917Z"
     },
     "lb-1ebq": {
       "id": "lb-1ebq",
