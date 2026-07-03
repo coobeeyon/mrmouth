@@ -96,3 +96,7 @@ Recorded the missing setup discovered in the smol Goal harness: the generated re
 ## [2026-07-02] implemented | Medium Python CLI eval fixture
 
 Recorded `evals/fixtures/medium-python-cli/` as the next deterministic fixture for comparing Mr Mouth and Codex Goal mode. The fixture rebuilds seeded bookkeeping/worktree repos, initializes the same Litebrite/Trapperkeeper/Codex hook trust setup as the smol fixture, and asks the agent to implement a Python sales summary CLI from `SPEC.md`. Clean runs passed deterministic assertions: Mr Mouth completed in 170,520 ms, and Codex Goal completed in 157,463 ms with final goal status `complete`, both producing a single-file worktree implementation commit and closing the Litebrite item. Seed worktrees now ignore Python bytecode so local compile/test checks cannot contaminate generated initial commits.
+
+## [2026-07-03] normalized | Eval token accounting
+
+Recorded the cache-aware interpretation of medium fixture token usage. Mr Mouth and Codex Goal both showed 300k-400k raw token totals because repeated internal tool-loop context is counted each model step, but most repeated input was cached. Matched medium reruns showed 71,942 uncached input plus output tokens for Mr Mouth and 69,887 for Goal. Eval reports now expose normalized token summaries: Mr Mouth parses `lifecycle.token_usage` from inner Codex JSONL `turn.completed.usage`, and the Codex Goal harness records final goal tokens, `thread/tokenUsage/updated` samples, normalized nested app-server usage, and comparable aggregate fields.

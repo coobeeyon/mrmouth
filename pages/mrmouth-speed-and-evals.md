@@ -136,6 +136,22 @@ comparison point than the smol fixture because the task work is large enough to
 start absorbing fixed harness/setup overhead, though it still fits within one
 context and one turn.
 
+Token accounting needs cache-aware normalization before comparing Mr Mouth to
+Codex Goal. A medium Mr Mouth rerun reported one Codex `turn.completed` event
+with 366,320 raw input tokens, 300,672 cached input tokens, 6,294 output tokens,
+and 1,195 reasoning output tokens. The raw input total is cumulative across the
+internal Codex tool loop, where each model step sees accumulated context; the
+uncached input plus output was 71,942 tokens. A matched Goal rerun exposed
+app-server `tokenUsage.total` with 411,357 raw input tokens, 347,520 cached input
+tokens, 6,050 output tokens, and 1,132 reasoning output tokens; its uncached
+input plus output was 69,887 tokens. The apparent 300k-400k raw-token totals are
+therefore mostly cache hits, and the apples-to-apples medium comparison is much
+closer: about 72k uncached tokens for Mr Mouth versus about 70k for Goal. Eval
+reports now add normalized token fields: Mr Mouth parses
+`lifecycle.token_usage` from inner Codex JSONL `turn.completed.usage`, and the
+Goal harness preserves final goal tokens, `thread/tokenUsage/updated` samples,
+normalized nested app-server usage, and comparable aggregate fields.
+
 Successful `mrmouth do` lifecycle summaries now attach `logs/latest.log` and
 `logs/latest.jsonl` when present. This is what lets `mrmouth eval` parse timing
 markers from successful `do` runs; before that change, only failed `do` runs
