@@ -1100,6 +1100,16 @@
       "created_at": "2026-05-12T15:47:37.811625052Z",
       "updated_at": "2026-05-12T16:42:19.226749309Z"
     },
+    "lb-kkh3": {
+      "id": "lb-kkh3",
+      "title": "Add hard epic eval fixture",
+      "description": "Goal: Add a harder deterministic eval fixture that compares mrmouth batch with Codex Goal on a larger multi-leaf epic. Context: multi-do-epic-python showed repeated do loses badly, while batch gets close to Goal on four leaves. Requirements: create a new fixture with about six ordered child tasks, a larger Python package with multiple modules/data/tests, batch and goal harnesses, deterministic assertions, and docs with observed results. Acceptance: fixture scripts pass checks; batch and goal runs pass assertions; reports expose wall and token totals; docs record the comparison. Out of scope: reviewer/loop integration and intentionally flaky evals.",
+      "item_type": "task",
+      "status": "open",
+      "priority": 1,
+      "created_at": "2026-07-03T20:50:40.482393914Z",
+      "updated_at": "2026-07-03T20:50:40.482393914Z"
+    },
     "lb-kl4s": {
       "id": "lb-kl4s",
       "title": "Add individual task support to do command",
