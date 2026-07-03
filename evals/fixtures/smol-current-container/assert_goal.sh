@@ -26,9 +26,16 @@ assert item_id in goal["objective"], goal
 assert report["thread_id"], report
 assert report["turn_id"], report
 assert report["wall_ms"] > 0, report
+token_usage = report["token_usage"]
+assert token_usage["final_goal_tokens_used"] > 0, token_usage
+assert token_usage["latest_update_normalized"]["input_tokens"] > 0, token_usage
+assert token_usage["latest_update_normalized"]["cached_input_tokens"] >= 0, token_usage
+assert token_usage["comparable_total_tokens"] > 0, token_usage
+assert token_usage["comparable_total_uncached_tokens"] > 0, token_usage
 event_counts = report["app_server"]["event_counts"]
 assert event_counts["hook/started"] == 2, event_counts
 assert event_counts["hook/completed"] == 2, event_counts
+assert event_counts["thread/tokenUsage/updated"] >= 1, event_counts
 
 evidence = report["evidence"]
 commands = evidence["command_executions"]

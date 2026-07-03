@@ -25,6 +25,7 @@ let turnId = null;
 let finalGoal = null;
 let turnCompleted = null;
 let turnFailed = null;
+const tokenUsageUpdates = [];
 let stdoutBytes = 0;
 let stderrBytes = 0;
 let exited = false;
@@ -75,6 +76,8 @@ rl.on("line", (line) => {
     } else if (message.method === "turn/failed") {
       turnFailed = message.params ?? {};
       turnId = turnFailed.turn?.id ?? turnId;
+    } else if (message.method === "thread/tokenUsage/updated") {
+      tokenUsageUpdates.push(message.params ?? {});
     }
     return;
   }
@@ -219,6 +222,7 @@ async function writeReport(success, failure) {
       completed: turnCompleted,
       failed: turnFailed,
     },
+    token_usage: buildTokenUsage(),
     app_server: {
       event_counts: eventCounts,
       raw_events_path: rawEventsPath,
@@ -233,6 +237,108 @@ async function writeReport(success, failure) {
     await writeFile(rawEventsPath, `${events.map((e) => JSON.stringify(e)).join("\n")}\n`);
   }
   console.log(`goal eval report: ${output}`);
+}
+
+function buildTokenUsage() {
+  const latestUpdate =
+    tokenUsageUpdates.length > 0 ? tokenUsageUpdates[tokenUsageUpdates.length - 1] : null;
+  const turnUsage =
+    normalizeUsage(turnCompleted?.usage) ??
+    normalizeUsage(turnCompleted?.turn?.usage) ??
+    null;
+  const latestNormalized = normalizeUsage(latestUpdate);
+  return {
+    final_goal_tokens_used: numberOrNull(finalGoal?.tokensUsed),
+    update_count: tokenUsageUpdates.length,
+    latest_update: latestUpdate,
+    latest_update_normalized: latestNormalized,
+    turn_completed: turnUsage,
+    comparable_total_tokens:
+      turnUsage?.total_tokens ??
+      latestNormalized?.total_tokens ??
+      numberOrNull(finalGoal?.tokensUsed),
+    comparable_total_uncached_tokens:
+      turnUsage?.total_uncached_tokens ??
+      latestNormalized?.total_uncached_tokens ??
+      numberOrNull(finalGoal?.tokensUsed),
+  };
+}
+
+function normalizeUsage(value) {
+  if (!value || typeof value !== "object") return null;
+  if (value.tokenUsage?.total && typeof value.tokenUsage.total === "object") {
+    return normalizeUsage(value.tokenUsage.total);
+  }
+  if (value.total && typeof value.total === "object") {
+    return normalizeUsage(value.total);
+  }
+  const inputTokens = firstNumber(value, [
+    "input_tokens",
+    "inputTokens",
+    "input",
+    "totalInputTokens",
+  ]);
+  const cachedInputTokens = firstNumber(value, [
+    "cached_input_tokens",
+    "cachedInputTokens",
+    "cachedInput",
+    "cacheReadInputTokens",
+  ]);
+  const outputTokens = firstNumber(value, [
+    "output_tokens",
+    "outputTokens",
+    "output",
+    "totalOutputTokens",
+  ]);
+  const reasoningOutputTokens = firstNumber(value, [
+    "reasoning_output_tokens",
+    "reasoningOutputTokens",
+    "reasoningTokens",
+    "reasoning",
+  ]);
+  const totalTokens = firstNumber(value, [
+    "total_tokens",
+    "totalTokens",
+    "tokensUsed",
+    "usedTokens",
+  ]);
+
+  if (
+    inputTokens == null &&
+    cachedInputTokens == null &&
+    outputTokens == null &&
+    reasoningOutputTokens == null &&
+    totalTokens == null
+  ) {
+    return null;
+  }
+
+  const input = inputTokens ?? 0;
+  const cached = cachedInputTokens ?? 0;
+  const output = outputTokens ?? 0;
+  const total = totalTokens ?? input + output;
+  return {
+    input_tokens: inputTokens,
+    cached_input_tokens: cachedInputTokens,
+    uncached_input_tokens: inputTokens == null ? null : Math.max(input - cached, 0),
+    output_tokens: outputTokens,
+    reasoning_output_tokens: reasoningOutputTokens,
+    total_tokens: total,
+    total_uncached_tokens:
+      inputTokens == null || outputTokens == null ? totalTokens : Math.max(input - cached, 0) + output,
+  };
+}
+
+function firstNumber(value, keys) {
+  for (const key of keys) {
+    const number = numberOrNull(value[key]);
+    if (number != null) return number;
+  }
+  return null;
+}
+
+function numberOrNull(value) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
 function parseArgs(argv) {

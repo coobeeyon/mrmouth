@@ -137,6 +137,7 @@ pub struct LifecycleAnalysis {
     pub event_counts: BTreeMap<String, u64>,
     pub final_summary: Option<LifecycleSummary>,
     pub timing_markers: Vec<TimingMarker>,
+    pub token_usage: Option<TokenUsageSummary>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -144,6 +145,19 @@ pub struct TimingMarker {
     pub phase: String,
     pub elapsed_ms: u64,
     pub source: String,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TokenUsageSummary {
+    pub source: String,
+    pub turn_count: u64,
+    pub input_tokens: u64,
+    pub cached_input_tokens: u64,
+    pub uncached_input_tokens: u64,
+    pub output_tokens: u64,
+    pub reasoning_output_tokens: u64,
+    pub total_tokens: u64,
+    pub total_uncached_tokens: u64,
 }
 
 pub fn analyze_lifecycle_stdout(stdout: &str, cwd: &Path) -> LifecycleAnalysis {
@@ -184,9 +198,53 @@ pub fn analyze_lifecycle_stdout(stdout: &str, cwd: &Path) -> LifecycleAnalysis {
             let path = resolve_path(cwd, Path::new(log_path));
             analysis.timing_markers = read_timing_markers(&path);
         }
+        if let Some(jsonl_path) = &summary.jsonl_path {
+            let path = resolve_path(cwd, Path::new(jsonl_path));
+            analysis.token_usage = read_token_usage(&path);
+        }
     }
 
     analysis
+}
+
+pub fn read_token_usage(path: &Path) -> Option<TokenUsageSummary> {
+    let content = fs::read_to_string(path).ok()?;
+    let mut summary = TokenUsageSummary {
+        source: path.display().to_string(),
+        ..TokenUsageSummary::default()
+    };
+
+    for line in content.lines() {
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(line) else {
+            continue;
+        };
+        if value.get("type").and_then(|t| t.as_str()) != Some("turn.completed") {
+            continue;
+        }
+        let Some(usage) = value.get("usage") else {
+            continue;
+        };
+        summary.turn_count += 1;
+        summary.input_tokens += usage_u64(usage, "input_tokens");
+        summary.cached_input_tokens += usage_u64(usage, "cached_input_tokens");
+        summary.output_tokens += usage_u64(usage, "output_tokens");
+        summary.reasoning_output_tokens += usage_u64(usage, "reasoning_output_tokens");
+    }
+
+    if summary.turn_count == 0 {
+        return None;
+    }
+
+    summary.uncached_input_tokens = summary
+        .input_tokens
+        .saturating_sub(summary.cached_input_tokens);
+    summary.total_tokens = summary.input_tokens + summary.output_tokens;
+    summary.total_uncached_tokens = summary.uncached_input_tokens + summary.output_tokens;
+    Some(summary)
+}
+
+fn usage_u64(usage: &serde_json::Value, key: &str) -> u64 {
+    usage.get(key).and_then(|v| v.as_u64()).unwrap_or(0)
 }
 
 pub fn read_timing_markers(path: &Path) -> Vec<TimingMarker> {
@@ -228,7 +286,8 @@ mod tests {
                 "summary": {
                     "status": "success",
                     "command": "run",
-                    "log_path": "logs/run-1.log"
+                    "log_path": "logs/run-1.log",
+                    "jsonl_path": "logs/run-1.jsonl"
                 }
             })
             .to_string(),
@@ -240,6 +299,33 @@ mod tests {
         fs::write(
             dir.path().join("logs/run-1.log"),
             "::mrmouth::timing phase=container-wall elapsed_ms=123\n",
+        )
+        .unwrap();
+        fs::write(
+            dir.path().join("logs/run-1.jsonl"),
+            [
+                json!({
+                    "type": "turn.completed",
+                    "usage": {
+                        "input_tokens": 100,
+                        "cached_input_tokens": 60,
+                        "output_tokens": 15,
+                        "reasoning_output_tokens": 5
+                    }
+                })
+                .to_string(),
+                json!({
+                    "type": "turn.completed",
+                    "usage": {
+                        "input_tokens": 50,
+                        "cached_input_tokens": 20,
+                        "output_tokens": 10,
+                        "reasoning_output_tokens": 2
+                    }
+                })
+                .to_string(),
+            ]
+            .join("\n"),
         )
         .unwrap();
 
@@ -261,6 +347,20 @@ mod tests {
                 source: dir.path().join("logs/run-1.log").display().to_string(),
             }]
         );
+        assert_eq!(
+            analysis.token_usage,
+            Some(TokenUsageSummary {
+                source: dir.path().join("logs/run-1.jsonl").display().to_string(),
+                turn_count: 2,
+                input_tokens: 150,
+                cached_input_tokens: 80,
+                uncached_input_tokens: 70,
+                output_tokens: 25,
+                reasoning_output_tokens: 7,
+                total_tokens: 175,
+                total_uncached_tokens: 95,
+            })
+        );
     }
 
     #[test]
@@ -280,6 +380,46 @@ mod tests {
                 elapsed_ms: 42,
                 source: log.display().to_string(),
             }]
+        );
+    }
+
+    #[test]
+    fn token_usage_reader_sums_turn_completed_usage() {
+        let dir = tempfile::tempdir().unwrap();
+        let jsonl = dir.path().join("run.jsonl");
+        fs::write(
+            &jsonl,
+            [
+                "not json".to_string(),
+                json!({"type": "item.completed"}).to_string(),
+                json!({
+                    "type": "turn.completed",
+                    "usage": {
+                        "input_tokens": 369499,
+                        "cached_input_tokens": 308224,
+                        "output_tokens": 5754,
+                        "reasoning_output_tokens": 1037
+                    }
+                })
+                .to_string(),
+            ]
+            .join("\n"),
+        )
+        .unwrap();
+
+        assert_eq!(
+            read_token_usage(&jsonl),
+            Some(TokenUsageSummary {
+                source: jsonl.display().to_string(),
+                turn_count: 1,
+                input_tokens: 369499,
+                cached_input_tokens: 308224,
+                uncached_input_tokens: 61275,
+                output_tokens: 5754,
+                reasoning_output_tokens: 1037,
+                total_tokens: 375253,
+                total_uncached_tokens: 67029,
+            })
         );
     }
 }

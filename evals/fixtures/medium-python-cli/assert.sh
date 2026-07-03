@@ -26,6 +26,11 @@ assert summary["command"] == "do", summary
 assert summary["item_id"] == item_id, summary
 markers = report["lifecycle"]["timing_markers"]
 assert any(marker["phase"] == "current-container-wall" for marker in markers), markers
+token_usage = report["lifecycle"]["token_usage"]
+assert token_usage["turn_count"] >= 1, token_usage
+assert token_usage["input_tokens"] > 0, token_usage
+assert token_usage["uncached_input_tokens"] >= 0, token_usage
+assert token_usage["total_uncached_tokens"] >= token_usage["output_tokens"], token_usage
 PY
 
 (cd "$worktree" && ./check.sh)

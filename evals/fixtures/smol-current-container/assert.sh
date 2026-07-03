@@ -25,6 +25,10 @@ assert summary["command"] == "do", summary
 assert summary["item_id"] == item_id, summary
 phases = {marker["phase"] for marker in report["lifecycle"]["timing_markers"]}
 assert "current-container-wall" in phases, phases
+token_usage = report["lifecycle"]["token_usage"]
+assert token_usage["turn_count"] >= 1, token_usage
+assert token_usage["input_tokens"] > 0, token_usage
+assert token_usage["total_uncached_tokens"] >= token_usage["output_tokens"], token_usage
 PY
 
 grep -qx "hello from smol eval" "$worktree/message.txt"

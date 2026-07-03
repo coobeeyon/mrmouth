@@ -57,6 +57,20 @@ and timing phases such as `docker-build`, `session-setup`, `container-wall`,
 `current-container-wall`, `reviewer-wall`, `decider-wall`, `summary-wall`, and
 `shipper-wall`.
 
+Token comparisons should use normalized report fields, not ad hoc log scraping.
+For Mr Mouth runs, `lifecycle.token_usage` is parsed from the inner Codex JSONL
+`turn.completed.usage` records and includes raw input, cached input, uncached
+input, output, reasoning output, total, and uncached total. Raw input can be much
+larger than the effective uncached total because each Codex tool-loop step
+replays accumulated context and most stable prefixes may be cache hits.
+
+For Codex Goal runs, `token_usage` preserves the final goal `tokensUsed`, the
+latest `thread/tokenUsage/updated` payload, any normalized turn usage fields,
+and comparable total fields. Prefer `total_uncached_tokens` or
+`comparable_total_uncached_tokens` when both harnesses expose cache-aware
+breakdowns; otherwise call out that the comparison is using each surface's best
+available aggregate.
+
 ## Fixtures
 
 - `fixtures/smol-current-container/` is a one-line text edit used to validate
