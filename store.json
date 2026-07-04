@@ -1456,11 +1456,10 @@
       "title": "Add Biolife Rust game eval fixture",
       "description": "Goal: Add a Rust-based Biolife game/simulation eval fixture that stresses architecture, physics reasoning, and backend/frontend separation. Context: Existing eval fixtures live under evals/fixtures; prior Python pipeline fixtures were too small and too text-processing oriented to pressure Codex Goal. Requirements: create a new deterministic fixture for a Rust project named biolife with a backend simulation crate cleanly separable from front/UI concerns; seed it with an existing partial codebase, tests, docs/specs, and a Litebrite graph that asks agents to implement chromosome-driven organism growth, graph-segment bodies, solar/attack/eating/defense/propulsion segments, and a simple viscous-fluid movement model with torque at nodes affecting connected segments. Acceptance: fixture prepare/run/assert scripts pass static checks; generated initial worktree has failing tests for missing behavior; docs explain the intended hard architecture/physics shape; Goal and batch harness hooks are present for later runs. Out of scope: running the full expensive comparison in this task unless the fixture is ready and time allows.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 1,
-      "claimed_by": "Codex",
       "created_at": "2026-07-04T00:10:50.719303839Z",
-      "updated_at": "2026-07-04T00:10:55.281429739Z"
+      "updated_at": "2026-07-04T00:17:59.567425745Z"
     },
     "lb-seph": {
       "id": "lb-seph",
