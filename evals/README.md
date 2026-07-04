@@ -88,3 +88,6 @@ available aggregate.
   per-child commits and deterministic checks.
 - `fixtures/long-epic-python/` is a ten-leaf fulfillment operations fixture
   that pushes the batch and Goal harnesses through a longer ordered epic.
+- `fixtures/biolife-rust/` is a Rust game/simulation fixture for architecture
+  and physics-heavy work: chromosome-driven graph organisms, segment roles,
+  combat/defense, propulsion, and a separable offline simulation backend.
