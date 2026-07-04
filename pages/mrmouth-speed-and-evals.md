@@ -207,6 +207,18 @@ uncached tokens, but produced one combined implementation commit rather than
 preserving the leaf commit shape. On this larger fixture, Goal regained a large
 time/token edge while batch preserved a materially better audit trail.
 
+`evals/fixtures/biolife-rust/` is the first non-text-pipeline fixture. It
+generates a Rust workspace for a small game/simulation prototype: chromosome
+driven creature growth, graph-shaped bodies, segment roles for solar harvesting,
+food eating, attack, defense, and muscle propulsion, plus an intentionally
+approximate overdamped viscous-fluid model. The fixture requires a clean backend
+boundary (`biolife_core`) with a thin CLI/frontend adapter (`biolife_app`). Its
+initial generated worktree compiles and fails at the first intended TODO
+(`Body::new_core`), with ten ordered Litebrite leaves covering graph invariants,
+chromosomes, growth, energy, combat, propulsion, fluid integration, deterministic
+world ticks, offline API, and CLI wiring. This is intended to stress architecture
+and physics reasoning rather than CSV/JSON aggregation.
+
 Successful `mrmouth do` lifecycle summaries now attach `logs/latest.log` and
 `logs/latest.jsonl` when present. This is what lets `mrmouth eval` parse timing
 markers from successful `do` runs; before that change, only failed `do` runs
