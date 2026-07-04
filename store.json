@@ -1451,6 +1451,16 @@
       "created_at": "2026-03-25T20:22:37.006555417Z",
       "updated_at": "2026-03-25T20:22:58.629976778Z"
     },
+    "lb-s2o4": {
+      "id": "lb-s2o4",
+      "title": "Add Biolife Rust game eval fixture",
+      "description": "Goal: Add a Rust-based Biolife game/simulation eval fixture that stresses architecture, physics reasoning, and backend/frontend separation. Context: Existing eval fixtures live under evals/fixtures; prior Python pipeline fixtures were too small and too text-processing oriented to pressure Codex Goal. Requirements: create a new deterministic fixture for a Rust project named biolife with a backend simulation crate cleanly separable from front/UI concerns; seed it with an existing partial codebase, tests, docs/specs, and a Litebrite graph that asks agents to implement chromosome-driven organism growth, graph-segment bodies, solar/attack/eating/defense/propulsion segments, and a simple viscous-fluid movement model with torque at nodes affecting connected segments. Acceptance: fixture prepare/run/assert scripts pass static checks; generated initial worktree has failing tests for missing behavior; docs explain the intended hard architecture/physics shape; Goal and batch harness hooks are present for later runs. Out of scope: running the full expensive comparison in this task unless the fixture is ready and time allows.",
+      "item_type": "task",
+      "status": "open",
+      "priority": 1,
+      "created_at": "2026-07-04T00:10:50.719303839Z",
+      "updated_at": "2026-07-04T00:10:50.719303839Z"
+    },
     "lb-seph": {
       "id": "lb-seph",
       "title": "Litebrite operations silently swallow all errors with no logging",
