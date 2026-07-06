@@ -815,11 +815,10 @@
       "title": "Require native Rust Biolife app",
       "description": "Goal: Correct the Biolife fixture so the frontend requirement is a native graphical Rust app, not HTML/browser output. Context: User clarified the app should be a graphical Rust app where creatures move and evolve in real time. Requirements: update fixture generator, generated SPEC/tests/task text, README, and eval notes to require a Rust desktop/windowed app with controls, real-time visualization, inspectors, and separable biolife_core backend; keep a headless CLI mode for automated tests; explicitly reject HTML/SVG/browser-export as the primary frontend. Acceptance: generator and scripts validate; prepared fixture contains native app requirements and tests; generated app tests compile and fail only at intended TODO; changes committed; task closed and synced. Out of scope: rerunning the full Goal/batch eval.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 1,
-      "claimed_by": "Codex",
       "created_at": "2026-07-06T16:59:40.068096175Z",
-      "updated_at": "2026-07-06T16:59:44.641313227Z"
+      "updated_at": "2026-07-06T17:03:49.418897903Z"
     },
     "lb-dvhr": {
       "id": "lb-dvhr",
