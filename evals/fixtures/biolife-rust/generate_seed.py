@@ -41,8 +41,8 @@ TASKS = [
         "Goal: Expose a clean backend API for offline simulation and snapshots. Context: Read SPEC.md section 10, inspect lib.rs and tests/offline_api.rs. Requirements: public core API can create scenarios, run N ticks, and return serializable-ish snapshots without depending on the app crate or stdout. Acceptance: from ./worktree, cargo test -p biolife_core offline_api passes; commit the code change; close only this task. Out of scope: UI rendering or networking.",
     ),
     (
-        "Wire thin CLI frontend",
-        "Goal: Implement the biolife_app CLI as a thin frontend over biolife_core. Context: Read SPEC.md section 11, inspect crates/biolife_app/src/main.rs and tests/cli.rs. Requirements: support `biolife_app --ticks N`, run the sample scenario through core APIs, print stable text summary, and keep simulation logic out of the app crate. Acceptance: from ./worktree, cargo test --workspace passes; commit the code change; close this task and close the parent epic if all children are closed. Out of scope: graphics, windowing, or web UI.",
+        "Wire inspectable GUI frontend",
+        "Goal: Implement the biolife_app frontend as a thin GUI/export layer over biolife_core. Context: Read SPEC.md section 9, inspect crates/biolife_app/src/main.rs and tests/cli.rs. Requirements: support `biolife_app --ticks N --light L --drag D --gui out.html`, run the sample scenario through core APIs, print a stable text summary, write an HTML/SVG GUI with parameter controls, organism/segment inspector, and visualization, and keep simulation logic out of the app crate. Acceptance: from ./worktree, cargo test --workspace passes; commit the code change; close this task and close the parent epic if all children are closed. Out of scope: native windowing, networking, or moving simulation rules into the app crate.",
     ),
 ]
 
@@ -109,7 +109,9 @@ time when enough energy is available.
 
 The important design constraint is architectural: simulation logic belongs in
 `biolife_core` and must be usable offline without the frontend. `biolife_app`
-is only a thin CLI adapter over the core API.
+is a frontend adapter over the core API. It may expose a CLI entrypoint, but its
+main responsibility is an inspectable GUI surface for changing parameters,
+visualizing the world, and inspecting organisms.
 
 ## 1. Core Math And Graph Body
 
@@ -190,11 +192,24 @@ number of ticks, and return a snapshot containing organism count, alive count,
 energy, health, segment counts, and positions. This API is what offline
 analysis, tests, and future renderers should use.
 
-## 9. Frontend Boundary
+## 9. Frontend Boundary And GUI
 
-`biolife_app` should parse `--ticks N`, run the sample scenario through
-`biolife_core`, and print a stable text summary. It must not duplicate growth,
-combat, or physics logic.
+`biolife_app` should parse `--ticks N`, `--light L`, `--drag D`, and optional
+`--gui out.html`. It should run the sample scenario through `biolife_core` and
+print a stable text summary.
+
+When `--gui` is provided, write a deterministic browser-viewable HTML document
+that includes:
+
+- parameter controls for ticks, light, drag, and paused/running state
+- a run/reset control surface
+- an SVG visualization of organisms, nodes, segments, and food
+- color-coded segment rendering for core, green, red, mouth, shield, and muscle
+- an organism inspector with energy, health, segment count, and node positions
+- a segment inspector listing segment id, kind, endpoints, length, and torque
+
+The GUI can be static HTML for this eval. It must not implement simulation
+rules in the frontend; all simulated state must come from `biolife_core`.
 """
 
 
@@ -707,19 +722,20 @@ fn core_exposes_offline_simulation_snapshots() {
 
 def app_main() -> str:
     return """fn main() {
-    todo!("parse --ticks and print a stable summary from biolife_core")
+    todo!("parse parameters, run core simulation, and optionally write GUI HTML")
 }
 """
 
 
 def app_cli_test() -> str:
-    return """use std::process::Command;
+    return """use std::fs;
+use std::process::Command;
 
 #[test]
 fn cli_runs_sample_simulation_through_core() {
     let exe = env!("CARGO_BIN_EXE_biolife_app");
     let output = Command::new(exe)
-        .args(["--ticks", "8"])
+        .args(["--ticks", "8", "--light", "2.5", "--drag", "6.0"])
         .output()
         .expect("run biolife_app");
     assert!(output.status.success());
@@ -728,6 +744,65 @@ fn cli_runs_sample_simulation_through_core() {
     assert!(stdout.contains("tick=8"));
     assert!(stdout.contains("organisms=2"));
     assert!(stdout.contains("segments="));
+    assert!(stdout.contains("light=2.50"));
+    assert!(stdout.contains("drag=6.00"));
+}
+
+#[test]
+fn cli_writes_inspectable_gui_html() {
+    let exe = env!("CARGO_BIN_EXE_biolife_app");
+    let output_path = std::env::temp_dir().join(format!(
+        "biolife-ui-{}-fixture.html",
+        std::process::id()
+    ));
+    let _ = fs::remove_file(&output_path);
+
+    let output = Command::new(exe)
+        .args([
+            "--ticks",
+            "12",
+            "--light",
+            "3.0",
+            "--drag",
+            "5.5",
+            "--gui",
+            output_path.to_str().unwrap(),
+        ])
+        .output()
+        .expect("run biolife_app with gui export");
+
+    assert!(output.status.success(), "stderr={}", String::from_utf8_lossy(&output.stderr));
+    let html = fs::read_to_string(&output_path).expect("read gui html");
+    let _ = fs::remove_file(&output_path);
+
+    assert!(html.contains("<html"));
+    assert!(html.contains("id=\\\"biolife-controls\\\""));
+    assert!(html.contains("name=\\\"ticks\\\""));
+    assert!(html.contains("name=\\\"light\\\""));
+    assert!(html.contains("name=\\\"drag\\\""));
+    assert!(html.contains("id=\\\"viewport\\\""));
+    assert!(html.contains("<svg"));
+    assert!(html.contains("data-segment-kind=\\\"Green\\\""));
+    assert!(html.contains("data-segment-kind=\\\"Muscle\\\""));
+    assert!(html.contains("id=\\\"organism-inspector\\\""));
+    assert!(html.contains("id=\\\"segment-inspector\\\""));
+    assert!(html.contains("Run"));
+    assert!(html.contains("Reset"));
+}
+
+#[test]
+fn cli_reports_helpfully_for_help_flag() {
+    let exe = env!("CARGO_BIN_EXE_biolife_app");
+    let output = Command::new(exe)
+        .arg("--help")
+        .output()
+        .expect("run biolife_app --help");
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("--ticks"));
+    assert!(stdout.contains("--light"));
+    assert!(stdout.contains("--drag"));
+    assert!(stdout.contains("--gui"));
 }
 """
 

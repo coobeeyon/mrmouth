@@ -6,11 +6,15 @@ inspired creature system.
 The generated worktree is a Rust workspace:
 
 - `crates/biolife_core`: deterministic offline simulation backend
-- `crates/biolife_app`: thin CLI/front-end boundary using the core API
+- `crates/biolife_app`: front-end boundary using the core API, with a required
+  inspectable HTML/SVG GUI export
 
 The task is intentionally not a text-processing pipeline. Agents must reason
 about architecture, graph-shaped organisms, chromosome-driven development,
 energy flows, combat/defense, and a small viscous-fluid locomotion model.
+The frontend must expose controls for simulation parameters, visual inspection
+of organisms/segments, and a visualization surface without moving simulation
+rules out of `biolife_core`.
 
 Run the Goal path:
 
