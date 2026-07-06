@@ -212,18 +212,19 @@ generates a Rust workspace for a small game/simulation prototype: chromosome
 driven creature growth, graph-shaped bodies, segment roles for solar harvesting,
 food eating, attack, defense, and muscle propulsion, plus an intentionally
 approximate overdamped viscous-fluid model. The fixture requires a clean backend
-boundary (`biolife_core`) and a live frontend boundary (`biolife_app`): the app
-must parse simulation parameters, run through core APIs, print a stable summary,
-and optionally write a deterministic browser-viewable HTML/SVG app that animates
-a backend-produced snapshot timeline in real time. The GUI requirement includes
-play/pause/reset/scrub controls, parameter controls, organism/segment
-inspectors that update during playback, and no duplicated simulation rules in
-frontend JavaScript. Its initial generated worktree compiles and fails at the
-first intended TODO (`Body::new_core`), with ten ordered Litebrite leaves
-covering graph invariants, chromosomes, growth, energy, combat, propulsion,
-fluid integration, deterministic world ticks, offline API, and live GUI wiring.
-This is intended to stress architecture, physics, frontend/backend separation,
-and runtime visualization rather than CSV/JSON aggregation.
+boundary (`biolife_core`) and a native graphical Rust frontend boundary
+(`biolife_app`): the app must parse simulation parameters, provide a CI-safe
+`--headless` summary mode, and launch a Rust windowed app by default. The GUI
+requirement includes real-time organism motion/evolution, play/pause/reset/step
+and speed controls, parameter controls, organism/segment inspectors that update
+during playback, and no duplicated simulation rules in the app crate. HTML/SVG
+or browser export is explicitly not sufficient. Its initial generated worktree
+compiles and fails at the first intended TODO (`Body::new_core`), with ten
+ordered Litebrite leaves covering graph invariants, chromosomes, growth, energy,
+combat, propulsion, fluid integration, deterministic world ticks, offline API,
+and native GUI wiring. This is intended to stress architecture, physics,
+frontend/backend separation, and runtime visualization rather than CSV/JSON
+aggregation.
 
 The first clean Biolife runs both passed deterministic assertions and
 `cargo test --workspace`. Codex Goal completed in 359,959 ms with 123,707

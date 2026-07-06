@@ -132,3 +132,7 @@ Updated the Biolife fixture to require a separable frontend with an inspectable 
 ## [2026-07-06] tightened | Biolife live GUI requirements
 
 Corrected the Biolife GUI requirement from inspectable export to live browser visualization. The fixture now requires the frontend to animate a backend-produced snapshot timeline in real time, expose play/pause/reset/scrub and parameter controls, update inspectors during playback, and keep simulation rules out of frontend JavaScript.
+
+## [2026-07-06] corrected | Biolife native Rust app requirement
+
+Corrected the Biolife frontend target again: the desired product is a native graphical Rust app, not HTML/SVG/browser output. The fixture now requires `biolife_app` to launch a Rust windowed app by default, keep a `--headless` mode for automated tests, expose realtime controls and inspectors in the native UI, and keep simulation rules in `biolife_core`.
