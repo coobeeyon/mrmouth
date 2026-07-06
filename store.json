@@ -1007,8 +1007,9 @@
       "item_type": "task",
       "status": "open",
       "priority": 1,
+      "claimed_by": "Codex",
       "created_at": "2026-07-06T14:31:56.408122496Z",
-      "updated_at": "2026-07-06T14:31:56.408122496Z"
+      "updated_at": "2026-07-06T14:32:01.783833110Z"
     },
     "lb-imrg": {
       "id": "lb-imrg",
