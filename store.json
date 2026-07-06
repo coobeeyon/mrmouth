@@ -220,6 +220,16 @@
       "created_at": "2026-03-25T20:19:42.643418957Z",
       "updated_at": "2026-03-25T20:20:19.026263451Z"
     },
+    "lb-338e": {
+      "id": "lb-338e",
+      "title": "Require realtime Biolife GUI animation",
+      "description": "Goal: Tighten the Biolife fixture so the GUI requirement is realtime evolution, not a static exported snapshot. Context: User clarified they want creatures to move and evolve in the app in front of them, with separable frontend/backend architecture. Requirements: update generated task, SPEC, tests, README, and eval notes to require a browser-viewable live animated HTML/SVG app driven by backend-produced snapshots; include play/pause/reset/scrub controls, parameter controls, inspection panels, and no simulation-rule duplication in frontend JS. Acceptance: generator/scripts validate; prepared fixture shows the live GUI requirements in generated SPEC/tests/task; generated app tests compile and fail only at intended TODO; changes committed; task closed and synced. Out of scope: rerunning full Goal/batch eval.",
+      "item_type": "task",
+      "status": "open",
+      "priority": 1,
+      "created_at": "2026-07-06T14:35:24.866228113Z",
+      "updated_at": "2026-07-06T14:35:24.866228113Z"
+    },
     "lb-34j5": {
       "id": "lb-34j5",
       "title": "Fix runner script missing lb sync after init",
