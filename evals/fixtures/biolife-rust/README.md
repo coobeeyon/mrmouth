@@ -7,14 +7,15 @@ The generated worktree is a Rust workspace:
 
 - `crates/biolife_core`: deterministic offline simulation backend
 - `crates/biolife_app`: front-end boundary using the core API, with a required
-  live animated HTML/SVG GUI export
+  native graphical Rust app
 
 The task is intentionally not a text-processing pipeline. Agents must reason
 about architecture, graph-shaped organisms, chromosome-driven development,
 energy flows, combat/defense, and a small viscous-fluid locomotion model.
-The frontend must show organisms moving and evolving in real time, expose
-controls for simulation parameters and playback, support visual inspection of
-organisms/segments, and keep simulation rules in `biolife_core`.
+The frontend must launch a native Rust window where organisms move and evolve
+in real time, expose controls for simulation parameters and playback, support
+visual inspection of organisms/segments, and keep simulation rules in
+`biolife_core`. A browser HTML/SVG export is not sufficient.
 
 Run the Goal path:
 

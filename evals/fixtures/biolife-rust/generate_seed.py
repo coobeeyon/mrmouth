@@ -41,8 +41,8 @@ TASKS = [
         "Goal: Expose a clean backend API for offline simulation and snapshots. Context: Read SPEC.md section 10, inspect lib.rs and tests/offline_api.rs. Requirements: public core API can create scenarios, run N ticks, and return serializable-ish snapshots without depending on the app crate or stdout. Acceptance: from ./worktree, cargo test -p biolife_core offline_api passes; commit the code change; close only this task. Out of scope: UI rendering or networking.",
     ),
     (
-        "Wire live animated GUI frontend",
-        "Goal: Implement the biolife_app frontend as a thin live GUI layer over biolife_core. Context: Read SPEC.md section 9, inspect crates/biolife_app/src/main.rs and tests/cli.rs. Requirements: support `biolife_app --ticks N --light L --drag D --gui out.html`, run the sample scenario through core APIs, print a stable text summary, write a browser-viewable HTML/SVG app that animates a backend-produced snapshot timeline in real time, exposes play/pause/reset/scrub and parameter controls, updates organism/segment inspectors while the animation runs, and keeps simulation rules out of frontend JavaScript. Acceptance: from ./worktree, cargo test --workspace passes; commit the code change; close this task and close the parent epic if all children are closed. Out of scope: native windowing, external services, or moving simulation rules into the app crate.",
+        "Wire native graphical Rust frontend",
+        "Goal: Implement biolife_app as a native graphical Rust app over biolife_core. Context: Read SPEC.md section 9, inspect crates/biolife_app/src/main.rs, Cargo.toml, and tests/cli.rs. Requirements: support `biolife_app --ticks N --light L --drag D` as a windowed Rust app by default, provide `--headless` for CI-safe text summaries, run simulation state through core APIs, render organisms moving and evolving in real time in a native window, expose play/pause/reset/step/speed and parameter controls, update organism/segment inspectors while the app runs, and keep simulation rules out of the app crate. Acceptance: from ./worktree, cargo test --workspace passes; commit the code change; close this task and close the parent epic if all children are closed. Out of scope: HTML/SVG/browser export, webviews, external services, or moving simulation rules into the app crate.",
     ),
 ]
 
@@ -109,10 +109,11 @@ time when enough energy is available.
 
 The important design constraint is architectural: simulation logic belongs in
 `biolife_core` and must be usable offline without the frontend. `biolife_app`
-is a frontend adapter over the core API. It may expose a CLI entrypoint, but its
-main responsibility is a browser-viewable GUI where organisms visibly move and
-evolve over time, parameters can be changed, and organisms/segments can be
-inspected without moving simulation rules out of the core crate.
+is a native graphical Rust app over the core API. It may expose a headless CLI
+mode for tests and offline automation, but its main responsibility is a windowed
+desktop app where organisms visibly move and evolve over time, parameters can be
+changed, and organisms/segments can be inspected without moving simulation rules
+out of the core crate.
 
 ## 1. Core Math And Graph Body
 
@@ -193,29 +194,32 @@ number of ticks, and return a snapshot containing organism count, alive count,
 energy, health, segment counts, and positions. This API is what offline
 analysis, tests, and future renderers should use.
 
-## 9. Frontend Boundary And Live GUI
+## 9. Frontend Boundary And Native Graphical App
 
 `biolife_app` should parse `--ticks N`, `--light L`, `--drag D`, and optional
-`--gui out.html`. It should run the sample scenario through `biolife_core` and
-print a stable text summary.
+`--headless`. Without `--headless`, it should launch a native graphical Rust
+window. With `--headless`, it should run through `biolife_core` and print a
+stable text summary for CI and offline automation.
 
-When `--gui` is provided, write a deterministic browser-viewable HTML document
-that includes:
+The graphical app must be built as Rust UI/rendering code, for example with
+`eframe`/`egui`, `macroquad`, `winit`/`wgpu`, `bevy`, or an equivalent native
+Rust windowing/rendering stack. It must include:
 
-- a backend-produced timeline of snapshots for ticks 0..N
-- a real-time animation loop that advances the displayed tick without reloading
+- a native application window, not a browser, generated HTML file, webview, or SVG export
+- a real-time update/render loop that advances the simulated world while running
 - parameter controls for ticks, light, drag, playback speed, and paused/running state
 - play/pause, reset, step, and scrub controls
-- an SVG visualization of organisms, nodes, segments, food, and motion over time
+- a graphical visualization of organisms, nodes, segments, food, and motion over time
 - color-coded segment rendering for core, green, red, mouth, shield, and muscle
 - an organism inspector that updates with energy, health, segment count, and node positions
 - a segment inspector that updates with segment id, kind, endpoints, length, and torque
 
-A static final-frame export is not enough for this eval. The browser app must
-make the creatures move and evolve in front of the user. Frontend JavaScript may
-animate, scrub, and inspect backend-generated snapshots, but it must not
-reimplement growth, combat, energy, or physics rules; all simulated state must
-come from `biolife_core`.
+A static final-frame export is not enough for this eval. HTML/SVG/browser output
+is not enough for this eval. The Rust app must make the creatures move and
+evolve in front of the user in a native graphical window. The app crate may own
+input handling, rendering, and UI state, but it must not reimplement growth,
+combat, energy, or physics rules; all simulated state must come from
+`biolife_core`.
 """
 
 
@@ -728,20 +732,25 @@ fn core_exposes_offline_simulation_snapshots() {
 
 def app_main() -> str:
     return """fn main() {
-    todo!("parse parameters, run core simulation, and optionally write live GUI HTML")
+    todo!("parse parameters, run core simulation, and launch native graphical app")
 }
 """
 
 
 def app_cli_test() -> str:
     return """use std::fs;
+use std::path::PathBuf;
 use std::process::Command;
 
+fn app_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+}
+
 #[test]
-fn cli_runs_sample_simulation_through_core() {
+fn headless_cli_runs_sample_simulation_through_core() {
     let exe = env!("CARGO_BIN_EXE_biolife_app");
     let output = Command::new(exe)
-        .args(["--ticks", "8", "--light", "2.5", "--drag", "6.0"])
+        .args(["--headless", "--ticks", "8", "--light", "2.5", "--drag", "6.0"])
         .output()
         .expect("run biolife_app");
     assert!(output.status.success());
@@ -755,57 +764,46 @@ fn cli_runs_sample_simulation_through_core() {
 }
 
 #[test]
-fn cli_writes_live_animated_gui_html() {
-    let exe = env!("CARGO_BIN_EXE_biolife_app");
-    let output_path = std::env::temp_dir().join(format!(
-        "biolife-ui-{}-fixture.html",
-        std::process::id()
-    ));
-    let _ = fs::remove_file(&output_path);
+fn app_is_native_graphical_rust_frontend() {
+    let app_dir = app_dir();
+    let cargo = fs::read_to_string(app_dir.join("Cargo.toml")).expect("read app Cargo.toml");
+    let main = fs::read_to_string(app_dir.join("src/main.rs")).expect("read app main");
+    let combined = format!("{}\\n{}", cargo, main);
+    let lower = combined.to_lowercase();
 
-    let output = Command::new(exe)
-        .args([
-            "--ticks",
-            "12",
-            "--light",
-            "3.0",
-            "--drag",
-            "5.5",
-            "--gui",
-            output_path.to_str().unwrap(),
-        ])
-        .output()
-        .expect("run biolife_app with live gui export");
-
-    assert!(output.status.success(), "stderr={}", String::from_utf8_lossy(&output.stderr));
-    let html = fs::read_to_string(&output_path).expect("read gui html");
-    let _ = fs::remove_file(&output_path);
-
-    assert!(html.contains("<html"));
-    assert!(html.contains("id=\\\"biolife-controls\\\""));
-    assert!(html.contains("name=\\\"ticks\\\""));
-    assert!(html.contains("name=\\\"light\\\""));
-    assert!(html.contains("name=\\\"drag\\\""));
-    assert!(html.contains("name=\\\"playback_speed\\\""));
-    assert!(html.contains("id=\\\"viewport\\\""));
-    assert!(html.contains("<svg"));
-    assert!(html.contains("id=\\\"tick-scrubber\\\""));
-    assert!(html.contains("data-live-simulation=\\\"true\\\""));
-    assert!(html.contains("data-snapshot-count=\\\"13\\\""));
-    assert!(html.contains("window.BIOLIFE_SNAPSHOTS"));
-    assert!(html.contains("requestAnimationFrame"));
-    assert!(html.contains("advanceTick"));
-    assert!(html.contains("renderFrame"));
-    assert!(html.contains("updateInspectors"));
-    assert!(html.contains("data-segment-kind=\\\"Green\\\""));
-    assert!(html.contains("data-segment-kind=\\\"Muscle\\\""));
-    assert!(html.contains("id=\\\"organism-inspector\\\""));
-    assert!(html.contains("id=\\\"segment-inspector\\\""));
-    assert!(html.contains("Play"));
-    assert!(html.contains("Pause"));
-    assert!(html.contains("Run"));
-    assert!(html.contains("Reset"));
-    assert!(html.contains("Step"));
+    assert!(
+        lower.contains("eframe")
+            || lower.contains("egui")
+            || lower.contains("macroquad")
+            || lower.contains("winit")
+            || lower.contains("wgpu")
+            || lower.contains("bevy"),
+        "biolife_app must use a native Rust GUI/windowing/rendering crate"
+    );
+    assert!(
+        lower.contains("run_native")
+            || lower.contains("eventloop")
+            || lower.contains("macroquad::main")
+            || lower.contains("impl eframe::app")
+            || lower.contains("impl app for")
+            || lower.contains("bevy::prelude"),
+        "biolife_app must launch a native Rust app/window"
+    );
+    assert!(combined.contains("biolife_core"));
+    assert!(lower.contains("headless"));
+    assert!(lower.contains("play"));
+    assert!(lower.contains("pause"));
+    assert!(lower.contains("reset"));
+    assert!(lower.contains("step"));
+    assert!(lower.contains("speed"));
+    assert!(lower.contains("scrub"));
+    assert!(lower.contains("organism"));
+    assert!(lower.contains("segment"));
+    assert!(lower.contains("inspector"));
+    assert!(!lower.contains("<html"));
+    assert!(!lower.contains("requestanimationframe"));
+    assert!(!lower.contains("window.biolife_snapshots"));
+    assert!(!lower.contains("--gui"));
 }
 
 #[test]
@@ -820,7 +818,8 @@ fn cli_reports_helpfully_for_help_flag() {
     assert!(stdout.contains("--ticks"));
     assert!(stdout.contains("--light"));
     assert!(stdout.contains("--drag"));
-    assert!(stdout.contains("--gui"));
+    assert!(stdout.contains("--headless"));
+    assert!(!stdout.contains("--gui"));
 }
 """
 
