@@ -41,8 +41,8 @@ TASKS = [
         "Goal: Expose a clean backend API for offline simulation and snapshots. Context: Read SPEC.md section 10, inspect lib.rs and tests/offline_api.rs. Requirements: public core API can create scenarios, run N ticks, and return serializable-ish snapshots without depending on the app crate or stdout. Acceptance: from ./worktree, cargo test -p biolife_core offline_api passes; commit the code change; close only this task. Out of scope: UI rendering or networking.",
     ),
     (
-        "Wire inspectable GUI frontend",
-        "Goal: Implement the biolife_app frontend as a thin GUI/export layer over biolife_core. Context: Read SPEC.md section 9, inspect crates/biolife_app/src/main.rs and tests/cli.rs. Requirements: support `biolife_app --ticks N --light L --drag D --gui out.html`, run the sample scenario through core APIs, print a stable text summary, write an HTML/SVG GUI with parameter controls, organism/segment inspector, and visualization, and keep simulation logic out of the app crate. Acceptance: from ./worktree, cargo test --workspace passes; commit the code change; close this task and close the parent epic if all children are closed. Out of scope: native windowing, networking, or moving simulation rules into the app crate.",
+        "Wire live animated GUI frontend",
+        "Goal: Implement the biolife_app frontend as a thin live GUI layer over biolife_core. Context: Read SPEC.md section 9, inspect crates/biolife_app/src/main.rs and tests/cli.rs. Requirements: support `biolife_app --ticks N --light L --drag D --gui out.html`, run the sample scenario through core APIs, print a stable text summary, write a browser-viewable HTML/SVG app that animates a backend-produced snapshot timeline in real time, exposes play/pause/reset/scrub and parameter controls, updates organism/segment inspectors while the animation runs, and keeps simulation rules out of frontend JavaScript. Acceptance: from ./worktree, cargo test --workspace passes; commit the code change; close this task and close the parent epic if all children are closed. Out of scope: native windowing, external services, or moving simulation rules into the app crate.",
     ),
 ]
 
@@ -110,8 +110,9 @@ time when enough energy is available.
 The important design constraint is architectural: simulation logic belongs in
 `biolife_core` and must be usable offline without the frontend. `biolife_app`
 is a frontend adapter over the core API. It may expose a CLI entrypoint, but its
-main responsibility is an inspectable GUI surface for changing parameters,
-visualizing the world, and inspecting organisms.
+main responsibility is a browser-viewable GUI where organisms visibly move and
+evolve over time, parameters can be changed, and organisms/segments can be
+inspected without moving simulation rules out of the core crate.
 
 ## 1. Core Math And Graph Body
 
@@ -192,7 +193,7 @@ number of ticks, and return a snapshot containing organism count, alive count,
 energy, health, segment counts, and positions. This API is what offline
 analysis, tests, and future renderers should use.
 
-## 9. Frontend Boundary And GUI
+## 9. Frontend Boundary And Live GUI
 
 `biolife_app` should parse `--ticks N`, `--light L`, `--drag D`, and optional
 `--gui out.html`. It should run the sample scenario through `biolife_core` and
@@ -201,15 +202,20 @@ print a stable text summary.
 When `--gui` is provided, write a deterministic browser-viewable HTML document
 that includes:
 
-- parameter controls for ticks, light, drag, and paused/running state
-- a run/reset control surface
-- an SVG visualization of organisms, nodes, segments, and food
+- a backend-produced timeline of snapshots for ticks 0..N
+- a real-time animation loop that advances the displayed tick without reloading
+- parameter controls for ticks, light, drag, playback speed, and paused/running state
+- play/pause, reset, step, and scrub controls
+- an SVG visualization of organisms, nodes, segments, food, and motion over time
 - color-coded segment rendering for core, green, red, mouth, shield, and muscle
-- an organism inspector with energy, health, segment count, and node positions
-- a segment inspector listing segment id, kind, endpoints, length, and torque
+- an organism inspector that updates with energy, health, segment count, and node positions
+- a segment inspector that updates with segment id, kind, endpoints, length, and torque
 
-The GUI can be static HTML for this eval. It must not implement simulation
-rules in the frontend; all simulated state must come from `biolife_core`.
+A static final-frame export is not enough for this eval. The browser app must
+make the creatures move and evolve in front of the user. Frontend JavaScript may
+animate, scrub, and inspect backend-generated snapshots, but it must not
+reimplement growth, combat, energy, or physics rules; all simulated state must
+come from `biolife_core`.
 """
 
 
@@ -722,7 +728,7 @@ fn core_exposes_offline_simulation_snapshots() {
 
 def app_main() -> str:
     return """fn main() {
-    todo!("parse parameters, run core simulation, and optionally write GUI HTML")
+    todo!("parse parameters, run core simulation, and optionally write live GUI HTML")
 }
 """
 
@@ -749,7 +755,7 @@ fn cli_runs_sample_simulation_through_core() {
 }
 
 #[test]
-fn cli_writes_inspectable_gui_html() {
+fn cli_writes_live_animated_gui_html() {
     let exe = env!("CARGO_BIN_EXE_biolife_app");
     let output_path = std::env::temp_dir().join(format!(
         "biolife-ui-{}-fixture.html",
@@ -769,7 +775,7 @@ fn cli_writes_inspectable_gui_html() {
             output_path.to_str().unwrap(),
         ])
         .output()
-        .expect("run biolife_app with gui export");
+        .expect("run biolife_app with live gui export");
 
     assert!(output.status.success(), "stderr={}", String::from_utf8_lossy(&output.stderr));
     let html = fs::read_to_string(&output_path).expect("read gui html");
@@ -780,14 +786,26 @@ fn cli_writes_inspectable_gui_html() {
     assert!(html.contains("name=\\\"ticks\\\""));
     assert!(html.contains("name=\\\"light\\\""));
     assert!(html.contains("name=\\\"drag\\\""));
+    assert!(html.contains("name=\\\"playback_speed\\\""));
     assert!(html.contains("id=\\\"viewport\\\""));
     assert!(html.contains("<svg"));
+    assert!(html.contains("id=\\\"tick-scrubber\\\""));
+    assert!(html.contains("data-live-simulation=\\\"true\\\""));
+    assert!(html.contains("data-snapshot-count=\\\"13\\\""));
+    assert!(html.contains("window.BIOLIFE_SNAPSHOTS"));
+    assert!(html.contains("requestAnimationFrame"));
+    assert!(html.contains("advanceTick"));
+    assert!(html.contains("renderFrame"));
+    assert!(html.contains("updateInspectors"));
     assert!(html.contains("data-segment-kind=\\\"Green\\\""));
     assert!(html.contains("data-segment-kind=\\\"Muscle\\\""));
     assert!(html.contains("id=\\\"organism-inspector\\\""));
     assert!(html.contains("id=\\\"segment-inspector\\\""));
+    assert!(html.contains("Play"));
+    assert!(html.contains("Pause"));
     assert!(html.contains("Run"));
     assert!(html.contains("Reset"));
+    assert!(html.contains("Step"));
 }
 
 #[test]
