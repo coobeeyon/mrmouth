@@ -120,3 +120,7 @@ Recorded `evals/fixtures/long-epic-python/` as a ten-leaf fulfillment operations
 ## [2026-07-04] added | Biolife Rust game eval fixture
 
 Recorded `evals/fixtures/biolife-rust/` as the first architecture/physics-heavy eval fixture. It generates a Rust workspace with `biolife_core` for offline simulation and `biolife_app` as a thin CLI boundary, plus ten ordered Litebrite leaves for chromosome-driven graph growth, energy, combat/defense, propulsion, viscous-fluid integration, deterministic world ticks, offline API, and frontend wiring. The generated initial worktree compiles and fails at the intended first TODO, giving agents a realistic simulation/game task rather than another text-processing pipeline.
+
+## [2026-07-06] measured | Biolife Rust eval results
+
+Recorded the first clean Biolife eval comparison. Codex Goal completed in 359,959 ms with 123,707 comparable uncached tokens and one combined implementation commit; `mrmouth batch` completed in 670,820 ms with 233,213 uncached input plus output tokens and ten focused implementation commits. Both passed `cargo test --workspace`, left tests untouched, closed all Litebrite items, and left generated worktrees clean. Goal still did not compact; the max per-step live input was about 64,911 tokens against a reported 258,400-token context window.

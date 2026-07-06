@@ -219,6 +219,15 @@ chromosomes, growth, energy, combat, propulsion, fluid integration, deterministi
 world ticks, offline API, and CLI wiring. This is intended to stress architecture
 and physics reasoning rather than CSV/JSON aggregation.
 
+The first clean Biolife runs both passed deterministic assertions and
+`cargo test --workspace`. Codex Goal completed in 359,959 ms with 123,707
+comparable uncached tokens and one combined implementation commit. `mrmouth
+batch` completed in 670,820 ms with 233,213 uncached input plus output tokens and
+ten focused implementation commits. Both left tests untouched and generated
+worktrees clean. Goal still did not compact: it used one turn, and the maximum
+per-step live input observed in token updates was about 64,911 tokens against a
+reported 258,400-token context window.
+
 Successful `mrmouth do` lifecycle summaries now attach `logs/latest.log` and
 `logs/latest.jsonl` when present. This is what lets `mrmouth eval` parse timing
 markers from successful `do` runs; before that change, only failed `do` runs
