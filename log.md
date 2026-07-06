@@ -128,3 +128,7 @@ Recorded the first clean Biolife eval comparison. Codex Goal completed in 359,95
 ## [2026-07-06] tightened | Biolife GUI eval requirements
 
 Updated the Biolife fixture to require a separable frontend with an inspectable HTML/SVG GUI export instead of a CLI-only adapter. The generated task and tests now require `biolife_app --ticks N --light L --drag D --gui out.html`, parameter controls, run/reset controls, organism and segment inspectors, color-coded segment visualization, and simulation state sourced from `biolife_core`.
+
+## [2026-07-06] tightened | Biolife live GUI requirements
+
+Corrected the Biolife GUI requirement from inspectable export to live browser visualization. The fixture now requires the frontend to animate a backend-produced snapshot timeline in real time, expose play/pause/reset/scrub and parameter controls, update inspectors during playback, and keep simulation rules out of frontend JavaScript.
