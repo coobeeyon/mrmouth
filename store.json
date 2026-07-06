@@ -1190,6 +1190,16 @@
       "created_at": "2026-03-08T21:02:10.433788241Z",
       "updated_at": "2026-03-08T21:02:30.562957936Z"
     },
+    "lb-lu9o": {
+      "id": "lb-lu9o",
+      "title": "Record Biolife eval results",
+      "description": "Goal: Record the Biolife Rust eval results after running both Codex Goal and mrmouth batch. Context: biolife-rust is the new Rust game/simulation fixture; both harnesses passed deterministic assertions. Requirements: update fixture/docs/tracking notes with wall time, token usage, commit shape, and context observations. Acceptance: docs include observed results; changes are committed; task is closed and synced. Out of scope: changing fixture behavior or rerunning additional quality judges.",
+      "item_type": "task",
+      "status": "open",
+      "priority": 1,
+      "created_at": "2026-07-06T14:12:17.208805907Z",
+      "updated_at": "2026-07-06T14:12:17.208805907Z"
+    },
     "lb-ly6e": {
       "id": "lb-ly6e",
       "title": "Restore formatted TUI agent stream with event sink",
