@@ -1005,11 +1005,10 @@
       "title": "Strengthen Biolife GUI fixture requirements",
       "description": "Goal: Tighten the Biolife Rust fixture so the frontend is a separable inspectable GUI rather than a trivial CLI summary. Context: User clarified separable front/back ends with GUI controls for changing parameters, inspecting state, and visualizing the simulation. Requirements: update fixture generator, generated spec/tests, and docs to require an HTML/SVG GUI export with parameter controls and inspectors while preserving core simulation separation. Acceptance: generated fixture prepares; frontend tests are present and fail initially at the intended app TODO; static checks pass; docs updated; changes committed; task closed and synced. Out of scope: rerunning the full Goal/batch eval.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 1,
-      "claimed_by": "Codex",
       "created_at": "2026-07-06T14:31:56.408122496Z",
-      "updated_at": "2026-07-06T14:32:01.783833110Z"
+      "updated_at": "2026-07-06T14:33:20.358471455Z"
     },
     "lb-imrg": {
       "id": "lb-imrg",
