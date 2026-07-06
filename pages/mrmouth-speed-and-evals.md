@@ -212,12 +212,15 @@ generates a Rust workspace for a small game/simulation prototype: chromosome
 driven creature growth, graph-shaped bodies, segment roles for solar harvesting,
 food eating, attack, defense, and muscle propulsion, plus an intentionally
 approximate overdamped viscous-fluid model. The fixture requires a clean backend
-boundary (`biolife_core`) with a thin CLI/frontend adapter (`biolife_app`). Its
-initial generated worktree compiles and fails at the first intended TODO
-(`Body::new_core`), with ten ordered Litebrite leaves covering graph invariants,
-chromosomes, growth, energy, combat, propulsion, fluid integration, deterministic
-world ticks, offline API, and CLI wiring. This is intended to stress architecture
-and physics reasoning rather than CSV/JSON aggregation.
+boundary (`biolife_core`) and an inspectable frontend boundary (`biolife_app`):
+the app must parse simulation parameters, run through core APIs, print a stable
+summary, and optionally write a deterministic HTML/SVG GUI with controls,
+organism/segment inspectors, and a visualization surface. Its initial generated
+worktree compiles and fails at the first intended TODO (`Body::new_core`), with
+ten ordered Litebrite leaves covering graph invariants, chromosomes, growth,
+energy, combat, propulsion, fluid integration, deterministic world ticks,
+offline API, and GUI wiring. This is intended to stress architecture, physics,
+and frontend/backend separation rather than CSV/JSON aggregation.
 
 The first clean Biolife runs both passed deterministic assertions and
 `cargo test --workspace`. Codex Goal completed in 359,959 ms with 123,707

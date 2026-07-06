@@ -124,3 +124,7 @@ Recorded `evals/fixtures/biolife-rust/` as the first architecture/physics-heavy 
 ## [2026-07-06] measured | Biolife Rust eval results
 
 Recorded the first clean Biolife eval comparison. Codex Goal completed in 359,959 ms with 123,707 comparable uncached tokens and one combined implementation commit; `mrmouth batch` completed in 670,820 ms with 233,213 uncached input plus output tokens and ten focused implementation commits. Both passed `cargo test --workspace`, left tests untouched, closed all Litebrite items, and left generated worktrees clean. Goal still did not compact; the max per-step live input was about 64,911 tokens against a reported 258,400-token context window.
+
+## [2026-07-06] tightened | Biolife GUI eval requirements
+
+Updated the Biolife fixture to require a separable frontend with an inspectable HTML/SVG GUI export instead of a CLI-only adapter. The generated task and tests now require `biolife_app --ticks N --light L --drag D --gui out.html`, parameter controls, run/reset controls, organism and segment inspectors, color-coded segment visualization, and simulation state sourced from `biolife_core`.
