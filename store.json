@@ -1195,11 +1195,10 @@
       "title": "Record Biolife eval results",
       "description": "Goal: Record the Biolife Rust eval results after running both Codex Goal and mrmouth batch. Context: biolife-rust is the new Rust game/simulation fixture; both harnesses passed deterministic assertions. Requirements: update fixture/docs/tracking notes with wall time, token usage, commit shape, and context observations. Acceptance: docs include observed results; changes are committed; task is closed and synced. Out of scope: changing fixture behavior or rerunning additional quality judges.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 1,
-      "claimed_by": "Codex",
       "created_at": "2026-07-06T14:12:17.208805907Z",
-      "updated_at": "2026-07-06T14:12:22.377324171Z"
+      "updated_at": "2026-07-06T14:13:20.078605510Z"
     },
     "lb-ly6e": {
       "id": "lb-ly6e",
