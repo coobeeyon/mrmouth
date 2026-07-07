@@ -162,6 +162,7 @@ pub fn execute(
     let run_opts = RunOptions {
         raw: false,
         json_events: opts.json_events,
+        emit_terminal_events: false,
         model: opts.model.clone(),
         timeout: Some(opts.timeout),
         local: false,

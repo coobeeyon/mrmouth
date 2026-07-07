@@ -35,6 +35,7 @@ impl Drop for DoneGuard {
 pub struct RunOptions {
     pub raw: bool,
     pub json_events: bool,
+    pub emit_terminal_events: bool,
     pub model: String,
     pub timeout: Option<u32>,
     pub local: bool,
@@ -592,18 +593,20 @@ pub fn execute(
         // Flush so classify_exit reads everything the runner script wrote.
         logger.flush();
         let reason = classify_exit(exit_code, &log_path);
-        reporter.emit(MrmouthEvent::LifecycleSummary {
-            summary: LifecycleSummary::failed(
-                "run",
-                format!("container exited with code {exit_code}: {reason}"),
-            )
-            .branch(branch.clone())
-            .workspace(run_workspace_label(local, opts.worktree_path.as_deref()))
-            .log_path(log_path.display().to_string())
-            .jsonl_path(jsonl_path.display().to_string())
-            .exit_code(exit_code)
-            .next_action("inspect_log"),
-        });
+        if opts.emit_terminal_events {
+            reporter.emit(MrmouthEvent::LifecycleSummary {
+                summary: LifecycleSummary::failed(
+                    "run",
+                    format!("container exited with code {exit_code}: {reason}"),
+                )
+                .branch(branch.clone())
+                .workspace(run_workspace_label(local, opts.worktree_path.as_deref()))
+                .log_path(log_path.display().to_string())
+                .jsonl_path(jsonl_path.display().to_string())
+                .exit_code(exit_code)
+                .next_action("inspect_log"),
+            });
+        }
         return Err(RunError::ContainerFailed {
             code: exit_code,
             reason,
@@ -616,19 +619,22 @@ pub fn execute(
         run_id: Some(log_filename),
         branch: Some(branch.clone()),
     });
-    reporter.emit(MrmouthEvent::finished(
-        FinishStatus::Success,
-        None::<String>,
-    ));
-    reporter.emit(MrmouthEvent::LifecycleSummary {
-        summary: LifecycleSummary::success("run")
-            .branch(branch)
-            .workspace(run_workspace_label(local, opts.worktree_path.as_deref()))
-            .log_path(log_path.display().to_string())
-            .jsonl_path(jsonl_path.display().to_string())
-            .exit_code(exit_code)
-            .next_action("none"),
-    });
+    if opts.emit_terminal_events {
+        reporter.emit(MrmouthEvent::finished(
+            FinishStatus::Success,
+            None::<String>,
+        ));
+        logger.flush();
+        reporter.emit(MrmouthEvent::LifecycleSummary {
+            summary: LifecycleSummary::success("run")
+                .branch(branch)
+                .workspace(run_workspace_label(local, opts.worktree_path.as_deref()))
+                .log_path(log_path.display().to_string())
+                .jsonl_path(jsonl_path.display().to_string())
+                .exit_code(exit_code)
+                .next_action("none"),
+        });
+    }
 
     Ok(logger)
 }
@@ -780,18 +786,20 @@ fn execute_current_container(
     if exit_code != 0 {
         logger.flush();
         let reason = classify_exit(exit_code, &log_path);
-        reporter.emit(MrmouthEvent::LifecycleSummary {
-            summary: LifecycleSummary::failed(
-                "run",
-                format!("agent exited with code {exit_code}: {reason}"),
-            )
-            .branch(branch.clone())
-            .workspace(current_workspace.clone())
-            .log_path(log_path.display().to_string())
-            .jsonl_path(jsonl_path.display().to_string())
-            .exit_code(exit_code)
-            .next_action("inspect_log"),
-        });
+        if opts.emit_terminal_events {
+            reporter.emit(MrmouthEvent::LifecycleSummary {
+                summary: LifecycleSummary::failed(
+                    "run",
+                    format!("agent exited with code {exit_code}: {reason}"),
+                )
+                .branch(branch.clone())
+                .workspace(current_workspace.clone())
+                .log_path(log_path.display().to_string())
+                .jsonl_path(jsonl_path.display().to_string())
+                .exit_code(exit_code)
+                .next_action("inspect_log"),
+            });
+        }
         return Err(RunError::ProcessFailed {
             code: exit_code,
             reason,
@@ -804,19 +812,22 @@ fn execute_current_container(
         run_id: Some(log_filename),
         branch: Some(branch.clone()),
     });
-    reporter.emit(MrmouthEvent::finished(
-        FinishStatus::Success,
-        None::<String>,
-    ));
-    reporter.emit(MrmouthEvent::LifecycleSummary {
-        summary: LifecycleSummary::success("run")
-            .branch(branch)
-            .workspace(current_workspace)
-            .log_path(log_path.display().to_string())
-            .jsonl_path(jsonl_path.display().to_string())
-            .exit_code(exit_code)
-            .next_action("none"),
-    });
+    if opts.emit_terminal_events {
+        reporter.emit(MrmouthEvent::finished(
+            FinishStatus::Success,
+            None::<String>,
+        ));
+        logger.flush();
+        reporter.emit(MrmouthEvent::LifecycleSummary {
+            summary: LifecycleSummary::success("run")
+                .branch(branch)
+                .workspace(current_workspace)
+                .log_path(log_path.display().to_string())
+                .jsonl_path(jsonl_path.display().to_string())
+                .exit_code(exit_code)
+                .next_action("none"),
+        });
+    }
 
     Ok(logger)
 }
@@ -1368,24 +1379,26 @@ pub fn execute_in_session(
     if exit_code != 0 {
         logger.flush();
         let reason = classify_exit(exit_code, &log_path);
-        emit_event(
-            &opts.event_sink,
-            MrmouthEvent::LifecycleSummary {
-                summary: LifecycleSummary::failed(
-                    "run",
-                    format!("container exited with code {exit_code}: {reason}"),
-                )
-                .branch(branch.clone())
-                .workspace(run_workspace_label(
-                    session.local,
-                    session.worktree_path.as_deref(),
-                ))
-                .log_path(log_path.display().to_string())
-                .jsonl_path(jsonl_path.display().to_string())
-                .exit_code(exit_code)
-                .next_action("inspect_log"),
-            },
-        );
+        if opts.emit_terminal_events {
+            emit_event(
+                &opts.event_sink,
+                MrmouthEvent::LifecycleSummary {
+                    summary: LifecycleSummary::failed(
+                        "run",
+                        format!("container exited with code {exit_code}: {reason}"),
+                    )
+                    .branch(branch.clone())
+                    .workspace(run_workspace_label(
+                        session.local,
+                        session.worktree_path.as_deref(),
+                    ))
+                    .log_path(log_path.display().to_string())
+                    .jsonl_path(jsonl_path.display().to_string())
+                    .exit_code(exit_code)
+                    .next_action("inspect_log"),
+                },
+            );
+        }
         return Err(RunError::ContainerFailed {
             code: exit_code,
             reason,
@@ -2612,6 +2625,7 @@ mod tests {
         let opts = RunOptions {
             raw: false,
             json_events: false,
+            emit_terminal_events: true,
             model: "sonnet".to_string(),
             timeout: None,
             local: false,
@@ -2632,6 +2646,7 @@ mod tests {
         let opts = RunOptions {
             raw: false,
             json_events: true,
+            emit_terminal_events: true,
             model: "sonnet".to_string(),
             timeout: None,
             local: false,
@@ -2653,6 +2668,7 @@ mod tests {
         let opts = RunOptions {
             raw: false,
             json_events: false,
+            emit_terminal_events: true,
             model: "sonnet".to_string(),
             timeout: Some(7),
             local: false,

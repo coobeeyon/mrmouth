@@ -28,6 +28,42 @@ pub struct LoopOptions {
     pub event_sink: Option<EventSinkHandle>,
 }
 
+struct LoopTerminal {
+    finished: Option<(FinishStatus, Option<String>)>,
+    summary: LifecycleSummary,
+}
+
+impl LoopTerminal {
+    fn cancelled(branch: &str) -> Self {
+        Self {
+            finished: Some((FinishStatus::Cancelled, Some("loop cancelled".to_string()))),
+            summary: LifecycleSummary {
+                status: FinishStatus::Cancelled,
+                command: "loop".to_string(),
+                item_id: None,
+                branch: Some(branch.to_string()),
+                workspace: None,
+                commit_range: None,
+                log_path: None,
+                jsonl_path: None,
+                exit_code: None,
+                failure: None,
+                reviewer: None,
+                shipper: None,
+                next_action: Some("cancelled".to_string()),
+            },
+        }
+    }
+
+    fn success(summary: LifecycleSummary, finished_summary: Option<&str>) -> Self {
+        Self {
+            finished: finished_summary
+                .map(|summary| (FinishStatus::Success, Some(summary.to_string()))),
+            summary,
+        }
+    }
+}
+
 /// Route a message to the TUI pane if available, otherwise stderr.
 fn emit(tui_tx: &Option<TuiSender>, msg: &str) {
     match tui_tx {
@@ -266,6 +302,7 @@ pub fn execute(
     .map_err(|e| LoopError::SessionStart(Box::new(e)))?;
 
     let mut run_number: u32 = 0;
+    let mut terminal: Option<LoopTerminal> = None;
 
     let loop_result = (|| -> Result<(), LoopError> {
         loop {
@@ -274,48 +311,19 @@ pub fn execute(
             // Check if TUI user cancelled
             if tui.is_some_and(|t| t.is_cancelled()) {
                 emit(&tui_tx, "LOOP CANCELLED BY USER");
-                emit_event(
-                    &opts.event_sink,
-                    MrmouthEvent::finished(FinishStatus::Cancelled, Some("loop cancelled")),
-                );
-                emit_event(
-                    &opts.event_sink,
-                    MrmouthEvent::LifecycleSummary {
-                        summary: LifecycleSummary {
-                            status: FinishStatus::Cancelled,
-                            command: "loop".to_string(),
-                            item_id: None,
-                            branch: Some(current_branch.clone()),
-                            workspace: None,
-                            commit_range: None,
-                            log_path: None,
-                            jsonl_path: None,
-                            exit_code: None,
-                            failure: None,
-                            reviewer: None,
-                            shipper: None,
-                            next_action: Some("cancelled".to_string()),
-                        },
-                    },
-                );
+                terminal = Some(LoopTerminal::cancelled(&current_branch));
                 break;
             }
 
             if opts.max_runs > 0 && run_number > opts.max_runs {
                 emit(&tui_tx, "");
                 emit(&tui_tx, &format!("LOOP COMPLETE  {} runs", opts.max_runs));
-                emit_event(
-                    &opts.event_sink,
-                    MrmouthEvent::finished(FinishStatus::Success, Some("max runs reached")),
-                );
-                emit_event(
-                    &opts.event_sink,
-                    MrmouthEvent::LifecycleSummary {
-                        summary: LifecycleSummary::success("loop")
-                            .branch(current_branch.clone())
-                            .next_action("max_runs_reached"),
-                    },
-                );
+                terminal = Some(LoopTerminal::success(
+                    LifecycleSummary::success("loop")
+                        .branch(current_branch.clone())
+                        .next_action("max_runs_reached"),
+                    Some("max runs reached"),
+                ));
                 break;
             }
 
@@ -380,15 +388,13 @@ pub fn execute(
                                 &tui_tx,
                                 &format!("LOOP COMPLETE  {completed} runs (shipped)"),
                             );
-                            emit_event(
-                                &opts.event_sink,
-                                MrmouthEvent::LifecycleSummary {
-                                    summary: LifecycleSummary::success("loop")
-                                        .branch(current_branch.clone())
-                                        .shipper("shipped")
-                                        .next_action("merged"),
-                                },
-                            );
+                            terminal = Some(LoopTerminal::success(
+                                LifecycleSummary::success("loop")
+                                    .branch(current_branch.clone())
+                                    .shipper("shipped")
+                                    .next_action("merged"),
+                                None,
+                            ));
                             break;
                         }
                         Err(e) => {
@@ -407,14 +413,12 @@ pub fn execute(
                     crate::logger::log(loop_logger.as_ref(), &format!("Decider: stop — {reason}"));
                     let completed = run_number - 1;
                     emit(&tui_tx, &format!("LOOP COMPLETE  {completed} runs"));
-                    emit_event(
-                        &opts.event_sink,
-                        MrmouthEvent::LifecycleSummary {
-                            summary: LifecycleSummary::success("loop")
-                                .branch(current_branch.clone())
-                                .next_action("stop"),
-                        },
-                    );
+                    terminal = Some(LoopTerminal::success(
+                        LifecycleSummary::success("loop")
+                            .branch(current_branch.clone())
+                            .next_action("stop"),
+                        None,
+                    ));
                     break;
                 }
                 Err(e) => {
@@ -432,30 +436,7 @@ pub fn execute(
             // Check if TUI user cancelled after decider
             if tui.is_some_and(|t| t.is_cancelled()) {
                 emit(&tui_tx, "LOOP CANCELLED BY USER");
-                emit_event(
-                    &opts.event_sink,
-                    MrmouthEvent::finished(FinishStatus::Cancelled, Some("loop cancelled")),
-                );
-                emit_event(
-                    &opts.event_sink,
-                    MrmouthEvent::LifecycleSummary {
-                        summary: LifecycleSummary {
-                            status: FinishStatus::Cancelled,
-                            command: "loop".to_string(),
-                            item_id: None,
-                            branch: Some(current_branch.clone()),
-                            workspace: None,
-                            commit_range: None,
-                            log_path: None,
-                            jsonl_path: None,
-                            exit_code: None,
-                            failure: None,
-                            reviewer: None,
-                            shipper: None,
-                            next_action: Some("cancelled".to_string()),
-                        },
-                    },
-                );
+                terminal = Some(LoopTerminal::cancelled(&current_branch));
                 break;
             }
 
@@ -463,6 +444,7 @@ pub fn execute(
             let run_opts = RunOptions {
                 raw: false,
                 json_events: opts.json_events,
+                emit_terminal_events: false,
                 model: opts.model.clone(),
                 timeout: None,
                 local: false,
@@ -506,30 +488,7 @@ pub fn execute(
             // Check if TUI user cancelled during the run
             if tui.is_some_and(|t| t.is_cancelled()) {
                 emit(&tui_tx, "LOOP CANCELLED BY USER");
-                emit_event(
-                    &opts.event_sink,
-                    MrmouthEvent::finished(FinishStatus::Cancelled, Some("loop cancelled")),
-                );
-                emit_event(
-                    &opts.event_sink,
-                    MrmouthEvent::LifecycleSummary {
-                        summary: LifecycleSummary {
-                            status: FinishStatus::Cancelled,
-                            command: "loop".to_string(),
-                            item_id: None,
-                            branch: Some(current_branch.clone()),
-                            workspace: None,
-                            commit_range: None,
-                            log_path: None,
-                            jsonl_path: None,
-                            exit_code: None,
-                            failure: None,
-                            reviewer: None,
-                            shipper: None,
-                            next_action: Some("cancelled".to_string()),
-                        },
-                    },
-                );
+                terminal = Some(LoopTerminal::cancelled(&current_branch));
                 break;
             }
 
@@ -649,30 +608,7 @@ pub fn execute(
             // Check if TUI user cancelled before sleeping
             if tui.is_some_and(|t| t.is_cancelled()) {
                 emit(&tui_tx, "LOOP CANCELLED BY USER");
-                emit_event(
-                    &opts.event_sink,
-                    MrmouthEvent::finished(FinishStatus::Cancelled, Some("loop cancelled")),
-                );
-                emit_event(
-                    &opts.event_sink,
-                    MrmouthEvent::LifecycleSummary {
-                        summary: LifecycleSummary {
-                            status: FinishStatus::Cancelled,
-                            command: "loop".to_string(),
-                            item_id: None,
-                            branch: Some(current_branch.clone()),
-                            workspace: None,
-                            commit_range: None,
-                            log_path: None,
-                            jsonl_path: None,
-                            exit_code: None,
-                            failure: None,
-                            reviewer: None,
-                            shipper: None,
-                            next_action: Some("cancelled".to_string()),
-                        },
-                    },
-                );
+                terminal = Some(LoopTerminal::cancelled(&current_branch));
                 break;
             }
 
@@ -690,6 +626,16 @@ pub fn execute(
     // Tear down the session regardless of how the loop exited.
     run::stop_session(session, loop_logger.as_ref());
 
+    if loop_result.is_ok() {
+        if let Some(terminal) = terminal {
+            emit_loop_terminal(
+                &opts.event_sink,
+                terminal.with_latest_log_paths(repo_root, &config.log_dir),
+                loop_logger.as_ref(),
+            );
+        }
+    }
+
     loop_result
 }
 
@@ -697,6 +643,48 @@ fn emit_event(sink: &Option<EventSinkHandle>, event: MrmouthEvent) {
     if let Some(sink) = sink {
         sink.emit(event);
     }
+}
+
+impl LoopTerminal {
+    fn with_latest_log_paths(mut self, repo_root: &Path, log_dir: &str) -> Self {
+        self.summary = attach_latest_log_paths(repo_root, log_dir, self.summary);
+        self
+    }
+}
+
+fn attach_latest_log_paths(
+    repo_root: &Path,
+    log_dir: &str,
+    mut summary: LifecycleSummary,
+) -> LifecycleSummary {
+    let log_path = repo_root.join(log_dir).join("latest.log");
+    if log_path.exists() {
+        summary = summary.log_path(log_path.display().to_string());
+    }
+    let jsonl_path = repo_root.join(log_dir).join("latest.jsonl");
+    if jsonl_path.exists() {
+        summary = summary.jsonl_path(jsonl_path.display().to_string());
+    }
+    summary
+}
+
+fn emit_loop_terminal(
+    sink: &Option<EventSinkHandle>,
+    terminal: LoopTerminal,
+    logger: Option<&Logger>,
+) {
+    if let Some(logger) = logger {
+        logger.flush();
+    }
+    if let Some((status, summary)) = terminal.finished {
+        emit_event(sink, MrmouthEvent::finished(status, summary));
+    }
+    emit_event(
+        sink,
+        MrmouthEvent::LifecycleSummary {
+            summary: terminal.summary,
+        },
+    );
 }
 
 /// Rebuild the Docker image (cheap if cached) and, if the new image ID
@@ -945,5 +933,63 @@ impl LoopError {
             Self::SessionStart(e) => e.debrief(),
             _ => crate::debrief::FailureDebrief::new(self.to_string()),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::events::RecordingEventSink;
+
+    #[test]
+    fn attach_latest_log_paths_adds_existing_latest_files() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("logs")).unwrap();
+        std::fs::write(dir.path().join("logs/latest.log"), "log\n").unwrap();
+        std::fs::write(dir.path().join("logs/latest.jsonl"), "{}\n").unwrap();
+
+        let summary =
+            attach_latest_log_paths(dir.path(), "logs", LifecycleSummary::success("loop"));
+
+        assert_eq!(
+            summary.log_path.as_deref(),
+            Some(dir.path().join("logs/latest.log").display().to_string()).as_deref()
+        );
+        assert_eq!(
+            summary.jsonl_path.as_deref(),
+            Some(dir.path().join("logs/latest.jsonl").display().to_string()).as_deref()
+        );
+    }
+
+    #[test]
+    fn emit_loop_terminal_flushes_log_before_lifecycle_summary() {
+        let dir = tempfile::tempdir().unwrap();
+        let log_path = dir.path().join("loop.log");
+        let logger = Logger::new(&log_path).unwrap();
+        logger.log_file_only("late summary marker");
+
+        let recording = RecordingEventSink::default();
+        let sink = Some(EventSinkHandle::new(recording.clone()));
+        let terminal = LoopTerminal::success(
+            LifecycleSummary::success("loop").branch("feature"),
+            Some("max runs reached"),
+        );
+
+        emit_loop_terminal(&sink, terminal, Some(&logger));
+
+        let log = std::fs::read_to_string(&log_path).unwrap();
+        assert!(log.contains("late summary marker"));
+
+        let events = recording.events();
+        assert!(matches!(
+            events.as_slice(),
+            [
+                MrmouthEvent::Finished {
+                    status: FinishStatus::Success,
+                    summary: Some(_),
+                },
+                MrmouthEvent::LifecycleSummary { .. },
+            ]
+        ));
     }
 }

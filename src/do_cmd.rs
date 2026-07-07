@@ -331,6 +331,9 @@ pub fn execute(
         &opts.event_sink,
         MrmouthEvent::finished(FinishStatus::Success, None::<String>),
     );
+    if let Some(logger) = epic_logger.as_ref() {
+        logger.flush();
+    }
     let summary = attach_latest_log_paths(
         repo_root,
         &config.log_dir,
@@ -404,6 +407,7 @@ fn execute_task(
     let run_opts = RunOptions {
         raw: false,
         json_events: opts.json_events,
+        emit_terminal_events: false,
         model: opts.model.clone(),
         timeout: Some(opts.timeout),
         local: opts.local,
@@ -554,6 +558,7 @@ fn execute_epic(
                 let run_opts = RunOptions {
                     raw: false,
                     json_events: opts.json_events,
+                    emit_terminal_events: false,
                     model: opts.model.clone(),
                     timeout: Some(opts.timeout),
                     local: false,
@@ -713,6 +718,7 @@ fn execute_epic(
             let run_opts = RunOptions {
                 raw: false,
                 json_events: opts.json_events,
+                emit_terminal_events: false,
                 model: opts.model.clone(),
                 timeout: Some(opts.timeout),
                 local: opts.local,

@@ -368,6 +368,7 @@ fn main() {
             let opts = run::RunOptions {
                 raw,
                 json_events,
+                emit_terminal_events: true,
                 model: resolve_model(&config, model),
                 timeout,
                 local,
