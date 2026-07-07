@@ -29,11 +29,13 @@ fake monorepo — [Split Bookkeeping/Work Repos](pages/split-bookkeeping-work-re
 final lifecycle summary ordering — [Event Rendering Architecture](pages/event-rendering-architecture.md), src/run.rs, src/loop_cmd.rs
 fixture-backed evals — [Mr Mouth Speed And Evals](pages/mrmouth-speed-and-evals.md), evals/README.md
 host post-run sync — [Dockerfile Extraction Lifecycle](pages/dockerfile-extraction-lifecycle.md)
+host-local git remotes — [Split Bookkeeping/Work Repos](pages/split-bookkeeping-work-repos.md), src/run.rs, src/docker.rs
 json lifecycle output — [Event Rendering Architecture](pages/event-rendering-architecture.md)
 large_enum_variant lifecycle event surface — [CI Check Commands](pages/ci-check-commands.md), src/events.rs
 lb prime — [Litebrite Agent Contract](pages/litebrite-agent-contract.md)
 lb ready — [Litebrite Agent Contract](pages/litebrite-agent-contract.md)
 litebrite — [Litebrite Agent Contract](pages/litebrite-agent-contract.md)
+local file remotes — [Split Bookkeeping/Work Repos](pages/split-bookkeeping-work-repos.md), src/run.rs, src/docker.rs
 local worktree support — [Mr Mouth Prime](pages/mrmouth-prime.md), src/do_cmd.rs, src/run.rs, src/docker.rs
 mrmouth eval — [Mr Mouth Speed And Evals](pages/mrmouth-speed-and-evals.md), src/eval_cmd.rs
 mrmouth prime — [Mr Mouth Prime](pages/mrmouth-prime.md)
@@ -46,6 +48,7 @@ MrmouthEvent — [Event Rendering Architecture](pages/event-rendering-architectu
 output mode coupling — [Event Rendering Architecture](pages/event-rendering-architecture.md)
 parent child decomposition — [Litebrite Agent Contract](pages/litebrite-agent-contract.md)
 post-run pull ordering — [Dockerfile Extraction Lifecycle](pages/dockerfile-extraction-lifecycle.md)
+push failure lifecycle summary — [Split Bookkeeping/Work Repos](pages/split-bookkeeping-work-repos.md), src/run.rs, src/do_cmd.rs
 review fitness for purpose — [Reviewer Fitness For Purpose](pages/reviewer-fitness-for-purpose.md)
 review target — [Reviewer Fitness For Purpose](pages/reviewer-fitness-for-purpose.md)
 reviewer model normalization — [Codex Role Model Defaults](pages/codex-role-model-defaults.md)

@@ -28,6 +28,25 @@ Container conventions:
 - `MRMOUTH_WORK_REPO` points to `/home/runner/workspace` for same-repo runs and `/home/runner/worktree` for split runs
 - `MRMOUTH_WORKTREE` is still set for split runs as a compatibility alias
 
+Local/file remote conventions:
+
+- If the bookkeeping repo has no `origin`, Docker clone mode uses the host repo
+  itself as `file:///host-repo` and configures `receive.denyCurrentBranch =
+  updateInstead`; host pull is skipped because pushes update the mounted host
+  checkout directly.
+- If `origin` is a host-local path or `file://` URL, Docker clone mode mounts
+  the canonical target at `/host-repo` and clones from `file:///host-repo`.
+  Host pull still runs afterward because the local origin may be a separate bare
+  remote.
+- If a bind-mounted bookkeeping repo or split worktree has a host-local origin,
+  the runner mounts that origin and configures in-container global
+  `url.<container-file-url>.insteadOf` rewrites. This makes `git push` use a
+  container-visible file URL without rewriting the host repo's `.git/config`.
+- Runner cleanup pushes both `/home/runner/workspace` and, when distinct,
+  `/home/runner/worktree`. A cleanup push failure emits
+  `::mrmouth::push-error` and exits nonzero so lifecycle summaries show a
+  structured failure instead of silently continuing.
+
 Prompt conventions:
 
 - Plain `run`, `ready`, and `loop` use the shared `RepoLayout` so default runner prompts get a repository-layout block when split.

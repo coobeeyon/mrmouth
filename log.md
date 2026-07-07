@@ -144,3 +144,7 @@ Recorded that reviewer commit ranges now come from the resolved code work repo f
 ## [2026-07-07] updated | Terminal lifecycle summary ordering
 
 Recorded that orchestrated `do`/`batch`/`ready`/`loop` runner calls suppress nested `run` terminal summaries via `RunOptions::emit_terminal_events`, and that `loop` defers its final summary until after session teardown and log flush.
+
+## [2026-07-07] fixed | Runner local remote and push handling
+
+Recorded Docker runner conventions for host-local git origins: local bookkeeping origins are mounted at `/host-repo`, split worktree origins are mounted with in-container `url.*.insteadOf` rewrites, no-origin file-remotes still skip host pull, separate local origins do not skip host pull, and cleanup push failures now emit `::mrmouth::push-error` so lifecycle summaries surface them as failures.
