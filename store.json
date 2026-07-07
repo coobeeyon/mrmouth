@@ -1966,11 +1966,10 @@
       "title": "Review split-worktree code changes, not bookkeeping",
       "description": "Goal: Ensure reviewer reviews the actual code worktree changes for split bookkeeping/work-repo runs. Context: In the Biolife loop, the reviewer looked at bookkeeping/Dockerfile changes instead of the worktree implementation, so review provided false confidence. Requirements: Audit src/reviewer.rs and call sites in src/do_cmd.rs/src/loop_cmd.rs; pass the resolved worktree path or commit range into reviewer containers/current-container reviewers; make reviewer prompt and git diff commands point at the code worktree when work_repo/--worktree is distinct. Add tests around ReviewTarget/commit_range or reviewer command construction if available. Acceptance: a split-repo run review scopes to worktree commits, not .mrmouth/Dockerfile bookkeeping; reviewer still can file Litebrite tasks in bookkeeping; cargo test passes. Out of scope: changing reviewer model behavior beyond correct scope.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 1,
-      "claimed_by": "Codex",
       "created_at": "2026-07-07T14:58:54.656248258Z",
-      "updated_at": "2026-07-07T15:00:49.604071308Z"
+      "updated_at": "2026-07-07T15:04:55.799026920Z"
     },
     "lb-zptt": {
       "id": "lb-zptt",
