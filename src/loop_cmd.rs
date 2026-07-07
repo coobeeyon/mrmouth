@@ -50,6 +50,7 @@ impl LoopTerminal {
                 failure: None,
                 reviewer: None,
                 shipper: None,
+                telemetry: None,
                 next_action: Some("cancelled".to_string()),
             },
         }
@@ -664,6 +665,13 @@ fn attach_latest_log_paths(
     let jsonl_path = repo_root.join(log_dir).join("latest.jsonl");
     if jsonl_path.exists() {
         summary = summary.jsonl_path(jsonl_path.display().to_string());
+    }
+    let telemetry = crate::telemetry::read_run_telemetry(
+        log_path.exists().then_some(log_path.as_path()),
+        jsonl_path.exists().then_some(jsonl_path.as_path()),
+    );
+    if !telemetry.is_empty() {
+        summary = summary.telemetry(telemetry);
     }
     summary
 }

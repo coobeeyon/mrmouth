@@ -21,6 +21,7 @@ mod shipper;
 pub mod stream_fmt;
 mod streaming;
 mod summary;
+mod telemetry;
 mod tui;
 
 use clap::{Parser, Subcommand};

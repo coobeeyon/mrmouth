@@ -588,17 +588,18 @@ pub fn execute(
         logger.flush();
         let reason = classify_exit(exit_code, &log_path);
         if opts.emit_terminal_events {
+            let summary = LifecycleSummary::failed(
+                "run",
+                format!("container exited with code {exit_code}: {reason}"),
+            )
+            .branch(branch.clone())
+            .workspace(run_workspace_label(local, opts.worktree_path.as_deref()))
+            .log_path(log_path.display().to_string())
+            .jsonl_path(jsonl_path.display().to_string())
+            .exit_code(exit_code)
+            .next_action("inspect_log");
             reporter.emit(MrmouthEvent::LifecycleSummary {
-                summary: LifecycleSummary::failed(
-                    "run",
-                    format!("container exited with code {exit_code}: {reason}"),
-                )
-                .branch(branch.clone())
-                .workspace(run_workspace_label(local, opts.worktree_path.as_deref()))
-                .log_path(log_path.display().to_string())
-                .jsonl_path(jsonl_path.display().to_string())
-                .exit_code(exit_code)
-                .next_action("inspect_log"),
+                summary: attach_run_telemetry(summary, &log_path, &jsonl_path),
             });
         }
         return Err(RunError::ContainerFailed {
@@ -619,14 +620,15 @@ pub fn execute(
             None::<String>,
         ));
         logger.flush();
+        let summary = LifecycleSummary::success("run")
+            .branch(branch)
+            .workspace(run_workspace_label(local, opts.worktree_path.as_deref()))
+            .log_path(log_path.display().to_string())
+            .jsonl_path(jsonl_path.display().to_string())
+            .exit_code(exit_code)
+            .next_action("none");
         reporter.emit(MrmouthEvent::LifecycleSummary {
-            summary: LifecycleSummary::success("run")
-                .branch(branch)
-                .workspace(run_workspace_label(local, opts.worktree_path.as_deref()))
-                .log_path(log_path.display().to_string())
-                .jsonl_path(jsonl_path.display().to_string())
-                .exit_code(exit_code)
-                .next_action("none"),
+            summary: attach_run_telemetry(summary, &log_path, &jsonl_path),
         });
     }
 
@@ -781,17 +783,18 @@ fn execute_current_container(
         logger.flush();
         let reason = classify_exit(exit_code, &log_path);
         if opts.emit_terminal_events {
+            let summary = LifecycleSummary::failed(
+                "run",
+                format!("agent exited with code {exit_code}: {reason}"),
+            )
+            .branch(branch.clone())
+            .workspace(current_workspace.clone())
+            .log_path(log_path.display().to_string())
+            .jsonl_path(jsonl_path.display().to_string())
+            .exit_code(exit_code)
+            .next_action("inspect_log");
             reporter.emit(MrmouthEvent::LifecycleSummary {
-                summary: LifecycleSummary::failed(
-                    "run",
-                    format!("agent exited with code {exit_code}: {reason}"),
-                )
-                .branch(branch.clone())
-                .workspace(current_workspace.clone())
-                .log_path(log_path.display().to_string())
-                .jsonl_path(jsonl_path.display().to_string())
-                .exit_code(exit_code)
-                .next_action("inspect_log"),
+                summary: attach_run_telemetry(summary, &log_path, &jsonl_path),
             });
         }
         return Err(RunError::ProcessFailed {
@@ -812,14 +815,15 @@ fn execute_current_container(
             None::<String>,
         ));
         logger.flush();
+        let summary = LifecycleSummary::success("run")
+            .branch(branch)
+            .workspace(current_workspace)
+            .log_path(log_path.display().to_string())
+            .jsonl_path(jsonl_path.display().to_string())
+            .exit_code(exit_code)
+            .next_action("none");
         reporter.emit(MrmouthEvent::LifecycleSummary {
-            summary: LifecycleSummary::success("run")
-                .branch(branch)
-                .workspace(current_workspace)
-                .log_path(log_path.display().to_string())
-                .jsonl_path(jsonl_path.display().to_string())
-                .exit_code(exit_code)
-                .next_action("none"),
+            summary: attach_run_telemetry(summary, &log_path, &jsonl_path),
         });
     }
 
@@ -862,6 +866,19 @@ fn run_current_container_raw(
 fn emit_event(sink: &Option<EventSinkHandle>, event: MrmouthEvent) {
     if let Some(sink) = sink {
         sink.emit(event);
+    }
+}
+
+fn attach_run_telemetry(
+    summary: LifecycleSummary,
+    log_path: &Path,
+    jsonl_path: &Path,
+) -> LifecycleSummary {
+    let telemetry = crate::telemetry::read_run_telemetry(Some(log_path), Some(jsonl_path));
+    if telemetry.is_empty() {
+        summary
+    } else {
+        summary.telemetry(telemetry)
     }
 }
 
@@ -1369,22 +1386,23 @@ pub fn execute_in_session(
         logger.flush();
         let reason = classify_exit(exit_code, &log_path);
         if opts.emit_terminal_events {
+            let summary = LifecycleSummary::failed(
+                "run",
+                format!("container exited with code {exit_code}: {reason}"),
+            )
+            .branch(branch.clone())
+            .workspace(run_workspace_label(
+                session.local,
+                session.worktree_path.as_deref(),
+            ))
+            .log_path(log_path.display().to_string())
+            .jsonl_path(jsonl_path.display().to_string())
+            .exit_code(exit_code)
+            .next_action("inspect_log");
             emit_event(
                 &opts.event_sink,
                 MrmouthEvent::LifecycleSummary {
-                    summary: LifecycleSummary::failed(
-                        "run",
-                        format!("container exited with code {exit_code}: {reason}"),
-                    )
-                    .branch(branch.clone())
-                    .workspace(run_workspace_label(
-                        session.local,
-                        session.worktree_path.as_deref(),
-                    ))
-                    .log_path(log_path.display().to_string())
-                    .jsonl_path(jsonl_path.display().to_string())
-                    .exit_code(exit_code)
-                    .next_action("inspect_log"),
+                    summary: attach_run_telemetry(summary, &log_path, &jsonl_path),
                 },
             );
         }

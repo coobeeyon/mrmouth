@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::debrief::FailureDebrief;
 use crate::events::LifecycleSummary;
+use crate::telemetry::{read_timing_markers, read_token_usage, TimingMarker, TokenUsageSummary};
 
 #[derive(Debug)]
 pub struct EvalOptions {
@@ -140,26 +141,6 @@ pub struct LifecycleAnalysis {
     pub token_usage: Option<TokenUsageSummary>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TimingMarker {
-    pub phase: String,
-    pub elapsed_ms: u64,
-    pub source: String,
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TokenUsageSummary {
-    pub source: String,
-    pub turn_count: u64,
-    pub input_tokens: u64,
-    pub cached_input_tokens: u64,
-    pub uncached_input_tokens: u64,
-    pub output_tokens: u64,
-    pub reasoning_output_tokens: u64,
-    pub total_tokens: u64,
-    pub total_uncached_tokens: u64,
-}
-
 pub fn analyze_lifecycle_stdout(stdout: &str, cwd: &Path) -> LifecycleAnalysis {
     let mut analysis = LifecycleAnalysis::default();
 
@@ -207,73 +188,10 @@ pub fn analyze_lifecycle_stdout(stdout: &str, cwd: &Path) -> LifecycleAnalysis {
     analysis
 }
 
-pub fn read_token_usage(path: &Path) -> Option<TokenUsageSummary> {
-    let content = fs::read_to_string(path).ok()?;
-    let mut summary = TokenUsageSummary {
-        source: path.display().to_string(),
-        ..TokenUsageSummary::default()
-    };
-
-    for line in content.lines() {
-        let Ok(value) = serde_json::from_str::<serde_json::Value>(line) else {
-            continue;
-        };
-        if value.get("type").and_then(|t| t.as_str()) != Some("turn.completed") {
-            continue;
-        }
-        let Some(usage) = value.get("usage") else {
-            continue;
-        };
-        summary.turn_count += 1;
-        summary.input_tokens += usage_u64(usage, "input_tokens");
-        summary.cached_input_tokens += usage_u64(usage, "cached_input_tokens");
-        summary.output_tokens += usage_u64(usage, "output_tokens");
-        summary.reasoning_output_tokens += usage_u64(usage, "reasoning_output_tokens");
-    }
-
-    if summary.turn_count == 0 {
-        return None;
-    }
-
-    summary.uncached_input_tokens = summary
-        .input_tokens
-        .saturating_sub(summary.cached_input_tokens);
-    summary.total_tokens = summary.input_tokens + summary.output_tokens;
-    summary.total_uncached_tokens = summary.uncached_input_tokens + summary.output_tokens;
-    Some(summary)
-}
-
-fn usage_u64(usage: &serde_json::Value, key: &str) -> u64 {
-    usage.get(key).and_then(|v| v.as_u64()).unwrap_or(0)
-}
-
-pub fn read_timing_markers(path: &Path) -> Vec<TimingMarker> {
-    let Ok(content) = fs::read_to_string(path) else {
-        return Vec::new();
-    };
-    content
-        .lines()
-        .filter_map(|line| parse_timing_marker(line, path))
-        .collect()
-}
-
-fn parse_timing_marker(line: &str, source: &Path) -> Option<TimingMarker> {
-    let prefix = "::mrmouth::timing phase=";
-    let start = line.find(prefix)? + prefix.len();
-    let rest = &line[start..];
-    let (phase, elapsed) = rest.split_once(" elapsed_ms=")?;
-    let elapsed_digits: String = elapsed.chars().take_while(|c| c.is_ascii_digit()).collect();
-    let elapsed_ms = elapsed_digits.parse().ok()?;
-    Some(TimingMarker {
-        phase: phase.to_string(),
-        elapsed_ms,
-        source: source.display().to_string(),
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::telemetry::TokenUsageStatus;
     use serde_json::json;
 
     #[test]
@@ -351,7 +269,11 @@ mod tests {
             analysis.token_usage,
             Some(TokenUsageSummary {
                 source: dir.path().join("logs/run-1.jsonl").display().to_string(),
+                status: TokenUsageStatus::Completed,
+                caveat: None,
                 turn_count: 2,
+                partial_event_count: 0,
+                last_event_type: None,
                 input_tokens: 150,
                 cached_input_tokens: 80,
                 uncached_input_tokens: 70,
@@ -411,7 +333,11 @@ mod tests {
             read_token_usage(&jsonl),
             Some(TokenUsageSummary {
                 source: jsonl.display().to_string(),
+                status: TokenUsageStatus::Completed,
+                caveat: None,
                 turn_count: 1,
+                partial_event_count: 0,
+                last_event_type: None,
                 input_tokens: 369499,
                 cached_input_tokens: 308224,
                 uncached_input_tokens: 61275,

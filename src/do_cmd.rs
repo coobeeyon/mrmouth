@@ -385,6 +385,14 @@ fn attach_latest_log_paths(
         summary = summary.jsonl_path(jsonl_path.display().to_string());
     }
 
+    let telemetry = crate::telemetry::read_run_telemetry(
+        log_path.exists().then_some(log_path.as_path()),
+        jsonl_path.exists().then_some(jsonl_path.as_path()),
+    );
+    if !telemetry.is_empty() {
+        summary = summary.telemetry(telemetry);
+    }
+
     summary
 }
 

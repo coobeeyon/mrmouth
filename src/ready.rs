@@ -419,30 +419,54 @@ pub fn execute(
         &tui_tx,
         &format!("Done. Merge branch '{branch_name}' when ready."),
     );
-    emit_event(
-        &opts.event_sink,
-        MrmouthEvent::LifecycleSummary {
-            summary: LifecycleSummary {
-                status: final_status,
-                command: "ready".to_string(),
-                item_id: None,
-                branch: Some(branch_name),
-                workspace: repo_layout
-                    .is_split()
-                    .then(|| repo_layout.agent_work_path(false)),
-                commit_range: None,
-                log_path: None,
-                jsonl_path: None,
-                exit_code: None,
-                failure: None,
-                reviewer: None,
-                shipper: None,
-                next_action: Some(final_note),
-            },
+    let summary = attach_latest_log_paths(
+        repo_root,
+        &config.log_dir,
+        LifecycleSummary {
+            status: final_status,
+            command: "ready".to_string(),
+            item_id: None,
+            branch: Some(branch_name),
+            workspace: repo_layout
+                .is_split()
+                .then(|| repo_layout.agent_work_path(false)),
+            commit_range: None,
+            log_path: None,
+            jsonl_path: None,
+            exit_code: None,
+            failure: None,
+            reviewer: None,
+            shipper: None,
+            telemetry: None,
+            next_action: Some(final_note),
         },
     );
+    emit_event(&opts.event_sink, MrmouthEvent::LifecycleSummary { summary });
 
     Ok(())
+}
+
+fn attach_latest_log_paths(
+    repo_root: &Path,
+    log_dir: &str,
+    mut summary: LifecycleSummary,
+) -> LifecycleSummary {
+    let log_path = repo_root.join(log_dir).join("latest.log");
+    if log_path.exists() {
+        summary = summary.log_path(log_path.display().to_string());
+    }
+    let jsonl_path = repo_root.join(log_dir).join("latest.jsonl");
+    if jsonl_path.exists() {
+        summary = summary.jsonl_path(jsonl_path.display().to_string());
+    }
+    let telemetry = crate::telemetry::read_run_telemetry(
+        log_path.exists().then_some(log_path.as_path()),
+        jsonl_path.exists().then_some(jsonl_path.as_path()),
+    );
+    if !telemetry.is_empty() {
+        summary = summary.telemetry(telemetry);
+    }
+    summary
 }
 
 fn emit_event(sink: &Option<EventSinkHandle>, event: MrmouthEvent) {

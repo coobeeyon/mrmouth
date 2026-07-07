@@ -3,6 +3,8 @@ use std::sync::{Arc, Mutex};
 
 use serde::{Deserialize, Serialize};
 
+use crate::telemetry::RunTelemetry;
+
 /// A lifecycle event emitted by mrmouth orchestration code.
 ///
 /// This is intentionally separate from inner-agent stream JSON. These events
@@ -160,6 +162,8 @@ pub struct LifecycleSummary {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub shipper: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub telemetry: Option<RunTelemetry>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub next_action: Option<String>,
 }
 
@@ -178,6 +182,7 @@ impl LifecycleSummary {
             failure: None,
             reviewer: None,
             shipper: None,
+            telemetry: None,
             next_action: None,
         }
     }
@@ -196,6 +201,7 @@ impl LifecycleSummary {
             failure: Some(failure.into()),
             reviewer: None,
             shipper: None,
+            telemetry: None,
             next_action: None,
         }
     }
@@ -242,6 +248,11 @@ impl LifecycleSummary {
 
     pub fn shipper(mut self, shipper: impl Into<String>) -> Self {
         self.shipper = Some(shipper.into());
+        self
+    }
+
+    pub fn telemetry(mut self, telemetry: RunTelemetry) -> Self {
+        self.telemetry = Some(telemetry);
         self
     }
 
