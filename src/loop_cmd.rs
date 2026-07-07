@@ -464,7 +464,7 @@ pub fn execute(
                 event_sink: opts.event_sink.clone(),
             };
 
-            let head_before = git_head(repo_root);
+            let head_before = git_head(&repo_layout.work_repo);
 
             emit_event(
                 &opts.event_sink,
@@ -542,7 +542,7 @@ pub fn execute(
             );
 
             // --- Reviewer (only if the agent actually committed something) ---
-            let head_after = git_head(repo_root);
+            let head_after = git_head(&repo_layout.work_repo);
             let commit_range = match (&head_before, &head_after) {
                 (Ok(before), Ok(after)) if before != after => Some((before.clone(), after.clone())),
                 _ => None,
@@ -560,6 +560,7 @@ pub fn execute(
                     current_branch: current_branch.clone(),
                     commit_range,
                     review_target: None,
+                    worktree_path: repo_layout.docker_work_mount(),
                     event_sink: opts.event_sink.clone(),
                 };
                 if let Err(e) = reviewer::execute(config, repo_root, &reviewer_opts, logger_opt) {
