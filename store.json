@@ -1656,11 +1656,10 @@
       "title": "Improve runner context hygiene for generated files",
       "description": "Goal: Reduce runner context waste from irrelevant generated files and home/plugin caches. Context: In the Biolife run, the agent listed huge .codex-home/.tmp/plugins trees, wasting tokens and obscuring useful files. Requirements: Update prompts or runner workspace setup to tell agents to avoid generated/cache directories; consider adding safe default ignore patterns or a compact repo file listing helper for prompts. Ensure .codex-home, logs, preserved eval artifacts, target, and plugin caches are not encouraged as source context. Acceptance: default prompt/context guidance names ignored/generated areas; a smoke run or unit test shows generated cache paths are excluded from any built-in file inventory; cargo test passes. Out of scope: a full semantic repository indexer.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 2,
-      "claimed_by": "Codex",
       "created_at": "2026-07-07T14:59:14.705162555Z",
-      "updated_at": "2026-07-07T15:33:18.124854174Z"
+      "updated_at": "2026-07-07T15:35:38.082868851Z"
     },
     "lb-uiox": {
       "id": "lb-uiox",
