@@ -152,3 +152,7 @@ Recorded Docker runner conventions for host-local git origins: local bookkeeping
 ## [2026-07-07] implemented | Partial eval telemetry caveats
 
 Recorded that `src/telemetry.rs` centralizes timing and token usage parsing. Eval reports now distinguish `completed`, `partial`, and `missing` token usage, attach structured caveats when `turn.completed` is absent, and lifecycle summaries for runner/orchestrator commands attach log paths, JSONL paths, and parsed telemetry when available.
+
+## [2026-07-07] updated | Runner context hygiene prompt
+
+Recorded that `src/prompt.rs` now carries default runner guidance to avoid treating generated files, build outputs, logs, preserved eval artifacts, and agent/plugin caches as source context. The prompt names `.codex-home/`, `.tmp/plugins/`, `logs/`, `target/`, `preserved/`, and generated eval fixture output directories, and tests lock those examples into the embedded default prompt.
