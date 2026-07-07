@@ -136,3 +136,7 @@ Corrected the Biolife GUI requirement from inspectable export to live browser vi
 ## [2026-07-06] corrected | Biolife native Rust app requirement
 
 Corrected the Biolife frontend target again: the desired product is a native graphical Rust app, not HTML/SVG/browser output. The fixture now requires `biolife_app` to launch a Rust windowed app by default, keep a `--headless` mode for automated tests, expose realtime controls and inspectors in the native UI, and keep simulation rules in `biolife_core`.
+
+## [2026-07-07] fixed | Split worktree reviewer scope
+
+Recorded that reviewer commit ranges now come from the resolved code work repo for `do`, `ready`, and `loop`. Reviewer Docker containers still use `/home/runner/workspace` for Litebrite/Trapperkeeper state, but mount split code repos at `/home/runner/worktree` and prompt reviewers to run git diff/log plus build/test commands there.

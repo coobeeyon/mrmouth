@@ -40,8 +40,10 @@ Command flow:
 - `src/ready.rs` and `src/loop_cmd.rs` resolve `RepoLayout` from config and pass it into runner options/session setup.
 - `src/docker.rs` mounts the bookkeeping repo at `/home/runner/workspace` in local/file-remote modes and mounts the distinct work repo at `/home/runner/worktree`.
 - `src/run.rs` injects default prompt guidance only when using the default prompt, avoiding duplicate layout blocks for `do`/`ready` prompt overrides.
+- `src/do_cmd.rs`, `src/ready.rs`, and `src/loop_cmd.rs` calculate reviewer commit ranges from the resolved work repo when split, then pass the worktree mount into `reviewer::ReviewerOptions`.
 
-Important limitation: reviewer and host branch accounting still operate on the
-bookkeeping repo. Split-repo agents are instructed to commit and push code in
-the work repo themselves; mrmouth does not yet calculate reviewer commit ranges
-from the inner work repo.
+Reviewer conventions:
+
+- Reviewer containers still clone/use the bookkeeping repo at `/home/runner/workspace` so `lb` and `trk` can inspect and update task state.
+- When a distinct work repo exists, reviewer containers mount it at `/home/runner/worktree`, mark it as a safe Git directory, and prompt the reviewer to run git diff/log plus build/test commands there.
+- Split-repo agents are still responsible for committing and pushing code in the work repo themselves.

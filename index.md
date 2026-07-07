@@ -48,11 +48,13 @@ post-run pull ordering — [Dockerfile Extraction Lifecycle](pages/dockerfile-ex
 review fitness for purpose — [Reviewer Fitness For Purpose](pages/reviewer-fitness-for-purpose.md)
 review target — [Reviewer Fitness For Purpose](pages/reviewer-fitness-for-purpose.md)
 reviewer model normalization — [Codex Role Model Defaults](pages/codex-role-model-defaults.md)
+reviewer split worktree scope — [Reviewer Fitness For Purpose](pages/reviewer-fitness-for-purpose.md), src/reviewer.rs, src/do_cmd.rs, src/loop_cmd.rs, src/ready.rs
 runtime benchmarks — [Mr Mouth Speed And Evals](pages/mrmouth-speed-and-evals.md)
 session reuse — [Mr Mouth Speed And Evals](pages/mrmouth-speed-and-evals.md), src/run.rs, src/do_cmd.rs, src/loop_cmd.rs
 smol current-container eval — [Mr Mouth Speed And Evals](pages/mrmouth-speed-and-evals.md), evals/fixtures/smol-current-container
 sibling dependencies — [Litebrite Agent Contract](pages/litebrite-agent-contract.md)
 split bookkeeping work repos — [Split Bookkeeping/Work Repos](pages/split-bookkeeping-work-repos.md), src/repo_layout.rs
+split worktree reviewer — [Reviewer Fitness For Purpose](pages/reviewer-fitness-for-purpose.md), src/reviewer.rs
 supervisor output contract — [Mr Mouth Prime](pages/mrmouth-prime.md)
 tui separation — [Event Rendering Architecture](pages/event-rendering-architecture.md)
 uncommitted Dockerfile poisoning — [Dockerfile Extraction Lifecycle](pages/dockerfile-extraction-lifecycle.md), src/run.rs, src/reviewer.rs
