@@ -1586,11 +1586,10 @@
       "title": "Make run finalization and preservation atomic",
       "description": "Goal: Make mrmouth finalization and preservation wait for the real terminal state of all child work before reporting success or copying artifacts. Context: In the Biolife run, an interrupted preserved copy captured the GUI leaf with main.rs deleted, while the source worktree later contained commit 516085d. That made the result ambiguous. Requirements: Audit do/loop/run finalization paths in src/do_cmd.rs, src/loop_cmd.rs, src/run.rs, and eval preservation hooks; ensure no final lifecycle summary or preservation step is emitted until runner/reviewer/summary child processes are complete and git/log state is flushed. Add a regression test or small fixture-style test that simulates a late child process/log write if feasible. Acceptance: json-events lifecycle has a single trustworthy terminal summary; preserved artifacts correspond to the final reported commit/log state; cargo test passes. Out of scope: redesigning the whole eval framework.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 1,
-      "claimed_by": "Codex",
       "created_at": "2026-07-07T14:58:46.268283114Z",
-      "updated_at": "2026-07-07T15:05:46.971327501Z"
+      "updated_at": "2026-07-07T15:13:49.516202553Z"
     },
     "lb-tso7": {
       "id": "lb-tso7",
