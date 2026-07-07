@@ -1811,6 +1811,16 @@
       "created_at": "2026-07-03T20:19:35.103344426Z",
       "updated_at": "2026-07-03T20:29:48.671196818Z"
     },
+    "lb-wypa": {
+      "id": "lb-wypa",
+      "title": "Record partial telemetry for interrupted or missing turn completion",
+      "description": "Goal: Make token/time telemetry complete even when a runner is interrupted or exits unexpectedly. Context: The Biolife GUI turn has no turn.completed usage record even though a later commit exists, so the eval lost accounting for the most important work. Requirements: Audit src/streaming.rs, src/run.rs, src/eval_cmd.rs, and lifecycle summary generation. Preserve last-seen usage/timing markers, emit interrupted/partial usage in lifecycle_summary when final turn.completed is absent, and include log/jsonl paths in terminal events. Acceptance: eval reports distinguish completed usage from partial/interrupted usage; missing turn.completed is visible as a structured caveat, not silent null; cargo test passes. Out of scope: exact billing reconstruction when the agent CLI never emits usage.",
+      "item_type": "task",
+      "status": "open",
+      "priority": 1,
+      "created_at": "2026-07-07T14:59:08.574293563Z",
+      "updated_at": "2026-07-07T14:59:08.574293563Z"
+    },
     "lb-x5un": {
       "id": "lb-x5un",
       "title": "Remove lb create from runner prompt",
@@ -2430,6 +2440,11 @@
     },
     {
       "from_id": "lb-uola",
+      "to_id": "lb-tiyv",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-wypa",
       "to_id": "lb-tiyv",
       "dep_type": "parent"
     }
