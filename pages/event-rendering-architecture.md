@@ -49,3 +49,19 @@ The follow-up fix adds an explicit `RunOptions::json_events` flag and propagates
 the CLI mode through `do`, `ready`, and `loop`. Stream routing now formats the
 inner agent stream whenever `raw == false` and `json_events == false`, even when
 a TUI lifecycle sink is present.
+
+## Terminal Summary Ordering
+
+`lifecycle_summary` is a terminal contract for the top-level command being
+supervised. Nested runner calls inside `do`, `batch`, `ready`, and `loop` should
+not emit their own terminal `run` summaries into the caller's lifecycle stream,
+because those summaries can appear before reviewer, summary-generation,
+session-teardown, final sync, or artifact preservation work completes.
+
+`src/run.rs::RunOptions::emit_terminal_events` controls this boundary:
+standalone `mrmouth run` sets it to `true`; orchestrators set it to `false` and
+emit their own final summary after child work has settled. `loop` stores a
+pending `LoopTerminal` during the decision loop, stops the long-lived session,
+flushes the loop logger, attaches `logs/latest.log` and `logs/latest.jsonl` when
+present, then emits the terminal event. This keeps live JSON consumers from
+treating an intermediate runner state as the final state to preserve.

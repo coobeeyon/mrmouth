@@ -26,6 +26,7 @@ evals/README.md — [Mr Mouth Speed And Evals](pages/mrmouth-speed-and-evals.md)
 event rendering architecture — [Event Rendering Architecture](pages/event-rendering-architecture.md)
 event sink handle — [Event Rendering Architecture](pages/event-rendering-architecture.md)
 fake monorepo — [Split Bookkeeping/Work Repos](pages/split-bookkeeping-work-repos.md), src/repo_layout.rs
+final lifecycle summary ordering — [Event Rendering Architecture](pages/event-rendering-architecture.md), src/run.rs, src/loop_cmd.rs
 fixture-backed evals — [Mr Mouth Speed And Evals](pages/mrmouth-speed-and-evals.md), evals/README.md
 host post-run sync — [Dockerfile Extraction Lifecycle](pages/dockerfile-extraction-lifecycle.md)
 json lifecycle output — [Event Rendering Architecture](pages/event-rendering-architecture.md)
@@ -49,6 +50,7 @@ review fitness for purpose — [Reviewer Fitness For Purpose](pages/reviewer-fit
 review target — [Reviewer Fitness For Purpose](pages/reviewer-fitness-for-purpose.md)
 reviewer model normalization — [Codex Role Model Defaults](pages/codex-role-model-defaults.md)
 reviewer split worktree scope — [Reviewer Fitness For Purpose](pages/reviewer-fitness-for-purpose.md), src/reviewer.rs, src/do_cmd.rs, src/loop_cmd.rs, src/ready.rs
+RunOptions emit_terminal_events — [Event Rendering Architecture](pages/event-rendering-architecture.md), src/run.rs
 runtime benchmarks — [Mr Mouth Speed And Evals](pages/mrmouth-speed-and-evals.md)
 session reuse — [Mr Mouth Speed And Evals](pages/mrmouth-speed-and-evals.md), src/run.rs, src/do_cmd.rs, src/loop_cmd.rs
 smol current-container eval — [Mr Mouth Speed And Evals](pages/mrmouth-speed-and-evals.md), evals/fixtures/smol-current-container
@@ -56,6 +58,7 @@ sibling dependencies — [Litebrite Agent Contract](pages/litebrite-agent-contra
 split bookkeeping work repos — [Split Bookkeeping/Work Repos](pages/split-bookkeeping-work-repos.md), src/repo_layout.rs
 split worktree reviewer — [Reviewer Fitness For Purpose](pages/reviewer-fitness-for-purpose.md), src/reviewer.rs
 supervisor output contract — [Mr Mouth Prime](pages/mrmouth-prime.md)
+terminal lifecycle summary — [Event Rendering Architecture](pages/event-rendering-architecture.md), src/run.rs, src/do_cmd.rs, src/loop_cmd.rs, src/batch_cmd.rs, src/ready.rs
 tui separation — [Event Rendering Architecture](pages/event-rendering-architecture.md)
 uncommitted Dockerfile poisoning — [Dockerfile Extraction Lifecycle](pages/dockerfile-extraction-lifecycle.md), src/run.rs, src/reviewer.rs
 work graph authoring — [Litebrite Agent Contract](pages/litebrite-agent-contract.md)

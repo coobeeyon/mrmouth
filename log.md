@@ -140,3 +140,7 @@ Corrected the Biolife frontend target again: the desired product is a native gra
 ## [2026-07-07] fixed | Split worktree reviewer scope
 
 Recorded that reviewer commit ranges now come from the resolved code work repo for `do`, `ready`, and `loop`. Reviewer Docker containers still use `/home/runner/workspace` for Litebrite/Trapperkeeper state, but mount split code repos at `/home/runner/worktree` and prompt reviewers to run git diff/log plus build/test commands there.
+
+## [2026-07-07] updated | Terminal lifecycle summary ordering
+
+Recorded that orchestrated `do`/`batch`/`ready`/`loop` runner calls suppress nested `run` terminal summaries via `RunOptions::emit_terminal_events`, and that `loop` defers its final summary until after session teardown and log flush.
