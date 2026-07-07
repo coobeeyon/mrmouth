@@ -282,6 +282,16 @@ impl DockerBuilder {
         if let Some(ref path) = args.file_remote_path {
             cmd.args(["-v", &format!("{}:/host-repo", path.to_string_lossy())]);
         }
+        for mount in &args.local_remote_mounts {
+            cmd.args([
+                "-v",
+                &format!(
+                    "{}:{}",
+                    mount.host_path.to_string_lossy(),
+                    mount.container_path
+                ),
+            ]);
+        }
 
         cmd.arg(&self.image_name);
         cmd.arg("/run.sh");
@@ -472,6 +482,16 @@ impl DockerBuilder {
         if let Some(ref path) = args.file_remote_path {
             cmd.args(["-v", &format!("{}:/host-repo", path.to_string_lossy())]);
         }
+        for mount in &args.local_remote_mounts {
+            cmd.args([
+                "-v",
+                &format!(
+                    "{}:{}",
+                    mount.host_path.to_string_lossy(),
+                    mount.container_path
+                ),
+            ]);
+        }
 
         cmd.arg(&self.image_name);
         cmd.args(["-c", "tail -f /dev/null"]);
@@ -564,6 +584,7 @@ pub struct ContainerArgs {
     pub local_workspace_path: Option<PathBuf>,
     pub worktree_path: Option<PathBuf>,
     pub file_remote_path: Option<PathBuf>,
+    pub local_remote_mounts: Vec<LocalRemoteMount>,
     pub timeout_secs: Option<u64>,
 }
 
@@ -580,6 +601,14 @@ pub struct SessionArgs {
     pub local_workspace_path: Option<PathBuf>,
     pub worktree_path: Option<PathBuf>,
     pub file_remote_path: Option<PathBuf>,
+    pub local_remote_mounts: Vec<LocalRemoteMount>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LocalRemoteMount {
+    pub host_path: PathBuf,
+    pub container_path: String,
+    pub rewrite_urls: Vec<String>,
 }
 
 pub struct ContainerHandle {
@@ -728,6 +757,7 @@ mod tests {
             local_workspace_path: None,
             worktree_path: Some(PathBuf::from("/host/service")),
             file_remote_path: None,
+            local_remote_mounts: Vec::new(),
             timeout_secs: None,
         };
 
@@ -757,6 +787,7 @@ mod tests {
             local_workspace_path: None,
             worktree_path: Some(PathBuf::from("/host/service")),
             file_remote_path: None,
+            local_remote_mounts: Vec::new(),
         };
 
         let cmd = docker.start_session_command(&session_args).unwrap();
@@ -785,6 +816,7 @@ mod tests {
             local_workspace_path: Some(PathBuf::from("/host/tracking")),
             worktree_path: None,
             file_remote_path: None,
+            local_remote_mounts: Vec::new(),
             timeout_secs: None,
         };
 
@@ -796,5 +828,34 @@ mod tests {
             .iter()
             .any(|arg| arg.ends_with(":/home/runner/worktree")));
         assert!(!args.contains(&"MRMOUTH_WORKTREE=/home/runner/worktree".to_string()));
+    }
+
+    #[test]
+    fn run_command_mounts_extra_local_remote_paths() {
+        let docker = DockerBuilder::new("mrmouth-test");
+        let container_args = ContainerArgs {
+            name: "run-test".to_string(),
+            repo_url: "file:///host-repo".to_string(),
+            branch: "feature".to_string(),
+            runner_script: PathBuf::from("/tmp/run.sh"),
+            volume: "mrmouth-home".to_string(),
+            agent_home: "/home/runner/.codex",
+            local: false,
+            local_workspace_path: None,
+            worktree_path: Some(PathBuf::from("/host/service")),
+            file_remote_path: Some(PathBuf::from("/host/tracking-remote")),
+            local_remote_mounts: vec![LocalRemoteMount {
+                host_path: PathBuf::from("/host/service-remote"),
+                container_path: "/host-worktree-origin".to_string(),
+                rewrite_urls: vec!["/tmp/service-remote".to_string()],
+            }],
+            timeout_secs: None,
+        };
+
+        let cmd = docker.run_command(&container_args).unwrap();
+        let args = args(&cmd);
+
+        assert!(args.contains(&"/host/tracking-remote:/host-repo".to_string()));
+        assert!(args.contains(&"/host/service-remote:/host-worktree-origin".to_string()));
     }
 }

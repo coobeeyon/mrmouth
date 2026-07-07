@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use crate::agent::AgentKind;
 use crate::config::Config;
-use crate::docker::{ContainerArgs, CopyFromContainerOutcome, DockerBuilder};
+use crate::docker::{ContainerArgs, CopyFromContainerOutcome, DockerBuilder, LocalRemoteMount};
 use crate::events::{
     ContainerAction, EventSink, EventSinkHandle, FinishStatus, LifecycleSummary, MessageLevel,
     MessageTarget, MrmouthEvent, RunAction, SyncAction, SyncTool,
@@ -58,8 +58,11 @@ pub struct Session {
     pub scripts_dir: tempfile::TempDir,
     pub local: bool,
     pub worktree_path: Option<PathBuf>,
-    pub file_remote_path: Option<PathBuf>,
+    pub skip_host_pull: bool,
 }
+
+const BOOKKEEPING_REMOTE_CONTAINER_PATH: &str = "/host-repo";
+const WORKTREE_REMOTE_CONTAINER_PATH: &str = "/host-worktree-origin";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum StreamDisplayMode {
@@ -306,21 +309,10 @@ pub fn execute(
         logger.flush();
     })?;
 
-    // 2. Resolve repo URL
-    let (repo_url, file_remote_path) = if local {
-        (String::new(), None)
-    } else {
-        match git_remote_url(repo_root) {
-            Some(url) => (url, None),
-            None => {
-                configure_file_remote(repo_root)?;
-                (
-                    "file:///host-repo".to_string(),
-                    Some(repo_root.to_path_buf()),
-                )
-            }
-        }
-    };
+    // 2. Resolve repo URL and any host-local remotes that must be mounted into Docker.
+    let remote_plan = docker_remote_plan(repo_root, opts.worktree_path.as_deref(), local)?;
+    let repo_url = remote_plan.repo_url.clone();
+    let file_remote_path = remote_plan.file_remote_path.clone();
 
     // 3. Sync litebrite (best-effort)
     reporter.log(&logger, "Syncing litebrite...");
@@ -348,6 +340,7 @@ pub fn execute(
         prompt_override.as_deref(),
         &effective_dockerfile,
         &config.dockerfile,
+        &remote_plan.local_remote_mounts,
         Some(&logger),
     )?;
 
@@ -418,6 +411,7 @@ pub fn execute(
         config.agent.home_mount(),
         local,
         file_remote_path.clone(),
+        remote_plan.local_remote_mounts.clone(),
         &opts,
     );
 
@@ -539,7 +533,7 @@ pub fn execute(
         run_id: Some(log_filename.clone()),
         branch: Some(branch.clone()),
     });
-    if !local && file_remote_path.is_none() {
+    if !local && !remote_plan.skip_host_pull {
         pull_code_changes(repo_root, &logger, Some(&reporter));
     }
 
@@ -905,21 +899,10 @@ pub fn start_session(
     )
     .inspect_err(|_| logger.flush())?;
 
-    // 2. Repo URL
-    let (repo_url, file_remote_path) = if local {
-        (String::new(), None)
-    } else {
-        match git_remote_url(repo_root) {
-            Some(url) => (url, None),
-            None => {
-                configure_file_remote(repo_root)?;
-                (
-                    "file:///host-repo".to_string(),
-                    Some(repo_root.to_path_buf()),
-                )
-            }
-        }
-    };
+    // 2. Repo URL and any host-local remotes that must be mounted into Docker.
+    let remote_plan = docker_remote_plan(repo_root, worktree_path.as_deref(), local)?;
+    let repo_url = remote_plan.repo_url.clone();
+    let file_remote_path = remote_plan.file_remote_path.clone();
 
     // 3. Sync litebrite (best-effort)
     logger.log("Syncing litebrite...");
@@ -956,6 +939,7 @@ pub fn start_session(
         scripts_dir.path(),
         &effective_dockerfile,
         &config.dockerfile,
+        &remote_plan.local_remote_mounts,
     )?;
 
     // 7. Start detached container
@@ -973,6 +957,7 @@ pub fn start_session(
         local_workspace_path,
         worktree_path.clone(),
         file_remote_path.clone(),
+        remote_plan.local_remote_mounts.clone(),
     );
     docker
         .start_session(&session_args)
@@ -1043,7 +1028,7 @@ pub fn start_session(
         scripts_dir,
         local,
         worktree_path,
-        file_remote_path,
+        skip_host_pull: remote_plan.skip_host_pull,
     })
 }
 
@@ -1057,6 +1042,7 @@ fn container_args_from_run_options(
     agent_home: &'static str,
     local: bool,
     file_remote_path: Option<PathBuf>,
+    local_remote_mounts: Vec<LocalRemoteMount>,
     opts: &RunOptions,
 ) -> ContainerArgs {
     ContainerArgs {
@@ -1070,6 +1056,7 @@ fn container_args_from_run_options(
         local_workspace_path: opts.local_workspace_path.clone(),
         worktree_path: opts.worktree_path.clone(),
         file_remote_path,
+        local_remote_mounts,
         timeout_secs: opts.timeout.map(|m| m as u64 * 60),
     }
 }
@@ -1085,6 +1072,7 @@ fn session_args(
     local_workspace_path: Option<PathBuf>,
     worktree_path: Option<PathBuf>,
     file_remote_path: Option<PathBuf>,
+    local_remote_mounts: Vec<LocalRemoteMount>,
 ) -> crate::docker::SessionArgs {
     crate::docker::SessionArgs {
         name,
@@ -1096,6 +1084,7 @@ fn session_args(
         local_workspace_path,
         worktree_path,
         file_remote_path,
+        local_remote_mounts,
     }
 }
 
@@ -1329,7 +1318,7 @@ pub fn execute_in_session(
             branch: Some(branch.clone()),
         },
     );
-    if !session.local && session.file_remote_path.is_none() {
+    if !session.local && !session.skip_host_pull {
         pull_code_changes(repo_root, &logger, None);
     }
 
@@ -1432,6 +1421,33 @@ fn prompt_text_for_run(repo_root: &Path, opts: &RunOptions, logger: Option<&Logg
         None => default_prompt_override(repo_root, opts, logger)
             .unwrap_or_else(|| prompt::load_prompt(repo_root, logger)),
     }
+}
+
+fn local_remote_rewrite_script(mounts: &[LocalRemoteMount]) -> String {
+    if mounts.is_empty() {
+        return String::new();
+    }
+
+    let mut script = String::from("# --- Host-local origin rewrites ---\n");
+    for mount in mounts {
+        let container_path = shell_quote(&mount.container_path);
+        script.push_str(&format!(
+            "git config --global --add safe.directory {container_path}\n"
+        ));
+        let replacement = shell_quote(&format!("file://{}", mount.container_path));
+        for url in &mount.rewrite_urls {
+            script.push_str(&format!(
+                "git config --global --add url.{replacement}.insteadOf {}\n",
+                shell_quote(url)
+            ));
+        }
+    }
+    script.push('\n');
+    script
+}
+
+fn shell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
 }
 
 fn default_prompt_override(
@@ -1872,6 +1888,133 @@ fn git_remote_url(repo_root: &Path) -> Option<String> {
     }
 }
 
+#[derive(Debug, Clone)]
+struct DockerRemotePlan {
+    repo_url: String,
+    file_remote_path: Option<PathBuf>,
+    local_remote_mounts: Vec<LocalRemoteMount>,
+    skip_host_pull: bool,
+}
+
+fn docker_remote_plan(
+    repo_root: &Path,
+    worktree_path: Option<&Path>,
+    local: bool,
+) -> Result<DockerRemotePlan, RunError> {
+    let mut plan = DockerRemotePlan {
+        repo_url: String::new(),
+        file_remote_path: None,
+        local_remote_mounts: Vec::new(),
+        skip_host_pull: local,
+    };
+
+    if local {
+        if let Some(mount) = local_origin_mount(repo_root, BOOKKEEPING_REMOTE_CONTAINER_PATH)? {
+            plan.local_remote_mounts.push(mount);
+        }
+    } else {
+        match git_remote_url(repo_root) {
+            Some(url) => match resolve_local_remote_path(repo_root, &url)? {
+                Some(path) => {
+                    configure_file_remote(&path)?;
+                    plan.repo_url = format!("file://{BOOKKEEPING_REMOTE_CONTAINER_PATH}");
+                    plan.file_remote_path = Some(path);
+                    plan.skip_host_pull = false;
+                }
+                None => {
+                    plan.repo_url = url;
+                }
+            },
+            None => {
+                configure_file_remote(repo_root)?;
+                plan.repo_url = format!("file://{BOOKKEEPING_REMOTE_CONTAINER_PATH}");
+                plan.file_remote_path = Some(repo_root.to_path_buf());
+                plan.skip_host_pull = true;
+            }
+        }
+    }
+
+    if let Some(worktree) = worktree_path {
+        if let Some(mount) = local_origin_mount(worktree, WORKTREE_REMOTE_CONTAINER_PATH)? {
+            plan.local_remote_mounts.push(mount);
+        }
+    }
+
+    Ok(plan)
+}
+
+fn local_origin_mount(
+    repo_root: &Path,
+    container_path: &str,
+) -> Result<Option<LocalRemoteMount>, RunError> {
+    let Some(url) = git_remote_url(repo_root) else {
+        return Ok(None);
+    };
+    let Some(host_path) = resolve_local_remote_path(repo_root, &url)? else {
+        return Ok(None);
+    };
+    configure_file_remote(&host_path)?;
+    let mut rewrite_urls = vec![url.clone()];
+    if !url.starts_with("file://") {
+        rewrite_urls.push(format!("file://{}", host_path.display()));
+    }
+    Ok(Some(LocalRemoteMount {
+        host_path,
+        container_path: container_path.to_string(),
+        rewrite_urls,
+    }))
+}
+
+fn resolve_local_remote_path(repo_root: &Path, url: &str) -> Result<Option<PathBuf>, RunError> {
+    if is_ssh_remote(url) || (has_url_scheme(url) && !url.starts_with("file://")) {
+        return Ok(None);
+    }
+    if is_scp_like_remote(url) {
+        return Ok(None);
+    }
+
+    let path = if let Some(file_path) = url.strip_prefix("file://") {
+        PathBuf::from(file_path)
+    } else {
+        PathBuf::from(url)
+    };
+    if path.as_os_str().is_empty() {
+        return Ok(None);
+    }
+
+    let absolute = if path.is_absolute() {
+        path
+    } else {
+        repo_root.join(path)
+    };
+    if !absolute.exists() {
+        return Err(RunError::Preflight(format!(
+            "origin is a local path that does not exist: {}",
+            absolute.display()
+        )));
+    }
+    std::fs::canonicalize(&absolute)
+        .map(Some)
+        .map_err(|e| RunError::Io("canonicalizing local origin path".into(), e))
+}
+
+fn has_url_scheme(url: &str) -> bool {
+    let Some((scheme, _)) = url.split_once(':') else {
+        return false;
+    };
+    !scheme.is_empty()
+        && scheme
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '-' || c == '.')
+}
+
+fn is_scp_like_remote(url: &str) -> bool {
+    let Some((before_colon, _)) = url.split_once(':') else {
+        return false;
+    };
+    before_colon.contains('@') && !before_colon.contains('/')
+}
+
 fn configure_file_remote(repo_root: &Path) -> Result<(), RunError> {
     let status = Command::new("git")
         .args([
@@ -1954,6 +2097,7 @@ fn write_runner_script(
     prompt_override: Option<&str>,
     dockerfile_content: &str,
     dockerfile_path: &str,
+    local_remote_mounts: &[LocalRemoteMount],
     logger: Option<&Logger>,
 ) -> Result<tempfile::TempPath, RunError> {
     let prompt_text = match prompt_override {
@@ -1966,6 +2110,7 @@ fn write_runner_script(
     let agent_version_line = agent.version_line();
     let agent_restore_block = agent.restore_block();
     let agent_command = agent.shell_command_with_disallowed_tools(model, &escaped_prompt);
+    let local_remote_rewrites = local_remote_rewrite_script(local_remote_mounts);
 
     let script = format!(
         r#"#!/usr/bin/env bash
@@ -2003,6 +2148,22 @@ _mm_commit_dockerfile_if_changed() {{
   fi
 }}
 
+_mm_push_repo() {{
+  local repo="$1"
+  local label="$2"
+  if ! git -C "$repo" rev-parse --git-dir >/dev/null 2>&1; then
+    return 0
+  fi
+  if ! git -C "$repo" remote get-url origin >/dev/null 2>&1; then
+    echo "::mrmouth::push-error repo=$label reason=no-origin" >&2
+    return 70
+  fi
+  if ! git -C "$repo" push; then
+    echo "::mrmouth::push-error repo=$label reason=git-push-failed" >&2
+    return 70
+  fi
+}}
+
 _mm_mark script-start
 
 # --- Tool versions (cheap, always-on diagnostic) ---
@@ -2020,6 +2181,7 @@ work_dir="$HOME/workspace"
 work_repo_dir="${{MRMOUTH_WORK_REPO:-$work_dir}}"
 dockerfile_rel="__DOCKERFILE_REL_PATH__"
 
+{local_remote_rewrites}
 # --- Clone repo (skip if workspace already mounted) ---
 if [ ! -d "$work_dir/.git" ]; then
   if [ -n "$repo_url" ]; then
@@ -2085,7 +2247,10 @@ if [ -d "$work_dir/.git" ]; then
   lb sync 2>/dev/null || true
   trk sync 2>/dev/null || true
   _mm_commit_dockerfile_if_changed
-  git push 2>/dev/null || true
+  _mm_push_repo "$work_dir" "bookkeeping"
+  if [ "$work_repo_dir" != "$work_dir" ]; then
+    _mm_push_repo "$work_repo_dir" "worktree"
+  fi
 fi
 _mm_mark script-end
 "#
@@ -2126,11 +2291,13 @@ pub(crate) fn write_setup_script(
     scripts_dir: &Path,
     dockerfile_content: &str,
     dockerfile_path: &str,
+    local_remote_mounts: &[LocalRemoteMount],
 ) -> Result<(), RunError> {
     let agent_name = agent.as_str();
     let agent_bin = agent.binary();
     let agent_version_line = agent.version_line();
     let agent_restore_block = agent.restore_block();
+    let local_remote_rewrites = local_remote_rewrite_script(local_remote_mounts);
     let script = format!(
         r#"#!/usr/bin/env bash
 set -euo pipefail
@@ -2172,6 +2339,7 @@ branch="${{BRANCH:-main}}"
 work_dir="$HOME/workspace"
 work_repo_dir="${{MRMOUTH_WORK_REPO:-$work_dir}}"
 
+{local_remote_rewrites}
 # --- Clone repo (skip if workspace already mounted) ---
 if [ ! -d "$work_dir/.git" ]; then
   if [ -n "$repo_url" ]; then
@@ -2279,6 +2447,22 @@ _mm_commit_dockerfile_if_changed() {{
   fi
 }}
 
+_mm_push_repo() {{
+  local repo="$1"
+  local label="$2"
+  if ! git -C "$repo" rev-parse --git-dir >/dev/null 2>&1; then
+    return 0
+  fi
+  if ! git -C "$repo" remote get-url origin >/dev/null 2>&1; then
+    echo "::mrmouth::push-error repo=$label reason=no-origin" >&2
+    return 70
+  fi
+  if ! git -C "$repo" push; then
+    echo "::mrmouth::push-error repo=$label reason=git-push-failed" >&2
+    return 70
+  fi
+}}
+
 # --- Sync workspace with host ---
 # Stash any leftover uncommitted state from a prior task (shouldn't happen if
 # the agent committed cleanly, but don't let it block the next task).
@@ -2320,7 +2504,10 @@ if [ -d "$work_dir/.git" ]; then
   lb sync 2>/dev/null || true
   trk sync 2>/dev/null || true
   _mm_commit_dockerfile_if_changed
-  git push 2>/dev/null || true
+  _mm_push_repo "$work_dir" "bookkeeping"
+  if [ "$work_repo_dir" != "$work_dir" ]; then
+    _mm_push_repo "$work_repo_dir" "worktree"
+  fi
 fi
 _mm_mark task-end
 "#
@@ -2481,6 +2668,7 @@ pub fn classify_exit(code: i32, log_path: &Path) -> String {
 
 fn classify_exit_with_tail(code: i32, tail: &str) -> String {
     const MISSING_TOOL: &str = "::mrmouth::missing-tool ";
+    const PUSH_ERROR: &str = "::mrmouth::push-error ";
     const SCRIPT_ERROR: &str = "::mrmouth::script-error ";
 
     // Scan from the bottom up — the most recent marker wins.
@@ -2493,6 +2681,16 @@ fn classify_exit_with_tail(code: i32, tail: &str) -> String {
                 (Some(t), Some(r)) => format!("missing tool '{t}' — {r}"),
                 (Some(t), None) => format!("missing tool '{t}'"),
                 _ => "missing required tool in container".into(),
+            };
+        }
+        if let Some(idx) = line.find(PUSH_ERROR) {
+            let rest = &line[idx + PUSH_ERROR.len()..];
+            let repo = parse_marker_field(rest, "repo=");
+            let reason = parse_marker_tail(rest, "reason=");
+            return match (repo, reason) {
+                (Some(r), Some(e)) => format!("git push failed for {r} repo — {e}"),
+                (Some(r), None) => format!("git push failed for {r} repo"),
+                _ => "git push failed".into(),
             };
         }
         if let Some(idx) = line.find(SCRIPT_ERROR) {
@@ -2524,6 +2722,7 @@ fn classify_exit_with_tail(code: i32, tail: &str) -> String {
     // Code-based fallback.
     match code {
         64 => "missing required tool in container (runner script guard fired — see log)".into(),
+        70 => "git push failed (runner script guard fired — see log)".into(),
         124 => "timed out (timeout wrapper)".into(),
         126 => "permission denied / not executable".into(),
         127 => "missing command in container (check your Dockerfile includes all expected tools)"
@@ -2690,6 +2889,7 @@ mod tests {
             "/home/runner/.codex",
             false,
             None,
+            Vec::new(),
             &opts,
         );
 
@@ -2712,6 +2912,7 @@ mod tests {
             None,
             Some(worktree.clone()),
             None,
+            Vec::new(),
         );
 
         assert_eq!(args.worktree_path.as_deref(), Some(worktree.as_path()));
@@ -2729,6 +2930,7 @@ mod tests {
             None,
             TEST_DOCKERFILE,
             TEST_DOCKERFILE_PATH,
+            &[],
             None,
         )
         .unwrap();
@@ -2750,6 +2952,7 @@ mod tests {
             None,
             TEST_DOCKERFILE,
             TEST_DOCKERFILE_PATH,
+            &[],
             None,
         )
         .unwrap();
@@ -2773,6 +2976,7 @@ mod tests {
             Some("custom prompt here"),
             TEST_DOCKERFILE,
             TEST_DOCKERFILE_PATH,
+            &[],
             None,
         )
         .unwrap();
@@ -2794,6 +2998,7 @@ mod tests {
             Some("don't break"),
             TEST_DOCKERFILE,
             TEST_DOCKERFILE_PATH,
+            &[],
             None,
         )
         .unwrap();
@@ -2815,6 +3020,7 @@ mod tests {
             None,
             TEST_DOCKERFILE,
             TEST_DOCKERFILE_PATH,
+            &[],
             None,
         )
         .unwrap();
@@ -2836,6 +3042,7 @@ mod tests {
             None,
             TEST_DOCKERFILE,
             TEST_DOCKERFILE_PATH,
+            &[],
             None,
         )
         .unwrap();
@@ -2858,6 +3065,7 @@ mod tests {
             None,
             dockerfile,
             ".mrmouth/Dockerfile",
+            &[],
             None,
         )
         .unwrap();
@@ -2885,6 +3093,7 @@ mod tests {
             None,
             TEST_DOCKERFILE,
             TEST_DOCKERFILE_PATH,
+            &[],
             None,
         )
         .unwrap();
@@ -2910,6 +3119,7 @@ mod tests {
             None,
             TEST_DOCKERFILE,
             TEST_DOCKERFILE_PATH,
+            &[],
             None,
         )
         .unwrap();
@@ -2921,7 +3131,8 @@ mod tests {
         assert!(content.contains("_mm_commit_dockerfile_if_changed"));
         assert!(content.contains(r#"git status --porcelain -- "$dockerfile_rel""#));
         assert!(content.contains("Update mrmouth Dockerfile"));
-        assert!(content.contains("git push 2>/dev/null || true"));
+        assert!(content.contains("_mm_push_repo \"$work_dir\" \"bookkeeping\""));
+        assert!(content.contains("_mm_push_repo \"$work_repo_dir\" \"worktree\""));
     }
 
     #[test]
@@ -2934,6 +3145,7 @@ mod tests {
             None,
             TEST_DOCKERFILE,
             TEST_DOCKERFILE_PATH,
+            &[],
             None,
         )
         .unwrap();
@@ -2976,6 +3188,7 @@ mod tests {
             None,
             TEST_DOCKERFILE,
             TEST_DOCKERFILE_PATH,
+            &[],
             None,
         )
         .unwrap();
@@ -3003,6 +3216,7 @@ mod tests {
             None,
             TEST_DOCKERFILE,
             TEST_DOCKERFILE_PATH,
+            &[],
             None,
         )
         .unwrap();
@@ -3029,6 +3243,7 @@ mod tests {
             None,
             TEST_DOCKERFILE,
             TEST_DOCKERFILE_PATH,
+            &[],
             None,
         )
         .unwrap();
@@ -3060,6 +3275,7 @@ mod tests {
             Some("do it"),
             TEST_DOCKERFILE,
             TEST_DOCKERFILE_PATH,
+            &[],
             None,
         )
         .unwrap();
@@ -3086,6 +3302,7 @@ mod tests {
             Some("do it"),
             TEST_DOCKERFILE,
             TEST_DOCKERFILE_PATH,
+            &[],
             None,
         )
         .unwrap();
@@ -3168,6 +3385,13 @@ mod tests {
         let tail = "::mrmouth::missing-tool unknown=junk\n";
         let msg = classify_exit_with_tail(64, tail);
         assert_eq!(msg, "missing required tool in container");
+    }
+
+    #[test]
+    fn classify_recognises_push_error_marker() {
+        let tail = "::mrmouth::push-error repo=worktree reason=git-push-failed\n";
+        let msg = classify_exit_with_tail(70, tail);
+        assert_eq!(msg, "git push failed for worktree repo — git-push-failed");
     }
 
     #[test]
@@ -3338,6 +3562,68 @@ mod tests {
         let err = check_origin_reachable(work_dir.path()).unwrap_err();
         let msg = format!("{err}");
         assert!(msg.contains("cannot reach origin"), "got: {msg}");
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn docker_remote_plan_converts_local_origin_to_container_file_remote() {
+        let origin_dir = make_repo_with_branch(None);
+        let work_dir = tempfile::tempdir().unwrap();
+        git(work_dir.path(), &["init", "-q"]);
+        git(
+            work_dir.path(),
+            &[
+                "remote",
+                "add",
+                "origin",
+                &origin_dir.path().to_string_lossy(),
+            ],
+        );
+
+        let plan = docker_remote_plan(work_dir.path(), None, false).unwrap();
+        let origin_path = std::fs::canonicalize(origin_dir.path()).unwrap();
+
+        assert_eq!(plan.repo_url, "file:///host-repo");
+        assert_eq!(
+            plan.file_remote_path.as_deref(),
+            Some(origin_path.as_path())
+        );
+        assert!(plan.local_remote_mounts.is_empty());
+        assert!(!plan.skip_host_pull);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn docker_remote_plan_mounts_split_worktree_local_origin_for_rewrite() {
+        let bookkeeping_dir = make_repo_with_branch(None);
+        let work_origin_dir = make_repo_with_branch(None);
+        let work_dir = tempfile::tempdir().unwrap();
+        git(work_dir.path(), &["init", "-q"]);
+        git(
+            work_dir.path(),
+            &[
+                "remote",
+                "add",
+                "origin",
+                &work_origin_dir.path().to_string_lossy(),
+            ],
+        );
+
+        let plan =
+            docker_remote_plan(bookkeeping_dir.path(), Some(work_dir.path()), false).unwrap();
+
+        assert_eq!(plan.repo_url, "file:///host-repo");
+        assert_eq!(plan.local_remote_mounts.len(), 1);
+        let mount = &plan.local_remote_mounts[0];
+        assert_eq!(mount.container_path, WORKTREE_REMOTE_CONTAINER_PATH);
+        assert_eq!(
+            mount.host_path,
+            std::fs::canonicalize(work_origin_dir.path()).unwrap()
+        );
+        assert!(mount
+            .rewrite_urls
+            .contains(&work_origin_dir.path().to_string_lossy().to_string()));
+        assert!(plan.skip_host_pull);
     }
 
     #[cfg(unix)]
@@ -3609,6 +3895,7 @@ mod tests {
             dir.path(),
             TEST_DOCKERFILE,
             TEST_DOCKERFILE_PATH,
+            &[],
         )
         .unwrap();
         let content = std::fs::read_to_string(dir.path().join("setup.sh")).unwrap();
@@ -3627,6 +3914,7 @@ mod tests {
             dir.path(),
             TEST_DOCKERFILE,
             TEST_DOCKERFILE_PATH,
+            &[],
         )
         .unwrap();
         let content = std::fs::read_to_string(dir.path().join("setup.sh")).unwrap();
@@ -3644,6 +3932,7 @@ mod tests {
             dir.path(),
             TEST_DOCKERFILE,
             TEST_DOCKERFILE_PATH,
+            &[],
         )
         .unwrap();
         let content = std::fs::read_to_string(dir.path().join("setup.sh")).unwrap();
@@ -3655,6 +3944,30 @@ mod tests {
     }
 
     #[test]
+    fn setup_script_configures_local_remote_rewrites() {
+        let dir = tempfile::tempdir().unwrap();
+        write_setup_script(
+            crate::agent::AgentKind::Claude,
+            dir.path(),
+            TEST_DOCKERFILE,
+            TEST_DOCKERFILE_PATH,
+            &[LocalRemoteMount {
+                host_path: PathBuf::from("/host/remote.git"),
+                container_path: "/host-worktree-origin".to_string(),
+                rewrite_urls: vec!["/tmp/remote.git".to_string()],
+            }],
+        )
+        .unwrap();
+        let content = std::fs::read_to_string(dir.path().join("setup.sh")).unwrap();
+        assert!(
+            content.contains("git config --global --add safe.directory '/host-worktree-origin'")
+        );
+        assert!(content.contains(
+            "git config --global --add url.'file:///host-worktree-origin'.insteadOf '/tmp/remote.git'"
+        ));
+    }
+
+    #[test]
     fn setup_script_is_executable() {
         let dir = tempfile::tempdir().unwrap();
         write_setup_script(
@@ -3662,6 +3975,7 @@ mod tests {
             dir.path(),
             TEST_DOCKERFILE,
             TEST_DOCKERFILE_PATH,
+            &[],
         )
         .unwrap();
         #[cfg(unix)]
@@ -3770,7 +4084,8 @@ mod tests {
         assert!(
             content.contains(r#"git commit -m "Update mrmouth Dockerfile" -- "$dockerfile_rel""#)
         );
-        assert!(content.contains("git push 2>/dev/null || true"));
+        assert!(content.contains("_mm_push_repo \"$work_dir\" \"bookkeeping\""));
+        assert!(content.contains("_mm_push_repo \"$work_repo_dir\" \"worktree\""));
     }
 
     #[test]

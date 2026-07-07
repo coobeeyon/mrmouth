@@ -270,7 +270,8 @@ pub fn execute(
                         detail: Some(format!("task {task_num}")),
                     },
                 );
-                sync_and_push(repo_root, &branch_name, Some(run_logger));
+                sync_and_push(repo_root, &branch_name, Some(run_logger))
+                    .map_err(ReadyError::Command)?;
                 emit_event(
                     &opts.event_sink,
                     MrmouthEvent::Sync {
@@ -384,7 +385,7 @@ pub fn execute(
                 detail: Some("between ready tasks".to_string()),
             },
         );
-        sync_and_push(repo_root, &branch_name, logger.as_ref());
+        sync_and_push(repo_root, &branch_name, logger.as_ref()).map_err(ReadyError::Command)?;
         emit_event(
             &opts.event_sink,
             MrmouthEvent::Sync {
@@ -405,7 +406,7 @@ pub fn execute(
             detail: Some("final ready sync".to_string()),
         },
     );
-    sync_and_push(repo_root, &branch_name, logger.as_ref());
+    sync_and_push(repo_root, &branch_name, logger.as_ref()).map_err(ReadyError::Command)?;
     emit_event(
         &opts.event_sink,
         MrmouthEvent::Sync {

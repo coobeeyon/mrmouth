@@ -143,7 +143,7 @@ pub fn execute(
                 parent_branch: Some(current_branch),
             },
         );
-        push_branch(repo_root, &branch, &opts.event_sink);
+        push_branch(repo_root, &branch, &opts.event_sink)?;
         branch
     } else {
         current_branch
@@ -178,7 +178,8 @@ pub fn execute(
     match run::execute(config, repo_root, run_opts, tui) {
         Ok(ref run_logger) => {
             emit_info(&opts.event_sink, "Batch agent succeeded, syncing...");
-            do_cmd::sync_and_push(repo_root, &feature_branch, Some(run_logger));
+            do_cmd::sync_and_push(repo_root, &feature_branch, Some(run_logger))
+                .map_err(BatchError::Command)?;
         }
         Err(err) => return Err(BatchError::Run(Box::new(err))),
     }
@@ -256,7 +257,11 @@ fn field_from_lb_show(stdout: &str, name: &str) -> Option<String> {
         .map(|line| line.trim().trim_start_matches(&prefix).trim().to_string())
 }
 
-fn push_branch(repo_root: &Path, branch: &str, sink: &Option<EventSinkHandle>) {
+fn push_branch(
+    repo_root: &Path,
+    branch: &str,
+    sink: &Option<EventSinkHandle>,
+) -> Result<(), BatchError> {
     emit_event(
         sink,
         MrmouthEvent::BranchLifecycle {
@@ -265,7 +270,7 @@ fn push_branch(repo_root: &Path, branch: &str, sink: &Option<EventSinkHandle>) {
             parent_branch: None,
         },
     );
-    let pushed = Command::new("git")
+    let output = Command::new("git")
         .args([
             "-C",
             &repo_root.to_string_lossy(),
@@ -275,8 +280,8 @@ fn push_branch(repo_root: &Path, branch: &str, sink: &Option<EventSinkHandle>) {
             branch,
         ])
         .output()
-        .is_ok_and(|output| output.status.success());
-    if pushed {
+        .map_err(|e| BatchError::Command(format!("git push failed to start: {e}")))?;
+    if output.status.success() {
         emit_event(
             sink,
             MrmouthEvent::BranchLifecycle {
@@ -285,12 +290,24 @@ fn push_branch(repo_root: &Path, branch: &str, sink: &Option<EventSinkHandle>) {
                 parent_branch: None,
             },
         );
-    } else {
-        emit_info(
-            sink,
-            "Warning: git push failed; current-container batch may still continue locally.",
-        );
+        return Ok(());
     }
+
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    let detail = if stderr.is_empty() {
+        format!(
+            "git push exited with code {}",
+            output
+                .status
+                .code()
+                .map(|c| c.to_string())
+                .unwrap_or_else(|| "signal".to_string())
+        )
+    } else {
+        format!("git push failed: {stderr}")
+    };
+    emit_info(sink, &detail);
+    Err(BatchError::Command(detail))
 }
 
 fn attach_latest_log_paths(

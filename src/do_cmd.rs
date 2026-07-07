@@ -266,8 +266,22 @@ pub fn execute(
                     },
                 );
             }
-            Ok(o) => emit(&tui_tx, &format!("WARNING: git push exited with code {} — container may fail to clone this branch", o.status.code().unwrap_or(-1))),
-            Err(e) => emit(&tui_tx, &format!("WARNING: git push failed: {e} — container may fail to clone this branch")),
+            Ok(o) => {
+                let stderr = String::from_utf8_lossy(&o.stderr).trim().to_string();
+                let detail = if stderr.is_empty() {
+                    format!(
+                        "git push exited with code {}",
+                        o.status
+                            .code()
+                            .map(|c| c.to_string())
+                            .unwrap_or_else(|| "signal".to_string())
+                    )
+                } else {
+                    format!("git push failed: {stderr}")
+                };
+                return Err(DoError::Command(detail));
+            }
+            Err(e) => return Err(DoError::Command(format!("git push failed to start: {e}"))),
         }
         branch_name
     } else {
@@ -314,7 +328,7 @@ pub fn execute(
             detail: Some("final push".to_string()),
         },
     );
-    sync_and_push(repo_root, &feature_branch, epic_logger.as_ref());
+    sync_and_push(repo_root, &feature_branch, epic_logger.as_ref()).map_err(DoError::Command)?;
     emit_event(
         &opts.event_sink,
         MrmouthEvent::Sync {
@@ -425,7 +439,7 @@ fn execute_task(
     match run_result {
         Ok(ref run_logger) => {
             emit(tui_tx, "Task agent succeeded, syncing...");
-            sync_and_push(repo_root, feature_branch, Some(run_logger));
+            sync_and_push(repo_root, feature_branch, Some(run_logger)).map_err(DoError::Command)?;
         }
         Err(e) => {
             emit(tui_tx, &format!("Task agent failed: {e}"));
@@ -576,7 +590,8 @@ fn execute_epic(
                         consecutive_failures = 0;
                         recent_failures.clear();
                         emit(tui_tx, &format!("Task {task_num} succeeded, syncing..."));
-                        sync_and_push(repo_root, feature_branch, Some(run_logger));
+                        sync_and_push(repo_root, feature_branch, Some(run_logger))
+                            .map_err(DoError::Command)?;
                     }
                     Err(e) => {
                         consecutive_failures += 1;
@@ -738,7 +753,8 @@ fn execute_epic(
                     consecutive_failures = 0;
                     recent_failures.clear();
                     emit(tui_tx, &format!("Task {task_num} succeeded, syncing..."));
-                    sync_and_push(repo_root, feature_branch, Some(run_logger));
+                    sync_and_push(repo_root, feature_branch, Some(run_logger))
+                        .map_err(DoError::Command)?;
                 }
                 Err(e) => {
                     consecutive_failures += 1;
@@ -1008,11 +1024,11 @@ pub(crate) fn sync_and_push(
     repo_root: &Path,
     branch: &str,
     logger: Option<&crate::logger::Logger>,
-) {
+) -> Result<(), String> {
     litebrite::sync(repo_root, logger);
 
     // Push to remote
-    let _ = Command::new("git")
+    let output = Command::new("git")
         .args([
             "-C",
             &repo_root.to_string_lossy(),
@@ -1021,9 +1037,26 @@ pub(crate) fn sync_and_push(
             "origin",
             branch,
         ])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status();
+        .output()
+        .map_err(|e| format!("git push failed to start: {e}"))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        let detail = if stderr.is_empty() {
+            format!(
+                "git push exited with code {}",
+                output
+                    .status
+                    .code()
+                    .map(|c| c.to_string())
+                    .unwrap_or_else(|| "signal".to_string())
+            )
+        } else {
+            format!("git push failed: {stderr}")
+        };
+        return Err(detail);
+    }
+
+    Ok(())
 }
 
 pub(crate) fn make_slug(title: &str) -> String {

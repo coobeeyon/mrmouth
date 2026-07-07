@@ -272,6 +272,7 @@ fi
         local_workspace_path: None,
         worktree_path: opts.worktree_path.clone(),
         file_remote_path,
+        local_remote_mounts: Vec::new(),
         timeout_secs: None,
     };
 
