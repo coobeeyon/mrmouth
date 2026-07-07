@@ -1686,11 +1686,10 @@
       "title": "Fix runner remote and push handling",
       "description": "Goal: Fix local/file remote handling so runner pushes are either valid or explicitly fatal. Context: In the Biolife loop, worktree origin pointed to a host path that did not exist inside the runner, so git push failed repeatedly while the loop continued. Requirements: Audit Docker/current-container remote setup in src/run.rs, src/docker.rs, src/do_cmd.rs, and src/loop_cmd.rs. For local file remotes, configure container-visible file:///host-repo or remove/replace invalid origin consistently for both bookkeeping and worktree repos. Surface push failure as a lifecycle failure when it prevents host sync. Acceptance: local split worktree runs no longer leave invalid host-path origins in the runner; push/sync failure is visible in lifecycle_summary; cargo test passes. Out of scope: adding support for every exotic remote protocol.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 1,
-      "claimed_by": "Codex",
       "created_at": "2026-07-07T14:59:02.220108896Z",
-      "updated_at": "2026-07-07T15:14:43.008001460Z"
+      "updated_at": "2026-07-07T15:25:28.716468021Z"
     },
     "lb-uqwo": {
       "id": "lb-uqwo",
