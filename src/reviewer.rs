@@ -1,12 +1,13 @@
 use std::fs::File;
 use std::io::{BufWriter, IsTerminal, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use crate::config::Config;
 use crate::docker::{ContainerArgs, CopyFromContainerOutcome, DockerBuilder};
 use crate::events::{EventSinkHandle, MrmouthEvent, ReviewerAction};
 use crate::logger::Logger;
+use crate::repo_layout::{BOOKKEEPING_CONTAINER_PATH, WORK_CONTAINER_PATH};
 use crate::stream_fmt::{self, StreamFormatter};
 
 pub struct ReviewerOptions {
@@ -17,6 +18,10 @@ pub struct ReviewerOptions {
     pub commit_range: Option<(String, String)>,
     /// The litebrite item or work area the run was intended to satisfy.
     pub review_target: Option<ReviewTarget>,
+    /// Host path to a distinct code worktree. When set, the reviewer container
+    /// mounts it at WORK_CONTAINER_PATH and reviews code there while keeping
+    /// Litebrite/Trapperkeeper operations rooted in BOOKKEEPING_CONTAINER_PATH.
+    pub worktree_path: Option<PathBuf>,
     pub event_sink: Option<EventSinkHandle>,
 }
 
@@ -53,20 +58,12 @@ pub fn execute(
 
     let preamble = crate::prompt::SYSTEM_PREAMBLE;
 
-    let scope_instructions = match &opts.commit_range {
-        Some((before, after)) => format!(
-            "Review ONLY the changes between commits {before}..{after} on branch '{}'. \
-            Run `git diff {before}..{after}` to see what changed — do NOT review code outside this range. \
-            Use lb commands to inspect task state.",
-            opts.current_branch
-        ),
-        None => format!(
-            "Review the changes on branch '{}' \
-            against the project spec (SPEC.md). Use git diff and git log to understand what changed. \
-            Use lb commands to inspect task state.",
-            opts.current_branch
-        ),
-    };
+    let scope_instructions = review_scope_instructions(
+        &opts.current_branch,
+        &opts.commit_range,
+        opts.worktree_path.as_deref(),
+    );
+    let workspace_instructions = review_workspace_instructions(opts.worktree_path.as_deref());
 
     let purpose_instructions = review_purpose_instructions(opts.review_target.as_ref());
 
@@ -75,6 +72,7 @@ pub fn execute(
         You are the **Reviewer**. Your job is to review code and file issues. You do NOT implement features, make architectural decisions, or decide whether the loop continues.\n\n\
         ## Instructions\n\n\
         {scope_instructions}\n\n\
+        {workspace_instructions}\n\n\
         {purpose_instructions}\n\n\
         First, verify the project builds and all tests pass. Discover the correct build/test \
         commands by examining the project structure (Makefile, package.json, Cargo.toml, etc.) \
@@ -149,6 +147,10 @@ if [ ! -d "$work_dir/.git" ]; then
 fi
 cd "$work_dir"
 git config --global --add safe.directory "$work_dir"
+work_repo_dir="${{MRMOUTH_WORK_REPO:-$work_dir}}"
+if [ "$work_repo_dir" != "$work_dir" ] && [ -e "$work_repo_dir" ]; then
+  git config --global --add safe.directory "$work_repo_dir"
+fi
 
 # Seed Dockerfile if absent (gives reviewer a file to read and modify)
 dockerfile_path="$work_dir/$dockerfile_rel"
@@ -268,7 +270,7 @@ fi
         agent_home: config.agent.home_mount(),
         local: false,
         local_workspace_path: None,
-        worktree_path: None,
+        worktree_path: opts.worktree_path.clone(),
         file_remote_path,
         timeout_secs: None,
     };
@@ -394,6 +396,50 @@ fn commit_range_label(commit_range: &Option<(String, String)>) -> Option<String>
         .map(|(before, after)| format!("{before}..{after}"))
 }
 
+fn review_code_container_path(worktree_path: Option<&Path>) -> &'static str {
+    if worktree_path.is_some() {
+        WORK_CONTAINER_PATH
+    } else {
+        BOOKKEEPING_CONTAINER_PATH
+    }
+}
+
+fn review_scope_instructions(
+    current_branch: &str,
+    commit_range: &Option<(String, String)>,
+    worktree_path: Option<&Path>,
+) -> String {
+    let code_repo = review_code_container_path(worktree_path);
+    match commit_range {
+        Some((before, after)) => format!(
+            "Review ONLY the changes between commits {before}..{after} on branch '{current_branch}'. \
+            Run `git -C {code_repo} diff {before}..{after}` to see what changed - do NOT review code outside this range. \
+            Run code build and test commands in `{code_repo}`."
+        ),
+        None => format!(
+            "Review the changes on branch '{current_branch}' against the project spec (SPEC.md). \
+            Use `git -C {code_repo} diff` and `git -C {code_repo} log` to understand what changed. \
+            Run code build and test commands in `{code_repo}`."
+        ),
+    }
+}
+
+fn review_workspace_instructions(worktree_path: Option<&Path>) -> String {
+    match worktree_path {
+        Some(host_path) => format!(
+            "Repository layout: Litebrite and Trapperkeeper state live in `{BOOKKEEPING_CONTAINER_PATH}`. \
+            The code worktree to review is `{WORK_CONTAINER_PATH}`, mounted from host path `{}`. \
+            Run `lb` and `trk` commands from `{BOOKKEEPING_CONTAINER_PATH}`; run git diff/log and build/test commands from `{WORK_CONTAINER_PATH}`. \
+            Do not treat bookkeeping-only changes as the code implementation diff.",
+            host_path.display()
+        ),
+        None => format!(
+            "Repository layout: the code checkout and task tracking repo are both `{BOOKKEEPING_CONTAINER_PATH}`. \
+            Run git, build/test, `lb`, and `trk` commands there."
+        ),
+    }
+}
+
 fn review_purpose_instructions(review_target: Option<&ReviewTarget>) -> String {
     match review_target {
         Some(target) => format!(
@@ -492,5 +538,41 @@ mod tests {
         assert!(instructions.contains("No single litebrite item"));
         assert!(instructions.contains("infer the intended work"));
         assert!(instructions.contains("against SPEC.md"));
+    }
+
+    #[test]
+    fn split_worktree_scope_points_git_diff_at_code_checkout() {
+        let range = Some(("abc123".to_string(), "def456".to_string()));
+        let instructions =
+            review_scope_instructions("feature", &range, Some(Path::new("/host/service")));
+
+        assert!(instructions.contains("git -C /home/runner/worktree diff abc123..def456"));
+        assert!(
+            instructions.contains("Run code build and test commands in `/home/runner/worktree`")
+        );
+        assert!(!instructions.contains("git diff abc123..def456"));
+    }
+
+    #[test]
+    fn split_worktree_instructions_keep_litebrite_in_bookkeeping_repo() {
+        let instructions = review_workspace_instructions(Some(Path::new("/host/service")));
+
+        assert!(instructions
+            .contains("Litebrite and Trapperkeeper state live in `/home/runner/workspace`"));
+        assert!(instructions.contains("code worktree to review is `/home/runner/worktree`"));
+        assert!(instructions.contains("Run `lb` and `trk` commands from `/home/runner/workspace`"));
+        assert!(instructions
+            .contains("run git diff/log and build/test commands from `/home/runner/worktree`"));
+    }
+
+    #[test]
+    fn same_repo_scope_uses_workspace_checkout() {
+        let range = Some(("abc123".to_string(), "def456".to_string()));
+        let instructions = review_scope_instructions("feature", &range, None);
+
+        assert!(instructions.contains("git -C /home/runner/workspace diff abc123..def456"));
+        assert!(
+            instructions.contains("Run code build and test commands in `/home/runner/workspace`")
+        );
     }
 }

@@ -225,7 +225,7 @@ pub fn execute(
             ),
         );
 
-        let head_before = git_head(repo_root);
+        let head_before = git_head(&repo_layout.work_repo);
 
         let base_prompt = prompt::load_prompt(repo_root, logger.as_ref());
         let repo_block = repo_layout.prompt_block(false).unwrap_or_default();
@@ -311,7 +311,7 @@ pub fn execute(
         }
 
         // Run reviewer if new commits were made
-        let head_after = git_head(repo_root);
+        let head_after = git_head(&repo_layout.work_repo);
         let commit_range = match (&head_before, &head_after) {
             (Ok(before), Ok(after)) if before != after => Some((before.clone(), after.clone())),
             _ => None,
@@ -333,6 +333,7 @@ pub fn execute(
                     item_id: item_id.clone(),
                     label: "ready task".to_string(),
                 }),
+                worktree_path: repo_layout.docker_work_mount(),
                 event_sink: opts.event_sink.clone(),
             };
             let role_start = std::time::Instant::now();
