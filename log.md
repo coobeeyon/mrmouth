@@ -148,3 +148,7 @@ Recorded that orchestrated `do`/`batch`/`ready`/`loop` runner calls suppress nes
 ## [2026-07-07] fixed | Runner local remote and push handling
 
 Recorded Docker runner conventions for host-local git origins: local bookkeeping origins are mounted at `/host-repo`, split worktree origins are mounted with in-container `url.*.insteadOf` rewrites, no-origin file-remotes still skip host pull, separate local origins do not skip host pull, and cleanup push failures now emit `::mrmouth::push-error` so lifecycle summaries surface them as failures.
+
+## [2026-07-07] implemented | Partial eval telemetry caveats
+
+Recorded that `src/telemetry.rs` centralizes timing and token usage parsing. Eval reports now distinguish `completed`, `partial`, and `missing` token usage, attach structured caveats when `turn.completed` is absent, and lifecycle summaries for runner/orchestrator commands attach log paths, JSONL paths, and parsed telemetry when available.

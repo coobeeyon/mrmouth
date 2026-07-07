@@ -37,6 +37,7 @@ lb ready — [Litebrite Agent Contract](pages/litebrite-agent-contract.md)
 litebrite — [Litebrite Agent Contract](pages/litebrite-agent-contract.md)
 local file remotes — [Split Bookkeeping/Work Repos](pages/split-bookkeeping-work-repos.md), src/run.rs, src/docker.rs
 local worktree support — [Mr Mouth Prime](pages/mrmouth-prime.md), src/do_cmd.rs, src/run.rs, src/docker.rs
+missing turn.completed — [Mr Mouth Speed And Evals](pages/mrmouth-speed-and-evals.md), src/telemetry.rs, src/eval_cmd.rs
 mrmouth eval — [Mr Mouth Speed And Evals](pages/mrmouth-speed-and-evals.md), src/eval_cmd.rs
 mrmouth prime — [Mr Mouth Prime](pages/mrmouth-prime.md)
 mrmouth setup codex — [Mr Mouth Prime](pages/mrmouth-prime.md)
@@ -47,6 +48,7 @@ MRMOUTH_WORK_REPO — [Split Bookkeeping/Work Repos](pages/split-bookkeeping-wor
 MrmouthEvent — [Event Rendering Architecture](pages/event-rendering-architecture.md)
 output mode coupling — [Event Rendering Architecture](pages/event-rendering-architecture.md)
 parent child decomposition — [Litebrite Agent Contract](pages/litebrite-agent-contract.md)
+partial eval telemetry — [Mr Mouth Speed And Evals](pages/mrmouth-speed-and-evals.md), src/telemetry.rs
 post-run pull ordering — [Dockerfile Extraction Lifecycle](pages/dockerfile-extraction-lifecycle.md)
 push failure lifecycle summary — [Split Bookkeeping/Work Repos](pages/split-bookkeeping-work-repos.md), src/run.rs, src/do_cmd.rs
 review fitness for purpose — [Reviewer Fitness For Purpose](pages/reviewer-fitness-for-purpose.md)
@@ -60,8 +62,10 @@ smol current-container eval — [Mr Mouth Speed And Evals](pages/mrmouth-speed-a
 sibling dependencies — [Litebrite Agent Contract](pages/litebrite-agent-contract.md)
 split bookkeeping work repos — [Split Bookkeeping/Work Repos](pages/split-bookkeeping-work-repos.md), src/repo_layout.rs
 split worktree reviewer — [Reviewer Fitness For Purpose](pages/reviewer-fitness-for-purpose.md), src/reviewer.rs
+src/telemetry.rs — [Mr Mouth Speed And Evals](pages/mrmouth-speed-and-evals.md)
 supervisor output contract — [Mr Mouth Prime](pages/mrmouth-prime.md)
 terminal lifecycle summary — [Event Rendering Architecture](pages/event-rendering-architecture.md), src/run.rs, src/do_cmd.rs, src/loop_cmd.rs, src/batch_cmd.rs, src/ready.rs
+token usage caveat — [Mr Mouth Speed And Evals](pages/mrmouth-speed-and-evals.md), src/telemetry.rs
 tui separation — [Event Rendering Architecture](pages/event-rendering-architecture.md)
 uncommitted Dockerfile poisoning — [Dockerfile Extraction Lifecycle](pages/dockerfile-extraction-lifecycle.md), src/run.rs, src/reviewer.rs
 work graph authoring — [Litebrite Agent Contract](pages/litebrite-agent-contract.md)

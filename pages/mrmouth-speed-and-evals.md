@@ -1,7 +1,7 @@
 # Mr Mouth Speed And Evals
 
 Concepts: Codex exec startup cost, session reuse, app-server, eval harness, lifecycle metrics
-Key files: `src/agent.rs`, `src/streaming.rs`, `src/run.rs`, `src/do_cmd.rs`, `src/loop_cmd.rs`, `src/reviewer.rs`, `evals/README.md`, `evals/codex_goal_harness.mjs`
+Key files: `src/agent.rs`, `src/streaming.rs`, `src/run.rs`, `src/telemetry.rs`, `src/do_cmd.rs`, `src/loop_cmd.rs`, `src/reviewer.rs`, `evals/README.md`, `evals/codex_goal_harness.mjs`
 Commands/config: `mrmouth eval -- <command>`, `mrmouth do --json-events`, `mrmouth run --json-events`, `mrmouth loop --json-events`, `codex exec`, `codex exec resume`, `codex app-server`
 Useful when: comparing Mr Mouth to Codex `/goal`, designing evals, profiling agent latency, or changing Codex invocation strategy
 
@@ -151,6 +151,18 @@ reports now add normalized token fields: Mr Mouth parses
 `lifecycle.token_usage` from inner Codex JSONL `turn.completed.usage`, and the
 Goal harness preserves final goal tokens, `thread/tokenUsage/updated` samples,
 normalized nested app-server usage, and comparable aggregate fields.
+
+Telemetry parsing is centralized in `src/telemetry.rs`. It keeps the eval report
+shape stable (`lifecycle.timing_markers` and `lifecycle.token_usage`) while
+adding a token `status`: `completed` when one or more `turn.completed.usage`
+records were summed, `partial` when no completed turn exists but another
+usage-shaped event such as `thread/tokenUsage/updated` was seen, and `missing`
+when the JSONL has no token usage at all. Partial and missing cases carry a
+structured `caveat` instead of silently returning null. Terminal
+`lifecycle_summary` events for `run`, `do`, `batch`, `ready`, and `loop` attach
+`log_path`, `jsonl_path`, and parsed telemetry when latest logs are available,
+so interrupted or nonzero runner exits can still preserve timing markers and
+last-seen token accounting.
 
 `evals/fixtures/multi-do-epic-python/` is the first multi-leaf fixture. It
 generates a parent Litebrite epic with four ordered child tasks for a small
