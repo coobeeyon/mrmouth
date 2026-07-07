@@ -8,6 +8,9 @@ bookkeeping repo — [Split Bookkeeping/Work Repos](pages/split-bookkeeping-work
 brite authoring — [Litebrite Agent Contract](pages/litebrite-agent-contract.md)
 brite hierarchy — [Litebrite Agent Contract](pages/litebrite-agent-contract.md)
 cargo clippy CI gate — [CI Check Commands](pages/ci-check-commands.md), Cargo.toml
+Cargo too old — [Runner Toolchain Preflight](pages/runner-toolchain-preflight.md), src/run.rs
+Cargo.lock format preflight — [Runner Toolchain Preflight](pages/runner-toolchain-preflight.md), src/run.rs
+Cargo.lock version 4 — [Runner Toolchain Preflight](pages/runner-toolchain-preflight.md), src/run.rs
 CI checks — [CI Check Commands](pages/ci-check-commands.md)
 claim semantics — [Litebrite Agent Contract](pages/litebrite-agent-contract.md)
 clippy too_many_arguments suppressions — [CI Check Commands](pages/ci-check-commands.md), src/do_cmd.rs, src/loop_cmd.rs, src/run.rs
@@ -20,6 +23,7 @@ Codex goal eval — [Mr Mouth Speed And Evals](pages/mrmouth-speed-and-evals.md)
 Codex role models — [Codex Role Model Defaults](pages/codex-role-model-defaults.md)
 container Dockerfile extraction — [Dockerfile Extraction Lifecycle](pages/dockerfile-extraction-lifecycle.md)
 context hygiene — [Runner Context Hygiene](pages/runner-context-hygiene.md), src/prompt.rs
+current-container Rust toolchain — [Runner Toolchain Preflight](pages/runner-toolchain-preflight.md), src/run.rs
 Dockerfile auto-commit — [Dockerfile Extraction Lifecycle](pages/dockerfile-extraction-lifecycle.md), src/run.rs, src/reviewer.rs
 Dockerfile self-modification — [Dockerfile Extraction Lifecycle](pages/dockerfile-extraction-lifecycle.md)
 do --worktree — [Mr Mouth Prime](pages/mrmouth-prime.md), src/do_cmd.rs, src/run.rs, src/docker.rs
@@ -62,6 +66,10 @@ reviewer split worktree scope — [Reviewer Fitness For Purpose](pages/reviewer-
 RunOptions emit_terminal_events — [Event Rendering Architecture](pages/event-rendering-architecture.md), src/run.rs
 runtime benchmarks — [Mr Mouth Speed And Evals](pages/mrmouth-speed-and-evals.md)
 runner prompt context hygiene — [Runner Context Hygiene](pages/runner-context-hygiene.md), src/prompt.rs
+runner image Rust toolchain — [Runner Toolchain Preflight](pages/runner-toolchain-preflight.md), src/run.rs, src/docker.rs
+runner toolchain preflight — [Runner Toolchain Preflight](pages/runner-toolchain-preflight.md), src/run.rs, src/docker.rs
+Rust runner toolchain — [Runner Toolchain Preflight](pages/runner-toolchain-preflight.md), src/run.rs, src/docker.rs
+rustfmt preflight — [Runner Toolchain Preflight](pages/runner-toolchain-preflight.md), src/run.rs
 session reuse — [Mr Mouth Speed And Evals](pages/mrmouth-speed-and-evals.md), src/run.rs, src/do_cmd.rs, src/loop_cmd.rs
 smol current-container eval — [Mr Mouth Speed And Evals](pages/mrmouth-speed-and-evals.md), evals/fixtures/smol-current-container
 sibling dependencies — [Litebrite Agent Contract](pages/litebrite-agent-contract.md)

@@ -12,4 +12,5 @@
 - [Mr Mouth Speed And Evals](pages/mrmouth-speed-and-evals.md) — Runtime bottlenecks, Codex session options, and eval harness direction.
 - [Reviewer Fitness For Purpose](pages/reviewer-fitness-for-purpose.md) — Reviewer prompt context for requested Litebrite items and split worktree diff scope.
 - [Runner Context Hygiene](pages/runner-context-hygiene.md) — Default runner prompt guidance for avoiding generated files, eval artifacts, logs, and agent/plugin caches as source context.
+- [Runner Toolchain Preflight](pages/runner-toolchain-preflight.md) — Rust/Cargo/rustfmt diagnostics before runner agent execution.
 - [Split Bookkeeping/Work Repos](pages/split-bookkeeping-work-repos.md) — Configured fake-monorepo layout that separates task bookkeeping from the code repo agents edit.

@@ -156,3 +156,7 @@ Recorded that `src/telemetry.rs` centralizes timing and token usage parsing. Eva
 ## [2026-07-07] updated | Runner context hygiene prompt
 
 Recorded that `src/prompt.rs` now carries default runner guidance to avoid treating generated files, build outputs, logs, preserved eval artifacts, and agent/plugin caches as source context. The prompt names `.codex-home/`, `.tmp/plugins/`, `logs/`, `target/`, `preserved/`, and generated eval fixture output directories, and tests lock those examples into the embedded default prompt.
+
+## [2026-07-07] implemented | Runner Rust toolchain preflight
+
+Recorded that `src/run.rs` now detects Rust work repos via `Cargo.toml`, checks current-container Cargo/rustfmt before agent startup, probes built Docker runner images for Cargo/rustfmt after `docker build`, and rejects Cargo.lock format 4 with Cargo older than 1.78. The built-in fallback Dockerfile now copies the modern Rust toolchain from the tools builder and installs rustfmt.
