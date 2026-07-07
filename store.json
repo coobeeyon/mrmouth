@@ -1576,10 +1576,10 @@
       "title": "Fix Mr Mouth eval-run reliability defects",
       "description": "Fix the Mr Mouth runner/reviewer deficiencies exposed by the Biolife eval. The failures were not just product quality issues: preservation/accounting was ambiguous, reviewer scoped the wrong changes, runner remotes/pushes failed silently, telemetry missed the final GUI turn, and runner context/toolchain hygiene wasted time. Implement concrete fixes in mrmouth itself, with tests where practical, so future eval runs produce trustworthy artifacts and review the actual worktree changes.",
       "item_type": "epic",
-      "status": "open",
+      "status": "closed",
       "priority": 1,
       "created_at": "2026-07-07T14:58:38.561977469Z",
-      "updated_at": "2026-07-07T14:58:38.561977469Z"
+      "updated_at": "2026-07-07T15:42:41.203204925Z"
     },
     "lb-tqh0": {
       "id": "lb-tqh0",
