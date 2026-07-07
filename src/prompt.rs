@@ -34,6 +34,15 @@ pub const DEFAULT_PROMPT: &str = r#"You are the **Runner**. Your job is to imple
 - Every task ends with: lb close, lb sync, git push — in that order, in the foreground. Wait for push to complete before exiting.
 - The decider decomposes epics and plans work — do not break down specs or plan ahead.
 
+## Context Hygiene
+
+Treat generated files, build outputs, logs, preserved eval artifacts, and agent home/plugin caches as non-source context unless the task explicitly asks for them. Do not spend broad exploration on these paths, and do not include them in any repo file inventory you create:
+- `.codex-home/`, `.claude/`, `.tmp/`, `.tmp/plugins/`, and other agent/plugin cache directories
+- `logs/`, `target/`, `node_modules/`, `__pycache__/`, `.pytest_cache/`, `tmp/`, and `preserved/`
+- generated eval fixture outputs such as `evals/fixtures/*/repo/`, `evals/fixtures/*/reports/`, and `evals/fixtures/*/remotes/`
+
+Prefer source-oriented commands such as `git status`, `git diff`, `git ls-files`, and targeted `rg` searches. If you need a file listing, use tracked files or an explicit ignore filter instead of recursively listing the whole checkout.
+
 ## Docker Environment
 
 Your container is built from `.mrmouth/Dockerfile`, which exists in your workspace. If a build or test command fails because a tool is missing (e.g., `cargo: command not found`, `python3: command not found`):
@@ -63,4 +72,48 @@ pub fn load_prompt(repo_root: &std::path::Path, logger: Option<&crate::logger::L
         }
     }
     format!("## System\n\n{SYSTEM_PREAMBLE}\n\n{DEFAULT_PROMPT}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_prompt_names_generated_context_exclusions() {
+        for pattern in [
+            ".codex-home/",
+            ".tmp/plugins/",
+            "logs/",
+            "target/",
+            "preserved/",
+            "evals/fixtures/*/repo/",
+            "evals/fixtures/*/reports/",
+            "evals/fixtures/*/remotes/",
+        ] {
+            assert!(
+                DEFAULT_PROMPT.contains(pattern),
+                "default prompt should name ignored/generated path {pattern}"
+            );
+        }
+    }
+
+    #[test]
+    fn loaded_default_prompt_includes_context_hygiene() {
+        let dir = tempfile::tempdir().unwrap();
+        let prompt = load_prompt(dir.path(), None);
+
+        assert!(prompt.contains("## Context Hygiene"));
+        assert!(prompt.contains("Do not spend broad exploration on these paths"));
+        assert!(prompt.contains("git ls-files"));
+    }
+
+    #[test]
+    fn custom_prompt_override_is_preserved() {
+        let dir = tempfile::tempdir().unwrap();
+        let prompt_dir = dir.path().join(".mrmouth");
+        std::fs::create_dir_all(&prompt_dir).unwrap();
+        std::fs::write(prompt_dir.join("prompt.md"), "custom prompt").unwrap();
+
+        assert_eq!(load_prompt(dir.path(), None), "custom prompt");
+    }
 }
