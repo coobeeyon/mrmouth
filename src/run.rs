@@ -375,6 +375,12 @@ pub fn execute(
         image_id: docker.image_id(),
         exit_code: None,
     });
+    let project_root = opts.worktree_path.as_deref().unwrap_or(repo_root);
+    if is_rust_project(project_root) {
+        reporter.log(&logger, "Checking runner image Rust toolchain...");
+        check_docker_image_rust_toolchain(&config.image, project_root)
+            .inspect_err(|_| logger.flush())?;
+    }
 
     // 6. Ensure persistent volume
     let volume = config.effective_volume(repo_root);
@@ -672,6 +678,11 @@ fn execute_current_container(
     } else {
         check_agent_credentials(config.agent)?;
         check_current_container_tools(repo_root, config.agent)?;
+        let project_root = opts.worktree_path.as_deref().unwrap_or(repo_root);
+        if is_rust_project(project_root) {
+            reporter.log(&logger, "Checking current-container Rust toolchain...");
+            check_current_container_rust_toolchain(project_root).inspect_err(|_| logger.flush())?;
+        }
     }
 
     reporter.log(&logger, "Syncing litebrite...");
@@ -937,6 +948,12 @@ pub fn start_session(
         build_start.elapsed().as_millis()
     ));
     let image_id = docker.image_id().unwrap_or_default();
+    let project_root = worktree_path.as_deref().unwrap_or(repo_root);
+    if is_rust_project(project_root) {
+        logger.log("Checking runner image Rust toolchain...");
+        check_docker_image_rust_toolchain(&config.image, project_root)
+            .inspect_err(|_| logger.flush())?;
+    }
 
     // 5. Ensure volume
     let volume = config.effective_volume(repo_root);
@@ -1657,6 +1674,246 @@ fn check_current_container_tools(repo_root: &Path, agent: AgentKind) -> Result<(
     }
 
     Ok(())
+}
+
+fn is_rust_project(project_root: &Path) -> bool {
+    project_root.join("Cargo.toml").is_file()
+}
+
+fn check_current_container_rust_toolchain(project_root: &Path) -> Result<(), RunError> {
+    if !command_exists("cargo") {
+        return Err(RunError::Preflight(format!(
+            "Rust project detected at {} (Cargo.toml) but current-container mode cannot find `cargo` on PATH. \
+             Install a current Rust toolchain in this container or run with a Dockerfile that provides Rust/Cargo.",
+            project_root.display()
+        )));
+    }
+
+    let cargo_version = command_version("cargo", "current container")?;
+
+    if !command_exists("rustfmt") {
+        return Err(RunError::Preflight(format!(
+            "Rust project detected at {} (Cargo.toml) but current-container mode cannot find `rustfmt` on PATH. \
+             Install rustfmt with `rustup component add rustfmt` or add the rustfmt package to the container.",
+            project_root.display()
+        )));
+    }
+    let _ = command_version("rustfmt", "current container")?;
+
+    validate_cargo_lock_compatible(project_root, "current container", &cargo_version)
+}
+
+fn check_docker_image_rust_toolchain(image: &str, project_root: &Path) -> Result<(), RunError> {
+    let script = "\
+if ! command -v cargo >/dev/null 2>&1; then echo __MRMOUTH_MISSING_CARGO__; exit 10; fi\n\
+cargo --version || exit 12\n\
+if ! command -v rustfmt >/dev/null 2>&1; then echo __MRMOUTH_MISSING_RUSTFMT__; exit 11; fi\n\
+rustfmt --version || exit 13\n";
+    let mut cmd = Command::new("docker");
+    cmd.args(["run", "--rm", "--entrypoint", "sh", image, "-lc", script]);
+    let outcome = run_with_timeout(cmd, Duration::from_secs(20))
+        .map_err(|e| RunError::Io("checking runner image Rust toolchain".into(), e))?;
+
+    let output = match outcome {
+        TimeoutOutcome::Completed(output) => output,
+        TimeoutOutcome::TimedOut => {
+            return Err(RunError::Preflight(format!(
+                "Rust project detected at {} (Cargo.toml), but probing runner image `{image}` for Cargo/rustfmt timed out. \
+                 Verify the image starts normally or set MRMOUTH_SKIP_PREFLIGHT=1 to override.",
+                project_root.display()
+            )));
+        }
+    };
+
+    let text = command_output_text(&output);
+    if !output.status.success() {
+        if text.contains("__MRMOUTH_MISSING_CARGO__") {
+            return Err(RunError::Preflight(format!(
+                "Rust project detected at {} (Cargo.toml) but runner image `{image}` does not provide `cargo`. \
+                 Add a current Rust toolchain to .mrmouth/Dockerfile before `USER runner` (for example, use rustup or copy from a rust:slim builder stage).",
+                project_root.display()
+            )));
+        }
+        if text.contains("__MRMOUTH_MISSING_RUSTFMT__") {
+            return Err(RunError::Preflight(format!(
+                "Rust project detected at {} (Cargo.toml) but runner image `{image}` does not provide `rustfmt`. \
+                 Add `rustup component add rustfmt` or install a rustfmt package in .mrmouth/Dockerfile before `USER runner`.",
+                project_root.display()
+            )));
+        }
+        return Err(RunError::Preflight(format!(
+            "Rust project detected at {} (Cargo.toml), but probing runner image `{image}` for Cargo/rustfmt failed with exit code {}: {}",
+            project_root.display(),
+            output.status.code().unwrap_or(-1),
+            compact_output(&text)
+        )));
+    }
+
+    let cargo_version = text
+        .lines()
+        .find(|line| line.trim_start().starts_with("cargo "))
+        .ok_or_else(|| {
+            RunError::Preflight(format!(
+                "Rust project detected at {} (Cargo.toml), but runner image `{image}` did not report `cargo --version`. \
+                 Ensure Cargo is installed and runnable before `USER runner` in .mrmouth/Dockerfile.",
+                project_root.display()
+            ))
+        })?;
+
+    validate_cargo_lock_compatible(
+        project_root,
+        &format!("runner image `{image}`"),
+        cargo_version,
+    )
+}
+
+fn command_version(binary: &str, location: &str) -> Result<String, RunError> {
+    let mut cmd = Command::new(binary);
+    cmd.arg("--version");
+    let outcome = run_with_timeout(cmd, Duration::from_secs(8))
+        .map_err(|e| RunError::Io(format!("checking {binary} version"), e))?;
+    match outcome {
+        TimeoutOutcome::Completed(output) if output.status.success() => {
+            Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+        }
+        TimeoutOutcome::Completed(output) => Err(RunError::Preflight(format!(
+            "`{binary} --version` failed in {location} with exit code {}: {}",
+            output.status.code().unwrap_or(-1),
+            compact_output(&command_output_text(&output))
+        ))),
+        TimeoutOutcome::TimedOut => Err(RunError::Preflight(format!(
+            "`{binary} --version` timed out in {location}"
+        ))),
+    }
+}
+
+fn validate_cargo_lock_compatible(
+    project_root: &Path,
+    location: &str,
+    cargo_version_output: &str,
+) -> Result<(), RunError> {
+    let Some(lock_format) = cargo_lock_format_version(project_root)? else {
+        return Ok(());
+    };
+    let Some(cargo_version) = parse_cargo_version(cargo_version_output) else {
+        return Err(RunError::Preflight(format!(
+            "Rust project detected at {} but mrmouth could not parse `{}` from {location}. \
+             Expected output like `cargo 1.78.0 (...)`.",
+            project_root.display(),
+            cargo_version_output.trim()
+        )));
+    };
+
+    if lock_format == 4 && cargo_version < ToolVersion::new(1, 78, 0) {
+        return Err(RunError::Preflight(format!(
+            "Cargo.lock at {} uses lockfile format version 4, which requires Cargo >= 1.78, \
+             but {location} has Cargo {cargo_version}. \
+             Install a current Rust toolchain in .mrmouth/Dockerfile before `USER runner` or update this current container; include rustfmt as well.",
+            project_root.join("Cargo.lock").display()
+        )));
+    }
+
+    if lock_format > 4 {
+        return Err(RunError::Preflight(format!(
+            "Cargo.lock at {} uses unsupported lockfile format version {lock_format}. \
+             Update the runner to a Cargo release that supports this lockfile, and ensure rustfmt is installed.",
+            project_root.join("Cargo.lock").display()
+        )));
+    }
+
+    Ok(())
+}
+
+fn cargo_lock_format_version(project_root: &Path) -> Result<Option<u32>, RunError> {
+    let lock_path = project_root.join("Cargo.lock");
+    if !lock_path.is_file() {
+        return Ok(None);
+    }
+    let content =
+        fs::read_to_string(&lock_path).map_err(|e| RunError::Io("reading Cargo.lock".into(), e))?;
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("[[") || trimmed.starts_with('[') {
+            break;
+        }
+        let Some(rest) = trimmed.strip_prefix("version") else {
+            continue;
+        };
+        let Some(value) = rest.trim_start().strip_prefix('=') else {
+            continue;
+        };
+        if let Ok(version) = value.trim().parse::<u32>() {
+            return Ok(Some(version));
+        }
+    }
+    Ok(None)
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+struct ToolVersion {
+    major: u32,
+    minor: u32,
+    patch: u32,
+}
+
+impl ToolVersion {
+    const fn new(major: u32, minor: u32, patch: u32) -> Self {
+        Self {
+            major,
+            minor,
+            patch,
+        }
+    }
+}
+
+impl std::fmt::Display for ToolVersion {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}.{}.{}", self.major, self.minor, self.patch)
+    }
+}
+
+fn parse_cargo_version(output: &str) -> Option<ToolVersion> {
+    let version = output
+        .lines()
+        .find_map(|line| line.trim().strip_prefix("cargo "))?
+        .split_whitespace()
+        .next()?;
+    parse_version_token(version)
+}
+
+fn parse_version_token(token: &str) -> Option<ToolVersion> {
+    let mut parts = token.split(['.', '-']);
+    let major = parse_numeric_prefix(parts.next()?)?;
+    let minor = parse_numeric_prefix(parts.next()?)?;
+    let patch = parse_numeric_prefix(parts.next().unwrap_or("0"))?;
+    Some(ToolVersion::new(major, minor, patch))
+}
+
+fn parse_numeric_prefix(value: &str) -> Option<u32> {
+    let digits: String = value.chars().take_while(|c| c.is_ascii_digit()).collect();
+    digits.parse().ok()
+}
+
+fn command_output_text(output: &std::process::Output) -> String {
+    let mut text = String::new();
+    text.push_str(&String::from_utf8_lossy(&output.stdout));
+    text.push_str(&String::from_utf8_lossy(&output.stderr));
+    text
+}
+
+fn compact_output(text: &str) -> String {
+    let compact = text
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .take(4)
+        .collect::<Vec<_>>()
+        .join(" | ");
+    if compact.is_empty() {
+        "(no output)".to_string()
+    } else {
+        compact
+    }
 }
 
 fn command_exists(binary: &str) -> bool {
@@ -3703,6 +3960,103 @@ mod tests {
         git(dir.path(), &["branch", "trapperkeeper"]);
         check_tooling_coherence(dir.path(), docker::DEFAULT_DOCKERFILE)
             .expect("default Dockerfile must satisfy coherence for both tools");
+    }
+
+    #[test]
+    fn default_dockerfile_includes_rustfmt_for_rust_projects() {
+        assert!(docker::DEFAULT_DOCKERFILE.contains("rustup component add rustfmt"));
+        assert!(docker::DEFAULT_DOCKERFILE.contains("/usr/local/bin/rustfmt"));
+        assert!(docker::DEFAULT_DOCKERFILE.contains("/usr/local/bin/cargo"));
+        assert!(!docker::DEFAULT_DOCKERFILE.contains("ripgrep cargo"));
+    }
+
+    #[test]
+    fn cargo_lock_format_version_reads_top_level_lock_version() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("Cargo.lock"),
+            "# generated\nversion = 4\n\n[[package]]\nname = \"demo\"\nversion = \"0.1.0\"\n",
+        )
+        .unwrap();
+
+        assert_eq!(cargo_lock_format_version(dir.path()).unwrap(), Some(4));
+    }
+
+    #[test]
+    fn cargo_lock_format_version_ignores_package_versions() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("Cargo.lock"),
+            "[[package]]\nname = \"demo\"\nversion = \"0.1.0\"\n",
+        )
+        .unwrap();
+
+        assert_eq!(cargo_lock_format_version(dir.path()).unwrap(), None);
+    }
+
+    #[test]
+    fn parse_cargo_version_handles_stable_and_prerelease_output() {
+        assert_eq!(
+            parse_cargo_version("cargo 1.63.0 (fd9c4297c 2022-07-01)"),
+            Some(ToolVersion::new(1, 63, 0))
+        );
+        assert_eq!(
+            parse_cargo_version("cargo 1.79.0-nightly (abcdef 2024-04-01)"),
+            Some(ToolVersion::new(1, 79, 0))
+        );
+        assert_eq!(parse_cargo_version("not cargo"), None);
+    }
+
+    #[test]
+    fn lockfile_v4_rejects_cargo_older_than_1_78() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("Cargo.toml"),
+            "[package]\nname = \"demo\"\n",
+        )
+        .unwrap();
+        std::fs::write(dir.path().join("Cargo.lock"), "version = 4\n").unwrap();
+
+        let err = validate_cargo_lock_compatible(
+            dir.path(),
+            "runner image `test-image`",
+            "cargo 1.63.0 (fd9c4297c 2022-07-01)",
+        )
+        .unwrap_err();
+        let msg = format!("{err}");
+        assert!(msg.contains("lockfile format version 4"), "got: {msg}");
+        assert!(msg.contains("Cargo >= 1.78"), "got: {msg}");
+        assert!(msg.contains("Cargo 1.63.0"), "got: {msg}");
+        assert!(msg.contains(".mrmouth/Dockerfile"), "got: {msg}");
+        assert!(msg.contains("rustfmt"), "got: {msg}");
+    }
+
+    #[test]
+    fn lockfile_v4_allows_cargo_1_78() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("Cargo.lock"), "version = 4\n").unwrap();
+
+        validate_cargo_lock_compatible(
+            dir.path(),
+            "current container",
+            "cargo 1.78.0 (54d8815d0 2024-03-26)",
+        )
+        .expect("Cargo 1.78 should understand lockfile format 4");
+    }
+
+    #[test]
+    fn future_lockfile_format_fails_with_upgrade_guidance() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("Cargo.lock"), "version = 99\n").unwrap();
+
+        let err = validate_cargo_lock_compatible(dir.path(), "current container", "cargo 1.90.0")
+            .unwrap_err();
+        let msg = format!("{err}");
+        assert!(
+            msg.contains("unsupported lockfile format version 99"),
+            "got: {msg}"
+        );
+        assert!(msg.contains("rustfmt"), "got: {msg}");
     }
 
     #[test]
