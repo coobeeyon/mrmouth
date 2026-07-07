@@ -1836,11 +1836,10 @@
       "title": "Record partial telemetry for interrupted or missing turn completion",
       "description": "Goal: Make token/time telemetry complete even when a runner is interrupted or exits unexpectedly. Context: The Biolife GUI turn has no turn.completed usage record even though a later commit exists, so the eval lost accounting for the most important work. Requirements: Audit src/streaming.rs, src/run.rs, src/eval_cmd.rs, and lifecycle summary generation. Preserve last-seen usage/timing markers, emit interrupted/partial usage in lifecycle_summary when final turn.completed is absent, and include log/jsonl paths in terminal events. Acceptance: eval reports distinguish completed usage from partial/interrupted usage; missing turn.completed is visible as a structured caveat, not silent null; cargo test passes. Out of scope: exact billing reconstruction when the agent CLI never emits usage.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 1,
-      "claimed_by": "Codex",
       "created_at": "2026-07-07T14:59:08.574293563Z",
-      "updated_at": "2026-07-07T15:26:12.740124244Z"
+      "updated_at": "2026-07-07T15:32:24.642903200Z"
     },
     "lb-x5un": {
       "id": "lb-x5un",
