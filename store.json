@@ -1483,13 +1483,13 @@
     "lb-r5ec": {
       "id": "lb-r5ec",
       "title": "Add XL context-pressure eval fixture",
-      "description": "Goal: Add and run an XL deterministic eval fixture that is large enough to test whether Codex Goal compacts or crosses context boundaries. Context: Existing fixtures live under evals/fixtures; long-epic-python proved ten leaves still completed in one Goal context. Requirements: create a larger Python fixture with substantially more ordered leaves and enough spec/test surface to pressure context, include Goal and mrmouth batch harnesses where practical, record whether Goal compacts, and document observed timing/token/quality signals. Acceptance: fixture generation/static checks pass; Goal run is attempted and reports turn/token/compaction evidence; mrmouth comparison is run if feasible; docs record the result and any harness limitations. Out of scope: changing mrmouth batch internals unless the fixture exposes a blocking bug.",
+      "description": "Goal: Add and run an XL deterministic eval fixture that is large enough to test whether Codex Goal compacts or crosses context boundaries. Context: Existing fixtures live under evals/fixtures; long-epic-python proved ten leaves still completed in one Goal context. Requirements: create a larger Python fixture with substantially more ordered leaves and enough spec/test surface to pressure context, include Goal and mrmouth batch harnesses where practical, record whether Goal compacts, and document observed timing/token/quality signals. Acceptance: fixture generation/static checks pass; Goal run is attempted and reports turn/token/compaction evidence; mrmouth comparison is run if feasible; docs record the result and any harness limitations. Out of scope: changing mrmouth batch internals unless the fixture exposes a blocking bug.\n\nStale-work audit 2026-09-05: close as superseded and no longer worthwhile. This task had no substantive update since 2026-07-03, and the Mr Mouth repository has had no fixture work since 2026-07-06. The current chief-of-staff Goal trial now exercises substantially larger real, cross-repository workloads directly: observed completed runs use roughly 150k-423k tokens over 15-36 minutes, cross context boundaries, and are repeated sequentially in fresh Goal threads. MyBuddy also no longer uses Mr Mouth as its execution path; it uses resident Codex/Claude peers. Building and running another XL synthetic fixture plus a dormant-harness comparison would duplicate the live experiment at significant compute cost without informing a current product decision. Existing long-epic and hard-epic fixtures remain preserved.",
       "item_type": "task",
       "status": "open",
       "priority": 1,
       "claimed_by": "Codex",
       "created_at": "2026-07-03T23:45:06.809125943Z",
-      "updated_at": "2026-07-03T23:45:13.724971012Z"
+      "updated_at": "2026-09-05T06:18:26.097298033Z"
     },
     "lb-rv1t": {
       "id": "lb-rv1t",
