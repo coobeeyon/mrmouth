@@ -359,6 +359,7 @@ fn emit_event(sink: &Option<EventSinkHandle>, event: MrmouthEvent) {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn execute_task(
     config: &Config,
     repo_root: &Path,
@@ -371,7 +372,8 @@ fn execute_task(
 ) -> Result<(), DoError> {
     emit(tui_tx, &format!("Running single task: {}", opts.item_id));
 
-    let head_before = git_head(repo_root);
+    let review_repo = review_repo_path(repo_root, local_worktree);
+    let head_before = git_head(review_repo);
 
     let base_prompt = prompt::load_prompt(repo_root, logger);
     let worktree_block = if opts.current_container {
@@ -410,7 +412,7 @@ fn execute_task(
     }
 
     // Run reviewer on the diff if new commits were made
-    let head_after = git_head(repo_root);
+    let head_after = git_head(review_repo);
     let commit_range = match (&head_before, &head_after) {
         (Ok(before), Ok(after)) if before != after => Some((before.clone(), after.clone())),
         _ => None,
@@ -438,6 +440,7 @@ fn execute_task(
                 item_id: opts.item_id.clone(),
                 label: item_info_label(repo_root, &opts.item_id),
             }),
+            worktree_path: local_worktree.target_mount.clone(),
             event_sink: opts.event_sink.clone(),
         };
         if let Err(e) = reviewer::execute(config, repo_root, &reviewer_opts, logger) {
@@ -462,6 +465,7 @@ fn task_prompt(item_id: &str, base_prompt: &str, worktree_block: Option<&str>) -
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 fn execute_epic(
     config: &Config,
     repo_root: &Path,
@@ -476,7 +480,8 @@ fn execute_epic(
     let mut consecutive_failures: u32 = 0;
     let mut recent_failures: Vec<AttemptSummary> = Vec::new();
 
-    let head_before = git_head(repo_root);
+    let review_repo = review_repo_path(repo_root, local_worktree);
+    let head_before = git_head(review_repo);
 
     if opts.current_container {
         let loop_result = (|| -> Result<(), DoError> {
@@ -588,7 +593,7 @@ fn execute_epic(
 
         loop_result?;
 
-        let head_after = git_head(repo_root);
+        let head_after = git_head(review_repo);
         if matches!((&head_before, &head_after), (Ok(before), Ok(after)) if before != after) {
             emit(
                 tui_tx,
@@ -773,7 +778,7 @@ fn execute_epic(
     loop_result?;
 
     // Run reviewer on the full epic diff if new commits were made
-    let head_after = git_head(repo_root);
+    let head_after = git_head(review_repo);
     let commit_range = match (&head_before, &head_after) {
         (Ok(before), Ok(after)) if before != after => Some((before.clone(), after.clone())),
         _ => None,
@@ -795,6 +800,7 @@ fn execute_epic(
                 item_id: opts.item_id.clone(),
                 label: item_info_label(repo_root, &opts.item_id),
             }),
+            worktree_path: local_worktree.target_mount.clone(),
             event_sink: opts.event_sink.clone(),
         };
         if let Err(e) = reviewer::execute(config, repo_root, &reviewer_opts, logger) {
@@ -827,6 +833,10 @@ fn git_head(repo_root: &Path) -> Result<String, ()> {
     } else {
         Err(())
     }
+}
+
+fn review_repo_path<'a>(repo_root: &'a Path, local_worktree: &'a LocalWorktree) -> &'a Path {
+    local_worktree.target_mount.as_deref().unwrap_or(repo_root)
 }
 
 fn lb_show(repo_root: &Path, item_id: &str) -> Result<ItemInfo, DoError> {
@@ -870,6 +880,7 @@ fn item_info_label(repo_root: &Path, item_id: &str) -> String {
 /// fresh one. This is how we pick up Dockerfile edits the agent made during
 /// a task. A build failure is non-fatal — we keep the existing session and
 /// let the next iteration retry.
+#[allow(clippy::too_many_arguments)]
 fn maybe_restart_session_on_dockerfile_change(
     config: &Config,
     repo_root: &Path,

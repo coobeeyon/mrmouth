@@ -185,6 +185,8 @@ The prompt given to the agent. The built-in default implements the relay pattern
 
 **Split bookkeeping/work repos:** By default the bookkeeping repo and work repo are the same path. In fake-monorepo setups, keep `.mrmouth/`, Litebrite, and Trapperkeeper artifacts in the outer bookkeeping repo and set `work_repo = "path/to/inner-repo"` in `.mrmouth/config.toml`. Mr Mouth canonicalizes both paths; when they differ, Docker clones or mounts the bookkeeping repo at `/home/runner/workspace`, bind-mounts the work repo at `/home/runner/worktree`, sets `MRMOUTH_BOOKKEEPING_REPO` and `MRMOUTH_WORK_REPO`, and tells agents to run task commands in bookkeeping while making code changes and code commits in the work repo. `--worktree <path>` overrides `work_repo` for one run.
 
+Docker reviews in `do`, `ready`, and `loop` use commits from the code repository and mount that checkout for diff, build, and test commands. Bookkeeping-only commits do not trigger a code review. The code checkout can remain on a different branch from bookkeeping; reviewers use the exact commit range without switching it.
+
 **Self-modification:** The agent can create or edit `.mrmouth/Dockerfile` to add tools and dependencies. Changes are committed and rebuilt on the next run.
 
 **Local mode:** `mrmouth run --local` bind-mounts the current directory. Works with repos that have no remote, or even directories that aren't git repos yet.
