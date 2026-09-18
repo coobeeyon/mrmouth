@@ -33,13 +33,13 @@
     "lb-1axz": {
       "id": "lb-1axz",
       "title": "Recover truthful terminal lifecycle summaries",
-      "description": "Goal: Recover the useful 1117f3c lifecycle correction from the preserved evaluation branch onto current main without importing experimental eval/batch features. Nested runs must not emit command-terminal summaries; top-level errors must emit one final failure summary; loop summaries must follow session teardown. Prove success and failure behavior using the real CLI with isolated Git repositories and fake Docker/agents, including current-container and ordinary run controls. Preserve original dirty evaluation files. Delivery target: local tested review branch, no merge, installation, provider run or public artifact without authority. Parent recovery inventory remains lb-h7vj.",
+      "description": "Goal: Recover useful 1117f3c terminal lifecycle correction without experimental eval/batch features. Delivered local branch fix/recover-terminal-events at 4f42966 in /home/mdaum/devel/coobeeyon/mrmouth-terminal-recovery-e2861db0, based on fedc1e2 plus narrow prerequisite Clippy annotations. Nested runs no longer emit command-final summaries; top-level errors produce one final failure; loop completion follows teardown calls. Old patch's unrelated potentially stale latest-log enrichment excluded. Verified 194 unit tests, sixteen real-CLI/fake-agent-and-Docker cases, locked build, strict Clippy. Exact baseline fails thirteen cases, three controls pass; cleanup ordering is tested by reading actual stdout at fake Docker stop time. Existing loop failure tolerance and best-effort cleanup policy unchanged. Clean synthetic merge with PR10 proves textual compatibility only. Source and tests committed; local-only candidate delivery complete, independent review/integration still required under lb-h7vj. No publication, merge, installation, provider call or evidence deletion. Private evidence /home/mdaum/devel/coobeeyon/mrmouth-eval-preservation-e2861db0 and /workspace/mybuddy/.trapper_keeper/artifacts/mrmouth-evaluation-recovery-2026-09-17.md.",
       "item_type": "task",
       "status": "open",
       "priority": 1,
       "claimed_by": "Michael Daum",
       "created_at": "2026-09-18T01:15:51.028806624Z",
-      "updated_at": "2026-09-18T01:17:08.056109129Z"
+      "updated_at": "2026-09-18T01:23:50.983195940Z"
     },
     "lb-1brq": {
       "id": "lb-1brq",
