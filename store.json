@@ -1024,13 +1024,13 @@
     "lb-h7vj": {
       "id": "lb-h7vj",
       "title": "Recover or retire the old mrmouth evaluation changes",
-      "description": "Goal: Resolve the July local Biolife evaluation changes and unmerged runner branches without losing valid improvements. Context: the active checkout has tracked and untracked evaluation changes on an old branch, while newer MyBuddy work exposed the importance of true fresh-agent streams. Requirements: establish provenance; compare with current main and later evaluation work; preserve useful source in one isolated current branch with deterministic tests; explicitly archive or discard obsolete generated runs only after ownership review. Acceptance: each meaningful change is either a bounded review candidate or recorded as obsolete, and no valuable source is stranded in the shared dirty checkout. Out of scope: running an unlimited agent experiment or deleting preserved evidence.",
+      "description": "Goal: Resolve July local Biolife evaluation changes and unmerged runner branches without losing valid improvements. Progress: source review PR10 independently approved under lb-4x2d; terminal lifecycle correction recovered in closed local-candidate task lb-1axz at 4f42966, now needing fresh independent review before integration. All ten dirty/untracked fixture source files copied with SHA-256 manifest and original binary-safe diff; complete Git bundle verifies exact main fedc1e2, old source 4ce2bd9 and eval branch 27bee22. Original source hashes/diff unchanged after work. Evidence/inventory /workspace/mybuddy/.trapper_keeper/artifacts/mrmouth-evaluation-recovery-2026-09-17.md and /home/mdaum/devel/coobeeyon/mrmouth-eval-preservation-e2861db0/. Remaining groups: local-remote push d2df563, generated-context guidance d49acfa, Rust preflight 27bee22, partial telemetry/timing/accounting, experimental eval/batch/goal fixtures, and dirty spec-driven Biolife scripts. Each still needs bounded current-state assessment; no broad feature activation authorized. Preserved generated runs remain untouched (about 17GiB plus 1.5GiB and 6GiB source-run trees), not deletion candidates without ownership review. Next useful action: independent review exact terminal candidate 4f42966. Acceptance remains each meaningful source group recovered as a bounded candidate or explicitly retired with evidence; this parent is NOT complete. No unbounded agent benchmark, source publication, tool installation, merge or deletion performed.",
       "item_type": "task",
       "status": "open",
       "priority": 2,
       "claimed_by": "Michael Daum",
       "created_at": "2026-09-06T11:38:52.003151833Z",
-      "updated_at": "2026-09-18T01:13:32.677761215Z"
+      "updated_at": "2026-09-18T01:23:50.991360968Z"
     },
     "lb-hgyp": {
       "id": "lb-hgyp",
