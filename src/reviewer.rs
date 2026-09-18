@@ -412,12 +412,12 @@ fn review_scope_instructions(
     let code_repo = review_code_container_path(worktree_path);
     match commit_range {
         Some((before, after)) => format!(
-            "Review ONLY the changes between commits {before}..{after} on branch '{current_branch}'. \
+            "Review ONLY the changes between commits {before}..{after} in `{code_repo}`. \
             Run `git -C {code_repo} diff {before}..{after}` to see what changed - do NOT review code outside this range. \
             Run code build and test commands in `{code_repo}`."
         ),
         None => format!(
-            "Review the changes on branch '{current_branch}' against the project spec (SPEC.md). \
+            "Review the code changes for bookkeeping branch '{current_branch}' against the project spec (SPEC.md). \
             Use `git -C {code_repo} diff` and `git -C {code_repo} log` to understand what changed. \
             Run code build and test commands in `{code_repo}`."
         ),
@@ -429,6 +429,7 @@ fn review_workspace_instructions(worktree_path: Option<&Path>) -> String {
         Some(host_path) => format!(
             "Repository layout: Litebrite and Trapperkeeper state live in `{BOOKKEEPING_CONTAINER_PATH}`. \
             The code worktree to review is `{WORK_CONTAINER_PATH}`, mounted from host path `{}`. \
+            The code worktree may be on a different branch; review the supplied commit range without switching branches. \
             Run `lb` and `trk` commands from `{BOOKKEEPING_CONTAINER_PATH}`; run git diff/log and build/test commands from `{WORK_CONTAINER_PATH}`. \
             Do not treat bookkeeping-only changes as the code implementation diff.",
             host_path.display()
