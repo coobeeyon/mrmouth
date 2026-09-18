@@ -13,6 +13,10 @@ provider-free CLI regressions and the prerequisite narrow Clippy annotations
 from `ff77fc8`. It also clarifies that code and bookkeeping branches can differ.
 This is a review candidate, not a merged or installed change.
 
+[Hosted CI run 35290723421](https://github.com/coobeeyon/mrmouth/actions/runs/35290723421)
+completed successfully at that exact head, including strict Clippy and the
+full test suite.
+
 Local verification passes: 196 unit tests, three integration groups spanning
 twelve cases across task, epic, ready and loop, locked build, and strict
 all-target Clippy. The main control has two failing regression groups and one

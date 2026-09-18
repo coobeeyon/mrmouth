@@ -7,7 +7,8 @@ stranded on the July evaluation branch. PR 10 recovers that correction at
 `35fc235`, with 196 passing unit tests and twelve real-Git/fake-Docker CLI
 scenarios across task, epic, ready and loop. Main reproduces skipped code
 review and spurious bookkeeping review; its ordinary-repo control passes.
-Locked build and strict all-target Clippy pass locally. Source task `lb-9t9e`
+Locked build and strict all-target Clippy pass locally; hosted CI 35290723421
+also passed at the exact PR head. Source task `lb-9t9e`
 and landing task `lb-4x2d` preserve the review boundary; broader `lb-h7vj` and all
 dirty evaluation source/results remain untouched. No merge or installation.
 
