@@ -673,13 +673,13 @@
     "lb-9t9e": {
       "id": "lb-9t9e",
       "title": "Recover split-repository code review fix onto main",
-      "description": "Goal: Ensure do, ready and loop review code commits in the selected work repository while leaving task commands in bookkeeping. Context: lb-h7vj tracks broader recovery; commit 40e7574 on mrmouth-eval-defects-20260707 contains this isolated reliability fix, absent from main. Requirements: recover only the reviewer mount, code-HEAD selection and prompt routing; preserve the shared dirty evaluation checkout and all generated evidence; add deterministic regression proof. Acceptance: build, tests and CI checks pass; source committed and pushed on a focused review branch with a PR; wiki records exact proof and remaining broader recovery. Out of scope: other eval changes, paid agent experiments, installation, main merge or deletion.",
+      "description": "Goal: Ensure do, ready and loop review code commits in the selected work repository while leaving task commands in bookkeeping. Context: bounded recovery from lb-h7vj and old commit 40e7574. Delivered: PR https://github.com/coobeeyon/mrmouth/pull/10 at 35fc23510d37a6c149f104b9744509cd4a65c849, recovered fix plus seven prerequisite narrow Clippy annotations from ff77fc8, real-Git/fake-Docker CLI regression covering twelve cases. Verification: 196 unit tests and 3 integration groups, locked build and strict all-target Clippy pass locally; hosted run 35290723421 passes exact head with matching test counts. Main reproduces skipped code-only review and spurious bookkeeping review; ordinary control passes. Project wiki commit 45bb2eb records proof. Original dirty evaluation checkout and generated evidence preserved. Review-branch target complete; lb-4x2d owns remaining independent review and merge, and broader lb-h7vj stays open. No merge, installation, provider experiment or evidence deletion.",
       "item_type": "task",
       "status": "open",
       "priority": 1,
       "claimed_by": "Michael Daum",
       "created_at": "2026-09-18T00:11:47.904962343Z",
-      "updated_at": "2026-09-18T00:12:02.173761572Z"
+      "updated_at": "2026-09-18T00:22:15.350781335Z"
     },
     "lb-9x4r": {
       "id": "lb-9x4r",
