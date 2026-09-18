@@ -1963,13 +1963,13 @@
     "lb-y83r": {
       "id": "lb-y83r",
       "title": "Preserve tested mrmouth corrections as one local integration candidate",
-      "description": "Goal: Make the already independently verified reviewer-routing and terminal-completion combination reproducible as a clean local branch and verified Git bundle. Context: PR10 35fc2351 plus local terminal candidate 4f42966 produced reviewed tree 1abc6cec; independent combined source includes the two author no-work tests from patch SHA256 1326935e6325ad781662f8779b260a52dc24d347a4cfa4518cda7312420ad6c6. Requirements: use a new isolated checkout; preserve original dirty repository, author checkouts and independent review probe; verify committed tree against tested archive, bundle restoration and existing checks; record exact identities and current limits. Acceptance: clean local candidate and self-contained verified bundle with provenance, updated recovery record. Out of scope: public push or PR mutation, merge, installation, daemon/provider execution, broader old evaluation recovery or existing worker control. Existing lb-4x2d retains integration authorization ownership.",
+      "description": "Completed local packaging only: clean 30478de44a7cd266e79d58b55f00acdb355fce09 on fix/reviewer-and-terminal-integration preserves PR10 35fc2351 and terminal 4f42966 plus two already-reviewed no-work tests. All38 tracked files match previously tested archive. Self-contained bundle restored exact tree2f9fdab6; restored source passes197 unit tests, twelve reviewer scenarios, eighteen terminal scenarios, locked build and strict all-target Clippy. Original evaluation/author/reviewer heads, statuses, binary diffs and untracked source hashes unchanged. Candidate /home/mdaum/devel/coobeeyon/mrmouth-local-integration-96aace29; proof /home/mdaum/devel/coobeeyon/mrmouth-local-integration-proof-96aace29; report /workspace/mybuddy/.trapper_keeper/artifacts/mrmouth-combined-local-candidate-2026-09-18.md. Fresh readback confirms public repository, unchanged main fedc1e2 and PR10 head35fc2351 with passing CI. No source publication, PR edit, merge, installation, provider/daemon execution, or worker control. Broader lb-h7vj and authorization/integration lb-4x2d remain open.",
       "item_type": "task",
       "status": "open",
       "priority": 2,
       "claimed_by": "Codex",
       "created_at": "2026-09-18T05:44:15.754071336Z",
-      "updated_at": "2026-09-18T05:44:22.315145579Z"
+      "updated_at": "2026-09-18T05:48:01.581957250Z"
     },
     "lb-y8mm": {
       "id": "lb-y8mm",
