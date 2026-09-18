@@ -660,6 +660,16 @@
       "created_at": "2026-03-10T13:14:38.810345525Z",
       "updated_at": "2026-03-12T21:39:40.969080048Z"
     },
+    "lb-9t9e": {
+      "id": "lb-9t9e",
+      "title": "Recover split-repository code review fix onto main",
+      "description": "Goal: Ensure do, ready and loop review code commits in the selected work repository while leaving task commands in bookkeeping. Context: lb-h7vj tracks broader recovery; commit 40e7574 on mrmouth-eval-defects-20260707 contains this isolated reliability fix, absent from main. Requirements: recover only the reviewer mount, code-HEAD selection and prompt routing; preserve the shared dirty evaluation checkout and all generated evidence; add deterministic regression proof. Acceptance: build, tests and CI checks pass; source committed and pushed on a focused review branch with a PR; wiki records exact proof and remaining broader recovery. Out of scope: other eval changes, paid agent experiments, installation, main merge or deletion.",
+      "item_type": "task",
+      "status": "open",
+      "priority": 1,
+      "created_at": "2026-09-18T00:11:47.904962343Z",
+      "updated_at": "2026-09-18T00:11:47.904962343Z"
+    },
     "lb-9x4r": {
       "id": "lb-9x4r",
       "title": "Add timeout to reviewer and shipper containers",
