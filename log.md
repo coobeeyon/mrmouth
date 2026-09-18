@@ -1,5 +1,16 @@
 # Log
 
+## [2026-09-17] recovered | Split-repository reviewer candidate
+
+Reconciled the reviewer wiki against main `fedc1e2`: split code review remained
+stranded on the July evaluation branch. PR 10 recovers that correction at
+`35fc235`, with 196 passing unit tests and twelve real-Git/fake-Docker CLI
+scenarios across task, epic, ready and loop. Main reproduces skipped code
+review and spurious bookkeeping review; its ordinary-repo control passes.
+Locked build and strict all-target Clippy pass locally. Source task `lb-9t9e`
+and landing task `lb-4x2d` preserve the review boundary; broader `lb-h7vj` and all
+dirty evaluation source/results remain untouched. No merge or installation.
+
 ## [2026-05-12] documented | Litebrite agent contract
 Captured the litebrite command semantics that matter for mrmouth and supervising agents: `lb prime` as the intended AI context surface, the ready/show/claim/work/commit/close/sync protocol, claim atomicity, ready discovery semantics, close-with-open-children behavior, and implications for a future mrmouth operator skill.
 

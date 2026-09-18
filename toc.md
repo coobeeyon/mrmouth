@@ -10,7 +10,7 @@
 - [Litebrite Agent Contract](pages/litebrite-agent-contract.md) — Task-tracker contract mrmouth and supervising agents rely on.
 - [Mr Mouth Prime](pages/mrmouth-prime.md) — AI-facing command context for supervising mrmouth safely.
 - [Mr Mouth Speed And Evals](pages/mrmouth-speed-and-evals.md) — Runtime bottlenecks, Codex session options, and eval harness direction.
-- [Reviewer Fitness For Purpose](pages/reviewer-fitness-for-purpose.md) — Reviewer prompt context for requested Litebrite items and split worktree diff scope.
+- [Reviewer Fitness For Purpose](pages/reviewer-fitness-for-purpose.md) — Requested-item review contract and PR 10 recovery of split-repository review, with main-versus-candidate regression proof and follow-up ownership.
 - [Runner Context Hygiene](pages/runner-context-hygiene.md) — Default runner prompt guidance for avoiding generated files, eval artifacts, logs, and agent/plugin caches as source context.
 - [Runner Toolchain Preflight](pages/runner-toolchain-preflight.md) — Rust/Cargo/rustfmt diagnostics before runner agent execution.
 - [Split Bookkeeping/Work Repos](pages/split-bookkeeping-work-repos.md) — Configured fake-monorepo layout that separates task bookkeeping from the code repo agents edit.

@@ -63,6 +63,7 @@ review fitness for purpose — [Reviewer Fitness For Purpose](pages/reviewer-fit
 review target — [Reviewer Fitness For Purpose](pages/reviewer-fitness-for-purpose.md)
 reviewer model normalization — [Codex Role Model Defaults](pages/codex-role-model-defaults.md)
 reviewer split worktree scope — [Reviewer Fitness For Purpose](pages/reviewer-fitness-for-purpose.md), src/reviewer.rs, src/do_cmd.rs, src/loop_cmd.rs, src/ready.rs
+reviewer split worktree recovery / PR 10 / lb-9t9e / lb-4x2d — [Reviewer Fitness For Purpose](pages/reviewer-fitness-for-purpose.md), docs/reviews/split-repository-review.md, tests/split_review.rs
 RunOptions emit_terminal_events — [Event Rendering Architecture](pages/event-rendering-architecture.md), src/run.rs
 runtime benchmarks — [Mr Mouth Speed And Evals](pages/mrmouth-speed-and-evals.md)
 runner prompt context hygiene — [Runner Context Hygiene](pages/runner-context-hygiene.md), src/prompt.rs

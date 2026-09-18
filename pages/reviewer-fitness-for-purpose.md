@@ -1,5 +1,32 @@
 # Reviewer Fitness For Purpose
 
+## September 17, 2026 recovery checkpoint
+
+The split-repository behavior described below was implemented on the old
+evaluation branch, not on main. Main `fedc1e2` still compares bookkeeping HEADs
+and omits the reviewer's code mount. A fresh CLI regression reproduces both a
+code-only commit skipping review and a bookkeeping-only commit triggering it.
+
+[PR 10](https://github.com/coobeeyon/mrmouth/pull/10), exact candidate
+`35fc23510d37a6c149f104b9744509cd4a65c849`, recovers `40e7574` onto main with
+provider-free CLI regressions and the prerequisite narrow Clippy annotations
+from `ff77fc8`. It also clarifies that code and bookkeeping branches can differ.
+This is a review candidate, not a merged or installed change.
+
+Local verification passes: 196 unit tests, three integration groups spanning
+twelve cases across task, epic, ready and loop, locked build, and strict
+all-target Clippy. The main control has two failing regression groups and one
+passing ordinary-repository group. Fixtures use real Git repos and fake
+Docker/agents; actual Docker execution and provider review quality are not
+proved. See `docs/reviews/split-repository-review.md` in the candidate.
+
+Source recovery is tracked by `lb-9t9e`; `lb-4x2d` owns follow-up review and
+landing. Broader evaluation recovery `lb-h7vj` remains open. The dirty July
+evaluation checkout, untracked source variants and generated evidence were
+preserved without edits or deletion.
+
+## Reviewer contract
+
 Reviewer runs should evaluate both code quality and whether the diff satisfied
 the work item that caused the run. This is separate from generic review against
 `SPEC.md`: a change can be buildable and locally reasonable while still missing
