@@ -2005,11 +2005,10 @@
       "title": "Independently review command-terminal lifecycle recovery",
       "description": "Review exact local mrmouth 4f42966 in mrmouth-terminal-recovery-e2861db0. Verify the enclosing command owns exactly one final lifecycle_summary and loop teardown calls precede it, without changing existing failure/iteration semantics or claiming daemon removal. Inspect real CLI regression fixtures and independently run appropriate tests. Review only; preserve source and original dirty evaluation checkout. Write a precise acceptance or correction report. No merge, installation, provider experiment, daemon access or external messaging. Separate from the existing source owner continuing lb-h7vj and PR10 review/merge task lb-4x2d.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 1,
-      "claimed_by": "Codex",
       "created_at": "2026-09-18T01:28:35.729528258Z",
-      "updated_at": "2026-09-18T01:28:49.551225799Z"
+      "updated_at": "2026-09-18T01:37:25.935451239Z"
     },
     "lb-zoi1": {
       "id": "lb-zoi1",
