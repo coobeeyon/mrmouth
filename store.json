@@ -2514,6 +2514,11 @@
       "dep_type": "parent"
     },
     {
+      "from_id": "lb-y83r",
+      "to_id": "lb-h7vj",
+      "dep_type": "parent"
+    },
+    {
       "from_id": "lb-y8mm",
       "to_id": "lb-174a",
       "dep_type": "blocks"
@@ -2546,11 +2551,6 @@
     {
       "from_id": "lb-zptt",
       "to_id": "lb-obsn",
-      "dep_type": "parent"
-    },
-    {
-      "from_id": "lb-y83r",
-      "to_id": "lb-h7vj",
       "dep_type": "parent"
     }
   ]
